@@ -11,6 +11,17 @@
       "destination": "/index.html"
     }
   ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Vercel-Config-Test",
+          "value": "active"
+        }
+      ]
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron",
