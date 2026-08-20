@@ -41,7 +41,7 @@
     };
 
     function sendTokenToApi(token) {
-        fetch('http://localhost:4000/api/token', {
+        fetch('https://immo76-moteur-ia.vercel.app/api/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token: token })

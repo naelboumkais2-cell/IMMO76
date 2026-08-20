@@ -174,7 +174,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // Copie best-effort vers le dashboard (supervision/pilotage multi-portail), en plus du
         // pipeline ci-dessus, jamais à la place. Si le dashboard ne tourne pas, échoue
         // silencieusement — n'affecte ni Downloads ni le Watcher/Ubiflow.
-        fetch('http://localhost:4100/api/scraper/otaree-import', {
+        fetch('https://immo-76.vercel.app/api/scraper/otaree-import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: request.searchUrl, lots: lots })
@@ -183,7 +183,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // Capture indépendante du refresh_token Otaree, vers le dashboard — best-effort,
         // aucun impact sur le flux d'extraction/publication ci-dessus si le dashboard est
         // injoignable.
-        fetch('http://localhost:4100/api/scraper/otaree-token', {
+        fetch('https://immo-76.vercel.app/api/scraper/otaree-token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refreshToken: request.refreshToken, device: request.device, instanceId: request.instanceId })
