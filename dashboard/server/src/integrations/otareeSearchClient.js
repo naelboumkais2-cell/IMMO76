@@ -92,7 +92,7 @@ async function paginerRecherche(jwt, credentials, filters) {
 // message clair plutôt qu'une erreur technique confuse — partagé entre recherche de lots et
 // recherche de villes, mêmes deux cas d'échec possibles pour les deux.
 async function obtenirJwtFrais() {
-    const credentials = getOtareeCredentials();
+    const credentials = await getOtareeCredentials();
     if (!credentials) {
         const err = new Error("Aucun accès Otaree connu — navigue sur Otaree avec l'extension active pour capturer un accès.");
         err.code = 'NO_CREDENTIALS';

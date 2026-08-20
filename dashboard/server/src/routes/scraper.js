@@ -119,17 +119,17 @@ scraperRouter.post('/otaree-import', async (req, res) => {
     }
 });
 
-scraperRouter.post('/otaree-token', (req, res) => {
+scraperRouter.post('/otaree-token', async (req, res) => {
     const { refreshToken, device, instanceId } = req.body || {};
     if (!refreshToken) return res.status(400).json({ erreur: 'refreshToken requis' });
 
-    sauvegarderRefreshToken(refreshToken, device || null, instanceId || null);
+    await sauvegarderRefreshToken(refreshToken, device || null, instanceId || null);
     console.log(`[otaree-token] refresh_token capturé (device: ${device || 'inconnu'})`);
     res.json({ success: true });
 });
 
-scraperRouter.get('/otaree-token', (req, res) => {
-    res.json(getOtareeTokenState());
+scraperRouter.get('/otaree-token', async (req, res) => {
+    res.json(await getOtareeTokenState());
 });
 
 scraperRouter.post('/otaree-count', async (req, res) => {

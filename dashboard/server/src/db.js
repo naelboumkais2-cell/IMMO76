@@ -123,6 +123,14 @@ export async function initDb() {
     message TEXT,
     cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS otaree_tokens (
+    id SERIAL PRIMARY KEY,
+    refresh_token TEXT NOT NULL,
+    device TEXT,
+    instance_id TEXT,
+    cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   `);
 
   // Seed default portails if empty
