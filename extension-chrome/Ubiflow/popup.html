@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Ubiflow Auto-Poster</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Ubiflow Auto-Poster V 1.1.3</h2>
+            <p class="subtitle">Propulsé par OpenAI</p>
+        </div>
+
+        <div class="step-card">
+            <h3>1. Importer un Lot</h3>
+            <p>Sélectionnez le dossier du lot contenant `fiche_infos.txt`.</p>
+            <label class="custom-file-upload">
+                <input type="file" id="folderInput" webkitdirectory directory multiple />
+                📁 Choisir un dossier
+            </label>
+            <div id="fileStatus" class="status-text text-muted">Aucun dossier sélectionné</div>
+        </div>
+
+        <div class="step-card">
+            <h3>2. Rédiger & Diffuser</h3>
+            <p>L'IA va rédiger l'annonce et l'enregistrer en tant que brouillon sur Ubiflow.</p>
+            <button id="processBtn" class="primary-btn" disabled>🚀 Générer et Sauvegarder</button>
+        </div>
+
+        <div id="logArea" class="log-area hidden">
+            <h4>Statut :</h4>
+            <div id="logs"></div>
+        </div>
+    </div>
+    <script src="lib/pdf.min.js"></script>
+    <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Ubiflow JSON Scanner",
+  "version": "1.0",
+  "description": "Intercepte et télécharge le JSON envoyé à Ubiflow lors de la sauvegarde d'un brouillon.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["*://*.ubiflow.net/*", "*://espace-client.ubiflow.net/*"],
+  "content_scripts": [
+    {
+      "matches": ["*://*.ubiflow.net/*", "*://espace-client.ubiflow.net/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["*://*.ubiflow.net/*", "*://espace-client.ubiflow.net/*"]
+    }
+  ]
+}

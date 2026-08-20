@@ -1,0 +1,16 @@
+========== INFORMATIONS DU LOT ==========
+ID Otaree : 0b538dfe1892
+Numéro : B813
+Typologie : T1
+Surface totale : 17.17 m²
+Surface terrasse : 0 m²
+Pièces : Inconnu
+Étage : 8
+Exposition : E
+
+========== PRIX & RENTABILITÉ ==========
+Prix total : 84200 €
+Loi(s) : LMNP
+Rentabilité brute : Inconnu %
+Prix au m² : 4903.9 €/m²
+Loyer mensuel estimé : Inconnu €

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation des Extensions : Otaree & Ubiflow</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0B0E14;
+            --surface-color: rgba(255, 255, 255, 0.03);
+            --surface-hover: rgba(255, 255, 255, 0.08);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-primary: #ffffff;
+            --text-secondary: #94A3B8;
+            --accent-otaree: #10B981;
+            --accent-otaree-glow: rgba(16, 185, 129, 0.2);
+            --accent-ubiflow: #6366F1;
+            --accent-ubiflow-glow: rgba(99, 102, 241, 0.2);
+            --font-main: 'Inter', sans-serif;
+            --font-heading: 'Outfit', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: var(--font-main);
+            line-height: 1.6;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 50%, var(--accent-otaree-glow), transparent 25%),
+                radial-gradient(circle at 85% 30%, var(--accent-ubiflow-glow), transparent 25%);
+            background-attachment: fixed;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 6rem;
+            animation: fadeInDown 1s ease-out;
+        }
+
+        h1 {
+            font-family: var(--font-heading);
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .extensions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 3rem;
+            margin-top: 2rem;
+        }
+
+        .card {
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 3rem;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeInUp 0.8s ease-out forwards;
+        }
+
+        .card:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, transparent);
+            transition: all 0.4s ease;
+        }
+
+        .card.otaree:hover {
+            transform: translateY(-10px);
+            background: var(--surface-hover);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 40px var(--accent-otaree-glow);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .card.otaree::before {
+            background: linear-gradient(90deg, transparent, var(--accent-otaree), transparent);
+            opacity: 0;
+        }
+
+        .card.otaree:hover::before {
+            opacity: 1;
+        }
+
+        .card.ubiflow:hover {
+            transform: translateY(-10px);
+            background: var(--surface-hover);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 40px var(--accent-ubiflow-glow);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        .card.ubiflow::before {
+            background: linear-gradient(90deg, transparent, var(--accent-ubiflow), transparent);
+            opacity: 0;
+        }
+
+        .card.ubiflow:hover::before {
+            opacity: 1;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .icon-container {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1.5rem;
+            font-size: 2rem;
+            position: relative;
+        }
+
+        .card.otaree .icon-container {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--accent-otaree);
+            box-shadow: inset 0 0 20px rgba(16, 185, 129, 0.2);
+        }
+
+        .card.ubiflow .icon-container {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--accent-ubiflow);
+            box-shadow: inset 0 0 20px rgba(99, 102, 241, 0.2);
+        }
+
+        h2 {
+            font-family: var(--font-heading);
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .version {
+            font-size: 0.875rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .card-description {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .features-list {
+            list-style: none;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 1.5rem;
+            padding-left: 0;
+            position: relative;
+            transition: transform 0.3s ease;
+        }
+
+        .feature-item:hover {
+            transform: translateX(10px);
+        }
+
+        .feature-icon {
+            margin-right: 1rem;
+            margin-top: 0.25rem;
+            flex-shrink: 0;
+        }
+
+        .card.otaree .feature-icon { color: var(--accent-otaree); }
+        .card.ubiflow .feature-icon { color: var(--accent-ubiflow); }
+
+        .feature-text h3 {
+            font-family: var(--font-heading);
+            font-size: 1.2rem;
+            margin-bottom: 0.25rem;
+            color: #fff;
+        }
+
+        .feature-text p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .architecture {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .code-tag {
+            display: inline-block;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #94A3B8;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            h1 { font-size: 2.5rem; }
+            .extensions-grid { grid-template-columns: 1fr; }
+            .card { padding: 2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Écosystème d'Extensions</h1>
+            <p class="subtitle">Documentation technique et fonctionnelle des outils d'automatisation immobilière : extraction intelligente et diffusion assistée par l'IA.</p>
+        </header>
+
+        <div class="extensions-grid">
+            
+            <!-- Carte Otaree -->
+            <div class="card otaree">
+                <div class="card-header">
+                    <div class="icon-container">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    </div>
+                    <div>
+                        <h2>Otaree Extractor</h2>
+                        <span class="version">Version 3.0</span>
+                    </div>
+                </div>
+                <p class="card-description">
+                    Système avancé d'interception de flux. Récupère de manière silencieuse et automatique l'intégralité des lots immobiliers et leurs documents associés depuis les requêtes API.
+                </p>
+
+                <ul class="features-list">
+                    <li class="feature-item">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        </div>
+                        <div class="feature-text">
+                            <h3>Interception API</h3>
+                            <p>Analyse et capture les requêtes réseau en temps réel via l'injection de scripts au chargement de la page.</p>
+                        </div>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        </div>
+                        <div class="feature-text">
+                            <h3>Récupération de PDF</h3>
+                            <p>Téléchargement automatisé des plaquettes et documents PDF associés à chaque lot extrait.</p>
+                        </div>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+                        </div>
+                        <div class="feature-text">
+                            <h3>UI Intégrée</h3>
+                            <p>Interface de recherche et d'organisation des lots extraits (otaree_search.html).</p>
+                        </div>
+                    </li>
+                </ul>
+
+                <div class="architecture">
+                    <h3 style="font-family: var(--font-heading); font-size: 1rem; color: #fff; margin-bottom: 1rem;">Composants Clés</h3>
+                    <span class="code-tag">inject.js</span>
+                    <span class="code-tag">content.js</span>
+                    <span class="code-tag">background.js</span>
+                </div>
+            </div>
+
+            <!-- Carte Ubiflow -->
+            <div class="card ubiflow">
+                <div class="card-header">
+                    <div class="icon-container">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                    </div>
+                    <div>
+                        <h2>Ubiflow Auto-Poster</h2>
+                        <span class="version">Version 7.0</span>
+                    </div>
+                </div>
+                <p class="card-description">
+                    Assistant de diffusion intelligent. Utilise la puissance d'OpenAI pour générer des descriptions attractives et automatise la publication d'annonces LMNP.
+                </p>
+
+                <ul class="features-list">
+                    <li class="feature-item">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        </div>
+                        <div class="feature-text">
+                            <h3>Génération par IA (OpenAI)</h3>
+                            <p>Rédaction automatique des textes d'annonces optimisés pour la conversion locative et l'investissement.</p>
+                        </div>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        </div>
+                        <div class="feature-text">
+                            <h3>Diffusion Automatisée</h3>
+                            <p>Interaction directe avec l'espace client Ubiflow via des scripts de contenu pour remplir les formulaires de création.</p>
+                        </div>
+                    </li>
+                    <li class="feature-item">
+                        <div class="feature-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                        </div>
+                        <div class="feature-text">
+                            <h3>Gestion des Sessions</h3>
+                            <p>Extraction et réutilisation sécurisée des tokens de session (token_stealer.js) pour fluidifier les opérations API.</p>
+                        </div>
+                    </li>
+                </ul>
+
+                <div class="architecture">
+                    <h3 style="font-family: var(--font-heading); font-size: 1rem; color: #fff; margin-bottom: 1rem;">Composants Clés</h3>
+                    <span class="code-tag">popup.html</span>
+                    <span class="code-tag">token_stealer.js</span>
+                    <span class="code-tag">content.js</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</body>
+</html>

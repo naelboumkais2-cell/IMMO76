@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Ubiflow Auto-Poster V7.0",
+  "version": "7.0",
+  "description": "Génère et diffuse des annonces LMNP sur Ubiflow grâce à OpenAI",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Ouvrir l'Auto-Poster",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.ubiflow.net/*", "*://espace-client.ubiflow.net/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["token_stealer.js"],
+      "matches": ["*://*.ubiflow.net/*", "*://espace-client.ubiflow.net/*"]
+    }
+  ]
+}

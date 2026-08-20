@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Otaree Advanced Extractor V3 (Bouton Intégré)",
+  "version": "3.0",
+  "description": "Extrait automatiquement tous les lots et leurs PDF en interceptant les requêtes API.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {},
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["inject.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

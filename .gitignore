@@ -1,0 +1,11 @@
+*.log
+token.json
+.DS_Store
+.env
+*.env
+config.local.json
+node_modules/
+dist/
+*.sqlite*
+node-v*
+
