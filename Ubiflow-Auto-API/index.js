@@ -5,7 +5,12 @@ const axios = require('axios');
 const crypto = require('crypto');
 const { db, initDb } = require('./db.js');
 
-initDb().catch(console.error);
+// Filet de sécurité pour le diagnostic en hébergement distant — voir le commentaire équivalent
+// dans dashboard/server/src/index.js.
+process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
+process.on('uncaughtException', (err) => console.error('[uncaughtException]', err));
+
+initDb().catch((err) => console.error('[initDb] échec :', err));
 
 const app = express();
 app.use(cors());
@@ -439,9 +444,13 @@ function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, esp
     };
 }
 
-if (process.env.NODE_ENV !== 'production') {
-    const PORT = 4000;
-    app.listen(PORT, () => {
+// Sur Vercel, `VERCEL` est toujours défini (peu importe NODE_ENV) — écouter un port n'a aucun
+// sens là-bas (fonction serverless, pas de process persistant). Partout ailleurs (local, Render,
+// tout hébergeur classique), on démarre un vrai serveur qui tourne en continu.
+if (!process.env.VERCEL) {
+    const PORT = process.env.PORT || 4000;
+    // '0.0.0.0' explicite — voir le commentaire équivalent dans dashboard/server/src/index.js.
+    app.listen(PORT, '0.0.0.0', () => {
         console.log(`[🚀] API Ubiflow Automatisée démarrée sur http://localhost:${PORT}`);
     });
 }

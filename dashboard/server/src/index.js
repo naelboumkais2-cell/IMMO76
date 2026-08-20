@@ -8,8 +8,14 @@ import { logsRouter } from './routes/logs.js';
 import { rescraperRechercheFavorite } from './services/orchestrator.js';
 import { mode as hubiflowMode } from './integrations/hubiflowRouter.js';
 
+// Filet de sécurité pour le diagnostic en hébergement distant : sans ça, un rejet de promesse
+// non intercepté peut faire quitter le process sans qu'aucun message n'apparaisse dans les logs
+// de la plateforme (vu sur Render — "Application exited early" sans trace).
+process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
+process.on('uncaughtException', (err) => console.error('[uncaughtException]', err));
+
 // Init Postgres database
-initDb().catch(console.error);
+initDb().catch((err) => console.error('[initDb] échec :', err));
 
 const app = express();
 app.use(cors());
@@ -53,10 +59,16 @@ app.get('/api/cron', async (req, res) => {
     }
 });
 
-// For local development
-if (process.env.NODE_ENV !== 'production') {
+// Sur Vercel, `VERCEL` est toujours défini (peu importe NODE_ENV) — écouter un port n'a aucun
+// sens là-bas (fonction serverless, pas de process persistant). Partout ailleurs (local, Render,
+// tout hébergeur classique), on démarre un vrai serveur qui tourne en continu.
+if (!process.env.VERCEL) {
     const PORT = process.env.PORT || 4100;
-    app.listen(PORT, () => {
+    // '0.0.0.0' explicite : sur certains hébergeurs (Render...), écouter sans préciser
+    // l'interface ne se lie qu'en local/IPv6-loopback selon la version de Node — invisible
+    // depuis l'extérieur du conteneur, donc le port ne semble jamais "ouvert" pour la
+    // plateforme, qui tue alors le process sans qu'aucune erreur applicative ne s'affiche.
+    app.listen(PORT, '0.0.0.0', () => {
         console.log(`[dashboard-server] démarré sur http://localhost:${PORT}`);
     });
 }
