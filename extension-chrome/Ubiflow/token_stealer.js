@@ -41,7 +41,7 @@
     };
 
     function sendTokenToApi(token) {
-        fetch('https://immo76-moteur-ia.vercel.app/api/token', {
+        fetch('https://immo76-moteur-ia.onrender.com/api/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token: token })

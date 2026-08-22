@@ -1,7 +1,7 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'SEND_TOKEN_TO_API' && request.token) {
         // Envoi du token à notre API Node.js locale
-        fetch('https://immo76-moteur-ia.vercel.app/api/token', {
+        fetch('https://immo76-moteur-ia.onrender.com/api/token', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -13,7 +13,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             console.log('Token envoyé avec succès à l\'API locale:', data);
         })
         .catch(err => {
-            console.error('Erreur: L\'API locale (https://immo76-moteur-ia.vercel.app) semble éteinte ou inaccessible.', err);
+            console.error('Erreur: L\'API locale (https://immo76-moteur-ia.onrender.com) semble éteinte ou inaccessible.', err);
         });
     }
 });

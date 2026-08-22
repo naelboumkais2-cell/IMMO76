@@ -10,7 +10,8 @@
   "host_permissions": [
     "*://*.ubiflow.net/*",
     "*://espace-client.ubiflow.net/*",
-    "http://localhost:4000/*"
+    "http://localhost:4000/*",
+    "https://immo76-moteur-ia.onrender.com/*"
   ],
   "background": {
     "service_worker": "background.js"
