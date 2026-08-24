@@ -5,18 +5,26 @@ import { publierInstance, depublierInstance, synchroniserInstance } from '../ser
 
 export const annoncesRouter = Router();
 
+// Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
+// voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
+// peut peser plusieurs Mo par annonce (jusqu'à 20 photos en base64) : avec LIMIT 200 et un
+// rafraîchissement automatique toutes les 5s pendant que l'onglet est ouvert, un `SELECT *` ici
+// pouvait retransmettre plusieurs centaines de Mo par minute — identifié comme responsable
+// d'un dépassement réel du quota de transfert Neon.
+const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test';
+
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
         const annonces = q
             ? await db
                   .prepare(
-                      `SELECT * FROM annonces
+                      `SELECT ${COLONNES_LISTE_ANNONCES} FROM annonces
                        WHERE CAST(id AS TEXT) LIKE ? OR titre LIKE ? OR ville LIKE ?
                        ORDER BY scrapee_le DESC LIMIT 200`
                   )
                   .all(`%${q}%`, `%${q}%`, `%${q}%`)
-            : await db.prepare(`SELECT * FROM annonces ORDER BY scrapee_le DESC LIMIT 200`).all();
+            : await db.prepare(`SELECT ${COLONNES_LISTE_ANNONCES} FROM annonces ORDER BY scrapee_le DESC LIMIT 200`).all();
         
         const getInstances = db.prepare(
             `SELECT ap.*, p.nom AS portail_nom
@@ -46,7 +54,9 @@ annoncesRouter.put('/:id', exigerConnexion, async (req, res) => {
             return res.status(400).json({ erreur: 'est_annonce_test requis' });
         }
         await db.prepare(`UPDATE annonces SET est_annonce_test = ? WHERE id = ?`).run(est_annonce_test ? 1 : 0, req.params.id);
-        res.json(await db.prepare(`SELECT * FROM annonces WHERE id = ?`).get(req.params.id));
+        // Réponse jamais lue côté frontend (voir Supervision.jsx, onToggleTest) — pas la peine
+        // de retransmettre images/raw_data pour une ligne dont le résultat est ignoré.
+        res.json(await db.prepare(`SELECT ${COLONNES_LISTE_ANNONCES} FROM annonces WHERE id = ?`).get(req.params.id));
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
