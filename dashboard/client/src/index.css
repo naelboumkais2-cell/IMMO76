@@ -726,6 +726,32 @@ select {
     background: transparent;
 }
 
+/* Mur de connexion (Login.jsx) — plein écran, avant tout accès au reste de l'app. */
+.login-ecran {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-surface-sunken, #f8fafc);
+}
+.login-carte {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    max-width: 360px;
+    padding: var(--space-6);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+}
+.login-carte .field {
+    text-align: left;
+}
+
 /* Page d'accueil "façon Google" de Rechercher — minimaliste, une seule barre. Cliquer/taper
    dedans bascule sur la page filtres complète (voir ScraperControl.jsx, état `vue`). */
 .recherche-accueil {

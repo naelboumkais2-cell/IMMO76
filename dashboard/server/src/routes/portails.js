@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { db } from '../db.js';
+import { exigerConnexion } from '../middleware/auth.js';
 import { getEspaceActif } from '../integrations/tokenState.js';
 
 export const portailsRouter = Router();
 
-portailsRouter.get('/', async (req, res) => {
+portailsRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const { espaceLogin } = getEspaceActif();
         const rows = await db.prepare(`SELECT * FROM portails ORDER BY nom`).all();
@@ -19,7 +20,7 @@ portailsRouter.get('/', async (req, res) => {
     }
 });
 
-portailsRouter.post('/', async (req, res) => {
+portailsRouter.post('/', exigerConnexion, async (req, res) => {
     const { nom, login = null, mode_publication_defaut = 'brouillon' } = req.body;
     if (!nom || !nom.trim()) return res.status(400).json({ erreur: 'nom requis' });
     try {
@@ -32,7 +33,7 @@ portailsRouter.post('/', async (req, res) => {
     }
 });
 
-portailsRouter.put('/:id', async (req, res) => {
+portailsRouter.put('/:id', exigerConnexion, async (req, res) => {
     try {
         const { actif, mode_publication_defaut, nom, login } = req.body;
         const existing = await db.prepare(`SELECT * FROM portails WHERE id = ?`).get(req.params.id);
@@ -59,7 +60,7 @@ portailsRouter.put('/:id', async (req, res) => {
     }
 });
 
-portailsRouter.delete('/:id', async (req, res) => {
+portailsRouter.delete('/:id', exigerConnexion, async (req, res) => {
     try {
         await db.prepare(`DELETE FROM portails WHERE id = ?`).run(req.params.id);
         res.status(204).end();
@@ -70,7 +71,7 @@ portailsRouter.delete('/:id', async (req, res) => {
 
 // --- Règles de routage par défaut (type de bien -> portails) ---
 
-portailsRouter.get('/regles-routage', async (req, res) => {
+portailsRouter.get('/regles-routage', exigerConnexion, async (req, res) => {
     try {
         res.json(
             await db
@@ -86,7 +87,7 @@ portailsRouter.get('/regles-routage', async (req, res) => {
     }
 });
 
-portailsRouter.post('/regles-routage', async (req, res) => {
+portailsRouter.post('/regles-routage', exigerConnexion, async (req, res) => {
     try {
         const { type_bien = null, portail_id } = req.body;
         if (!portail_id) return res.status(400).json({ erreur: 'portail_id requis' });
@@ -99,7 +100,7 @@ portailsRouter.post('/regles-routage', async (req, res) => {
     }
 });
 
-portailsRouter.delete('/regles-routage/:id', async (req, res) => {
+portailsRouter.delete('/regles-routage/:id', exigerConnexion, async (req, res) => {
     try {
         await db.prepare(`DELETE FROM regles_routage WHERE id = ?`).run(req.params.id);
         res.status(204).end();

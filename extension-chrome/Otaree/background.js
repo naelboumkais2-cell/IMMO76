@@ -1,3 +1,11 @@
+// Clé partagée avec le serveur dashboard (env var MACHINE_API_KEY côté Render) — l'extension
+// tourne en arrière-plan sans humain connecté au dashboard, donc pas de session possible ici ;
+// depuis l'ajout de l'authentification obligatoire, cette clé est ce qui distingue "l'extension
+// légitime" d'une requête anonyme sur les mêmes routes. Ce n'est pas un vrai secret (visible par
+// quiconque inspecte le code de l'extension) mais suffit à empêcher un appel non voulu par un
+// tiers qui ne connaît pas cette valeur.
+const OTAREE_MACHINE_KEY = 'e91d41def27d5bf62e98b93d875829897072598f2d5c73410c57721920b9109b';
+
 function generateTxtContent(lot) {
     let txt = "========== INFORMATIONS DU LOT ==========\n";
     txt += `ID Otaree : ${lot.id || 'Inconnu'}\n`;
@@ -176,7 +184,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // silencieusement — n'affecte ni Downloads ni le Watcher/Ubiflow.
         fetch('https://immo-76.vercel.app/api/scraper/otaree-import', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Machine-Key': OTAREE_MACHINE_KEY },
             body: JSON.stringify({ url: request.searchUrl, lots: lots })
         }).catch(() => {});
     } else if (request.action === 'OTAREE_REFRESH_TOKEN') {
@@ -185,7 +193,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         // injoignable.
         fetch('https://immo-76.vercel.app/api/scraper/otaree-token', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Machine-Key': OTAREE_MACHINE_KEY },
             body: JSON.stringify({ refreshToken: request.refreshToken, device: request.device, instanceId: request.instanceId })
         }).catch(() => {});
     }

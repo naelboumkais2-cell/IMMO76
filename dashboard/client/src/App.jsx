@@ -5,8 +5,12 @@ import { RoutingConfig } from './components/RoutingConfig.jsx';
 import { Supervision } from './components/Supervision.jsx';
 import { Historique } from './components/Historique.jsx';
 import { Sidebar } from './components/Sidebar.jsx';
+import { Login } from './components/Login.jsx';
 
 export function App() {
+    // undefined = vérification en cours (évite un flash de l'écran de connexion avant d'avoir
+    // la réponse de GET /auth/moi) ; null = pas connecté ; objet = connecté.
+    const [utilisateur, setUtilisateur] = useState(undefined);
     const [hubiflowMode, setHubiflowMode] = useState(null);
     // 'scraper'/'supervision' : les 2 actions principales, à égalité dans la barre de nav.
     // 'routing'/'historique' : accès secondaire (sidebar gauche), pas en concurrence visuelle
@@ -14,10 +18,29 @@ export function App() {
     // quotidien.
     const [activeTab, setActiveTab] = useState('scraper');
 
+    useEffect(() => {
+        api.getMoi()
+            .then(setUtilisateur)
+            .catch(() => setUtilisateur(null));
+    }, []);
+
+    // Un 401 sur n'importe quel appel de l'app (pas juste /auth/moi) signale une session
+    // expirée en cours d'usage — voir api.js, request(). Renvoie directement vers l'écran de
+    // connexion, sans attendre une action explicite de l'utilisateur.
+    useEffect(() => {
+        function onSessionExpiree() {
+            setUtilisateur(null);
+        }
+        window.addEventListener('auth:expiree', onSessionExpiree);
+        return () => window.removeEventListener('auth:expiree', onSessionExpiree);
+    }, []);
+
     // Poll (pas juste au montage) : le badge doit toujours refléter l'état réel du serveur,
     // même si celui-ci a été redémarré dans un mode différent pendant que l'onglet reste ouvert
-    // — critique maintenant que HUBIFLOW_MODE=reel est le défaut permanent.
+    // — critique maintenant que HUBIFLOW_MODE=reel est le défaut permanent. Seulement une fois
+    // connecté (la route est désormais protégée).
     useEffect(() => {
+        if (!utilisateur) return;
         const refresh = () =>
             api.getHubiflowMode()
                 .then((r) => setHubiflowMode(r.mode))
@@ -25,7 +48,25 @@ export function App() {
         refresh();
         const id = setInterval(refresh, 5000);
         return () => clearInterval(id);
-    }, []);
+    }, [utilisateur]);
+
+    async function onDeconnexion() {
+        try {
+            await api.logout();
+        } catch {
+            // Rien de plus à faire si l'appel échoue (déjà déconnecté côté serveur, réseau
+            // coupé...) — on renvoie quand même vers l'écran de connexion côté client.
+        }
+        setUtilisateur(null);
+    }
+
+    if (utilisateur === undefined) {
+        return <div className="login-ecran" />;
+    }
+
+    if (!utilisateur) {
+        return <Login onConnecte={setUtilisateur} />;
+    }
 
     const modeReel = hubiflowMode === 'reel';
 
@@ -42,10 +83,18 @@ export function App() {
                             <span className="brand-tagline">Pipeline scraping → diffusion</span>
                         </div>
                     </div>
-                    <span className={`env-pill${modeReel ? ' env-pill-reel' : ''}`}>
-                        <span className="dot" />
-                        {modeReel ? 'Connecté à Hubiflow (Réel)' : 'Données Mockées'}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span className={`env-pill${modeReel ? ' env-pill-reel' : ''}`}>
+                            <span className="dot" />
+                            {modeReel ? 'Connecté à Hubiflow (Réel)' : 'Données Mockées'}
+                        </span>
+                        <span className="cell-muted" title={utilisateur.email}>
+                            {utilisateur.nom || utilisateur.email}
+                        </span>
+                        <button type="button" className="btn-retour" onClick={onDeconnexion}>
+                            Déconnexion
+                        </button>
+                    </div>
                 </header>
 
                 <main className="app-main">

@@ -1,9 +1,16 @@
 async function request(path, options = {}) {
     const res = await fetch(`/api${path}`, {
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         ...options,
     });
     if (!res.ok) {
+        // 401 sur /auth/login ou /auth/moi = état normal (pas encore connecté), pas une session
+        // qui a expiré en cours d'usage — seul ce 2e cas doit renvoyer vers l'écran de connexion
+        // depuis n'importe quel appel de l'app. Voir App.jsx, écoute de 'auth:expiree'.
+        if (res.status === 401 && path !== '/auth/login' && path !== '/auth/moi') {
+            window.dispatchEvent(new CustomEvent('auth:expiree'));
+        }
         const body = await res.json().catch(() => ({}));
         throw new Error(body.erreur || `Erreur HTTP ${res.status}`);
     }
@@ -62,7 +69,13 @@ export const api = {
 
     // Logs
     getLogs: () => request('/logs'),
+    getConnexions: () => request('/logs/connexions'),
 
     // Mode Hubiflow (mock/réel) — pour afficher honnêtement l'état réel du bandeau
     getHubiflowMode: () => request('/hubiflow-mode'),
+
+    // Authentification
+    login: (email, motDePasse) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, motDePasse }) }),
+    logout: () => request('/auth/logout', { method: 'POST' }),
+    getMoi: () => request('/auth/moi'),
 };

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db } from '../db.js';
+import { exigerConnexion, exigerCleMachine } from '../middleware/auth.js';
 import {
     lancerScrapingEtDiffusion,
     importerLotsOtaree,
@@ -19,7 +20,7 @@ import {
 
 export const scraperRouter = Router();
 
-scraperRouter.get('/recherches', async (req, res) => {
+scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
             .prepare(
@@ -36,7 +37,7 @@ scraperRouter.get('/recherches', async (req, res) => {
     }
 });
 
-scraperRouter.get('/recherches/:id/runs', async (req, res) => {
+scraperRouter.get('/recherches/:id/runs', exigerConnexion, async (req, res) => {
     try {
         const runs = await db
             .prepare(`SELECT * FROM scraper_runs WHERE recherche_id = ? ORDER BY execute_le DESC`)
@@ -47,7 +48,7 @@ scraperRouter.get('/recherches/:id/runs', async (req, res) => {
     }
 });
 
-scraperRouter.put('/recherches/:id/frequence', async (req, res) => {
+scraperRouter.put('/recherches/:id/frequence', exigerConnexion, async (req, res) => {
     try {
         const { minutes } = req.body;
         await db.prepare(`UPDATE recherches SET frequence_minutes = ? WHERE id = ?`).run(minutes ?? null, req.params.id);
@@ -57,7 +58,7 @@ scraperRouter.put('/recherches/:id/frequence', async (req, res) => {
     }
 });
 
-scraperRouter.put('/recherches/:id/favori', async (req, res) => {
+scraperRouter.put('/recherches/:id/favori', exigerConnexion, async (req, res) => {
     try {
         const { favori } = req.body;
         await db.prepare(`UPDATE recherches SET favori = ? WHERE id = ?`).run(favori ? 1 : 0, req.params.id);
@@ -67,7 +68,7 @@ scraperRouter.put('/recherches/:id/favori', async (req, res) => {
     }
 });
 
-scraperRouter.get('/alertes', async (req, res) => {
+scraperRouter.get('/alertes', exigerConnexion, async (req, res) => {
     try {
         const favorites = await db
             .prepare(
@@ -87,7 +88,7 @@ scraperRouter.get('/alertes', async (req, res) => {
     }
 });
 
-scraperRouter.post('/alertes/consultees', async (req, res) => {
+scraperRouter.post('/alertes/consultees', exigerConnexion, async (req, res) => {
     try {
         await db.prepare(`UPDATE recherches SET derniere_consultation_alertes_le = CURRENT_TIMESTAMP WHERE favori = 1`).run();
         res.json({ success: true });
@@ -96,7 +97,7 @@ scraperRouter.post('/alertes/consultees', async (req, res) => {
     }
 });
 
-scraperRouter.post('/run', async (req, res) => {
+scraperRouter.post('/run', exigerConnexion, async (req, res) => {
     try {
         const { url } = req.body || {};
         const result = await lancerScrapingEtDiffusion(url || undefined);
@@ -106,7 +107,10 @@ scraperRouter.post('/run', async (req, res) => {
     }
 });
 
-scraperRouter.post('/otaree-import', async (req, res) => {
+// Route machine : l'extension Chrome Otaree poste ici en arrière-plan, sans humain connecté au
+// dashboard — protégée par clé partagée (exigerCleMachine), pas par une session (voir
+// middleware/auth.js).
+scraperRouter.post('/otaree-import', exigerCleMachine, async (req, res) => {
     try {
         const { url, lots } = req.body || {};
         if (!url) return res.status(400).json({ erreur: 'url requise' });
@@ -119,7 +123,8 @@ scraperRouter.post('/otaree-import', async (req, res) => {
     }
 });
 
-scraperRouter.post('/otaree-token', async (req, res) => {
+// Idem : capture automatique du refresh_token par l'extension, sans humain connecté.
+scraperRouter.post('/otaree-token', exigerCleMachine, async (req, res) => {
     const { refreshToken, device, instanceId } = req.body || {};
     if (!refreshToken) return res.status(400).json({ erreur: 'refreshToken requis' });
 
@@ -128,11 +133,11 @@ scraperRouter.post('/otaree-token', async (req, res) => {
     res.json({ success: true });
 });
 
-scraperRouter.get('/otaree-token', async (req, res) => {
+scraperRouter.get('/otaree-token', exigerConnexion, async (req, res) => {
     res.json(await getOtareeTokenState());
 });
 
-scraperRouter.post('/otaree-count', async (req, res) => {
+scraperRouter.post('/otaree-count', exigerConnexion, async (req, res) => {
     try {
         const { filters } = req.body || {};
         if (!filters || typeof filters !== 'object') {
@@ -148,7 +153,7 @@ scraperRouter.post('/otaree-count', async (req, res) => {
     }
 });
 
-scraperRouter.post('/otaree-search', async (req, res) => {
+scraperRouter.post('/otaree-search', exigerConnexion, async (req, res) => {
     try {
         const { filters, nom, resume, confirmationRequise } = req.body || {};
         if (!filters || typeof filters !== 'object') {
@@ -168,7 +173,7 @@ scraperRouter.post('/otaree-search', async (req, res) => {
     }
 });
 
-scraperRouter.post('/auto-publish-confirm', async (req, res) => {
+scraperRouter.post('/auto-publish-confirm', exigerConnexion, async (req, res) => {
     try {
         const { idsSelectionnes, portailsChoisis } = req.body || {};
         const result = await confirmerRunEnAttente(
@@ -184,7 +189,7 @@ scraperRouter.post('/auto-publish-confirm', async (req, res) => {
     }
 });
 
-scraperRouter.post('/auto-publish-discard-pending', async (req, res) => {
+scraperRouter.post('/auto-publish-discard-pending', exigerConnexion, async (req, res) => {
     try {
         const result = await annulerRunEnAttente();
         if (!result.success) {
@@ -196,7 +201,7 @@ scraperRouter.post('/auto-publish-discard-pending', async (req, res) => {
     }
 });
 
-scraperRouter.post('/lot-detail', async (req, res) => {
+scraperRouter.post('/lot-detail', exigerConnexion, async (req, res) => {
     try {
         const { annonceId } = req.body || {};
         if (!annonceId) return res.status(400).json({ erreur: 'annonceId requis' });
@@ -211,16 +216,16 @@ scraperRouter.post('/lot-detail', async (req, res) => {
     }
 });
 
-scraperRouter.get('/auto-publish-status', (req, res) => {
+scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
     res.json(getEtatAutoPublish());
 });
 
-scraperRouter.post('/auto-publish-cancel', (req, res) => {
+scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
 });
 
-scraperRouter.get('/otaree-locations', async (req, res) => {
+scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
         if (q.length < 2) return res.json([]);

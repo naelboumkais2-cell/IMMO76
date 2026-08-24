@@ -131,7 +131,49 @@ export async function initDb() {
     instance_id TEXT,
     cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- Authentification (voir services/authService.js) — comptes individuels, mêmes droits pour
+  -- tous pour l'instant (pas de rôles). La colonne actif sert à couper l'accès d'un employé qui
+  -- part sans supprimer son historique dans logs_api/connexions_log.
+  CREATE TABLE IF NOT EXISTS utilisateurs (
+    id SERIAL PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    mot_de_passe_hash TEXT NOT NULL,
+    nom TEXT,
+    actif INTEGER NOT NULL DEFAULT 1,
+    cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Sessions en base plutôt que JWT stateless : révocation immédiate possible (désactiver un
+  -- compte ou supprimer ses sessions coupe l'accès tout de suite, pas d'attente d'expiration
+  -- d'un token déjà émis). La colonne id contient directement le jeton aléatoire envoyé au
+  -- navigateur (voir cookie sid côté services/authService.js), pas un entier auto-incrémenté.
+  CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    utilisateur_id INTEGER NOT NULL REFERENCES utilisateurs(id) ON DELETE CASCADE,
+    cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expire_le TIMESTAMP NOT NULL
+  );
+
+  -- Traçabilité des connexions elles-mêmes (qui, quand) — séparée de logs_api qui trace déjà
+  -- les actions métier (recherche, publication...), pas les connexions/déconnexions.
+  CREATE TABLE IF NOT EXISTS connexions_log (
+    id SERIAL PRIMARY KEY,
+    utilisateur_id INTEGER REFERENCES utilisateurs(id) ON DELETE SET NULL,
+    type TEXT NOT NULL,
+    email_tente TEXT,
+    ip TEXT,
+    cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   `);
+
+  // Migration : qui a déclenché chaque action tracée dans logs_api (recherche lancée,
+  // publication confirmée, republish, dépublication...) — nullable, les entrées déjà en base et
+  // celles générées par les routes machine (cron, extensions) n'ont pas d'utilisateur associé.
+  const colonnesLogsApi = (await db.prepare(`SELECT column_name FROM information_schema.columns WHERE table_name = 'logs_api'`).all()).map((c) => c.column_name);
+  if (!colonnesLogsApi.includes('utilisateur_id')) {
+    await db.exec(`ALTER TABLE logs_api ADD COLUMN utilisateur_id INTEGER REFERENCES utilisateurs(id) ON DELETE SET NULL`);
+  }
 
   // Migration : prix Otaree souvent non-entier (TVA incluse) — "233175.36" par exemple.
   // La colonne était INTEGER (héritée du schéma SQLite d'origine), ce qui faisait échouer

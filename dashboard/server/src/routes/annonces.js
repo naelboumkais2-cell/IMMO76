@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { db } from '../db.js';
+import { exigerConnexion } from '../middleware/auth.js';
 import { publierInstance, depublierInstance, synchroniserInstance } from '../services/orchestrator.js';
 
 export const annoncesRouter = Router();
 
-annoncesRouter.get('/', async (req, res) => {
+annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
         const annonces = q
@@ -38,7 +39,7 @@ annoncesRouter.get('/', async (req, res) => {
     }
 });
 
-annoncesRouter.put('/:id', async (req, res) => {
+annoncesRouter.put('/:id', exigerConnexion, async (req, res) => {
     try {
         const { est_annonce_test } = req.body;
         if (est_annonce_test === undefined) {
@@ -51,7 +52,7 @@ annoncesRouter.put('/:id', async (req, res) => {
     }
 });
 
-annoncesRouter.put('/:id/portails/:portailId', async (req, res) => {
+annoncesRouter.put('/:id/portails/:portailId', exigerConnexion, async (req, res) => {
     try {
         const { mode } = req.body;
         if (!['brouillon', 'actif'].includes(mode)) {
@@ -71,7 +72,7 @@ annoncesRouter.put('/:id/portails/:portailId', async (req, res) => {
     }
 });
 
-annoncesRouter.post('/:id/portails/:portailId/republish', async (req, res) => {
+annoncesRouter.post('/:id/portails/:portailId/republish', exigerConnexion, async (req, res) => {
     try {
         await publierInstance(Number(req.params.id), Number(req.params.portailId));
         res.json(
@@ -84,7 +85,7 @@ annoncesRouter.post('/:id/portails/:portailId/republish', async (req, res) => {
     }
 });
 
-annoncesRouter.post('/:id/portails/:portailId/depublier', async (req, res) => {
+annoncesRouter.post('/:id/portails/:portailId/depublier', exigerConnexion, async (req, res) => {
     try {
         const result = await depublierInstance(Number(req.params.id), Number(req.params.portailId));
         if (!result.success) {
@@ -100,7 +101,7 @@ annoncesRouter.post('/:id/portails/:portailId/depublier', async (req, res) => {
     }
 });
 
-annoncesRouter.post('/:id/portails/:portailId/synchroniser', async (req, res) => {
+annoncesRouter.post('/:id/portails/:portailId/synchroniser', exigerConnexion, async (req, res) => {
     try {
         const result = await synchroniserInstance(Number(req.params.id), Number(req.params.portailId));
         if (!result.success) {

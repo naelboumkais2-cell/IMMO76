@@ -1,10 +1,13 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { db, initDb } from './db.js';
 import { scraperRouter } from './routes/scraper.js';
 import { portailsRouter } from './routes/portails.js';
 import { annoncesRouter } from './routes/annonces.js';
 import { logsRouter } from './routes/logs.js';
+import { authRouter } from './routes/auth.js';
+import { exigerConnexion, exigerCleMachine } from './middleware/auth.js';
 import { rescraperRechercheFavorite } from './services/orchestrator.js';
 import { mode as hubiflowMode } from './integrations/hubiflowRouter.js';
 
@@ -20,17 +23,22 @@ initDb().catch((err) => console.error('[initDb] échec :', err));
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+app.use(cookieParser());
 
+app.use('/api/auth', authRouter);
 app.use('/api/scraper', scraperRouter);
 app.use('/api/portails', portailsRouter);
 app.use('/api/annonces', annoncesRouter);
 app.use('/api/logs', logsRouter);
 
+// Non protégé volontairement : nécessaire aux vérifications de santé de la plateforme
+// d'hébergement (Render), qui n'a évidemment pas de session — ne révèle aucune donnée.
 app.get('/api/health', (req, res) => res.json({ ok: true }));
-app.get('/api/hubiflow-mode', (req, res) => res.json({ mode: hubiflowMode }));
+app.get('/api/hubiflow-mode', exigerConnexion, (req, res) => res.json({ mode: hubiflowMode }));
 
-// Vercel Cron Endpoint replacing the setInterval
-app.get('/api/cron', async (req, res) => {
+// Vercel Cron Endpoint replacing the setInterval — route machine (aucun humain connecté), voir
+// middleware/auth.js.
+app.get('/api/cron', exigerCleMachine, async (req, res) => {
     try {
         const dues = await db
             .prepare(

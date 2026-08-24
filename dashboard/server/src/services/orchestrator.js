@@ -14,11 +14,16 @@ import {
     recupererEtViderEnAttente,
     getEnAttente,
 } from './autoPublishStatus.js';
+import { utilisateurActuelId } from './requestContext.js';
 
+// utilisateur_id vient du contexte de requête (voir requestContext.js/index.js), jamais passé
+// explicitement ici — évite d'ajouter un paramètre utilisateurId à chaque fonction de ce
+// fichier juste pour le faire transiter jusqu'ici. Reste null pour les actions sans humain
+// connecté (rescraping programmé par cron, par ex.).
 async function log(type, { annonceId = null, portailId = null, succes, message }) {
     await db.prepare(
-        `INSERT INTO logs_api (type, annonce_id, portail_id, succes, message) VALUES (?, ?, ?, ?, ?)`
-    ).run(type, annonceId, portailId, succes ? 1 : 0, message);
+        `INSERT INTO logs_api (type, annonce_id, portail_id, succes, message, utilisateur_id) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(type, annonceId, portailId, succes ? 1 : 0, message, utilisateurActuelId());
 }
 
 async function resolvePortailsPourAnnonce(annonce) {
