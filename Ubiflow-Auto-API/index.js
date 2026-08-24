@@ -223,7 +223,7 @@ app.get('/api/annonce/:id/etat', async (req, res) => {
 });
 
 app.post('/api/publish-payload', async (req, res) => {
-    const { aiData, base64Images, villeConnue, codePostalConnu, espaceLoginAttendu, mode } = req.body;
+    const { aiData, base64Images, villeConnue, codePostalConnu, prixConnu, espaceLoginAttendu, mode } = req.body;
 
     if (!espaceLoginAttendu) return res.status(400).json({ success: false, error: 'espaceLoginAttendu requis' });
     if (!aiData) return res.status(400).json({ success: false, error: 'aiData manquant' });
@@ -231,7 +231,7 @@ app.post('/api/publish-payload', async (req, res) => {
     const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
     if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
 
-    const payload = buildUbiflowPayload(aiData, base64Images || [], { ville: villeConnue, codePostal: codePostalConnu }, espaceLoginAttendu);
+    const payload = buildUbiflowPayload(aiData, base64Images || [], { ville: villeConnue, codePostal: codePostalConnu, prix: prixConnu }, espaceLoginAttendu);
     const { statusCode, body } = await envoyerAUbiflow(payload, resolu.token, espaceLoginAttendu);
 
     if (statusCode === 200 && body.success && mode === 'actif') {
@@ -410,7 +410,16 @@ function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, esp
         texte_resume: aiData.texte_resume || "",
         localText: aiData.texte || "Description à rédiger",
         texte: aiData.texte || "Description à rédiger",
-        prix: parseInt(aiData.prix) || 0,
+        // Le prix vient TOUJOURS de la valeur connue et fiable (celle d'Otaree, déjà en base
+        // côté dashboard), jamais de la relecture par l'IA — celle-ci reformate parfois le
+        // prix avec des espaces/virgules ("76 208,31 €"), et parseInt() tronque au premier
+        // caractère non numérique (76 208 -> 76), publiant un prix ~1000x trop bas sans aucune
+        // erreur visible. Un fait déjà connu avec certitude ne doit jamais être laissé à
+        // l'interprétation de l'IA — même principe que pour titre/description : ne présenter
+        // que ce qui est réellement fiable, jamais une reformulation qui peut se tromper. Repli
+        // sur aiData.prix uniquement si le prix connu est vraiment absent (ne devrait pas
+        // arriver en usage normal).
+        prix: donneesConnues.prix != null ? Math.round(Number(donneesConnues.prix)) : (parseInt(aiData.prix) || 0),
         surface_habitable: (parseInt(aiData.surface) / 10).toString() || "0",
         nb_pieces_logement: parseInt(aiData.pieces) || 1,
         code_postal_reel: donneesConnues.codePostal ? String(donneesConnues.codePostal) : (aiData.code_postal ? String(aiData.code_postal) : "76000"),

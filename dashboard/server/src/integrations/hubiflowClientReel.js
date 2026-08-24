@@ -42,6 +42,11 @@ export async function publish(annonce, portail, mode, opts = {}) {
                 base64Images: images,
                 villeConnue: annonce.ville,
                 codePostalConnu: annonce.code_postal,
+                // Prix connu et fiable (celui d'Otaree, déjà en base) — utilisé pour la
+                // publication réelle à la place de aiData.prix, que l'IA reformate parfois
+                // ("76 208,31 €") de façon à faire échouer silencieusement le parsing côté
+                // Ubiflow-Auto-API (voir buildUbiflowPayload) et publier un prix ~1000x trop bas.
+                prixConnu: annonce.prix,
                 espaceLoginAttendu: portail.login,
                 mode,
             }),
