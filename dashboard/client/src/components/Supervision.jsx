@@ -30,7 +30,12 @@ function ModeBadge({ mode }) {
     return <span className={`badge badge-mode-${mode}`}>{mode === 'actif' ? 'Actif' : 'Brouillon'}</span>;
 }
 
-export function Supervision() {
+// `actif` (l'onglet Superviser est bien celui affiché en ce moment) : voir le commentaire
+// équivalent dans Historique.jsx — sans ce garde-fou, le rafraîchissement (3 requêtes à la
+// fois : annonces + logs + portails) tournait toutes les 5s en continu même sur un onglet
+// jamais regardé, une part importante du trafic de fond qui a fini par déclencher la
+// protection anti-robot de Cloudflare devant Render.
+export function Supervision({ actif }) {
     const [annonces, setAnnonces] = useState([]);
     const [logs, setLogs] = useState([]);
     const [portails, setPortails] = useState([]);
@@ -65,9 +70,10 @@ export function Supervision() {
     }, [recherche, refresh]);
 
     useEffect(() => {
+        if (!actif) return;
         const id = setInterval(() => refresh(recherche), 5000);
         return () => clearInterval(id);
-    }, [recherche, refresh]);
+    }, [actif, recherche, refresh]);
 
     async function onChangeMode(annonceId, portailId, mode) {
         const key = `mode-${annonceId}-${portailId}`;

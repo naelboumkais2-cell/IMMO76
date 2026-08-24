@@ -38,7 +38,10 @@ export function App() {
     // Poll (pas juste au montage) : le badge doit toujours refléter l'état réel du serveur,
     // même si celui-ci a été redémarré dans un mode différent pendant que l'onglet reste ouvert
     // — critique maintenant que HUBIFLOW_MODE=reel est le défaut permanent. Seulement une fois
-    // connecté (la route est désormais protégée).
+    // connecté (la route est désormais protégée). 30s plutôt que 5s : cette valeur ne change
+    // quasiment jamais en pratique, et ce bandeau est visible en permanence quel que soit
+    // l'onglet actif — inutile de sonder aussi souvent (voir le même arbitrage dans
+    // Historique.jsx/Supervision.jsx pour les pages qui, elles, ne sondent que si visibles).
     useEffect(() => {
         if (!utilisateur) return;
         const refresh = () =>
@@ -46,7 +49,7 @@ export function App() {
                 .then((r) => setHubiflowMode(r.mode))
                 .catch(() => setHubiflowMode(null));
         refresh();
-        const id = setInterval(refresh, 5000);
+        const id = setInterval(refresh, 30000);
         return () => clearInterval(id);
     }, [utilisateur]);
 
@@ -136,10 +139,10 @@ export function App() {
                             <RoutingConfig />
                         </div>
                         <div style={{ display: activeTab === 'supervision' ? 'block' : 'none' }}>
-                            <Supervision />
+                            <Supervision actif={activeTab === 'supervision'} />
                         </div>
                         <div style={{ display: activeTab === 'historique' ? 'block' : 'none' }}>
-                            <Historique />
+                            <Historique actif={activeTab === 'historique'} />
                         </div>
                     </div>
                 </main>

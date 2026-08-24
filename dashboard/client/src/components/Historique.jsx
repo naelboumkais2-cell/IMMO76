@@ -24,7 +24,14 @@ function formatDate(dateStr) {
 
 // Page dédiée (accessible depuis la sidebar) — extraite de ScraperControl.jsx pour être
 // consultable indépendamment de la page Rechercher, avec son propre fetch/polling.
-export function Historique() {
+//
+// `actif` (l'onglet est bien celui affiché en ce moment) : le composant reste monté en
+// permanence (voir App.jsx, jamais démonté au changement d'onglet), donc sans ce garde-fou le
+// polling tournerait indéfiniment en arrière-plan même sur un onglet jamais regardé — constaté
+// en conditions réelles : plusieurs pages sondaient le serveur toutes les 5s en continu,
+// suffisamment de trafic pour déclencher la protection anti-robot de Cloudflare devant Render
+// au bout de quelques minutes d'utilisation normale.
+export function Historique({ actif }) {
     const [recherches, setRecherches] = useState(null);
     const [erreur, setErreur] = useState(null);
 
@@ -34,9 +41,13 @@ export function Historique() {
 
     useEffect(() => {
         refresh();
+    }, [refresh]);
+
+    useEffect(() => {
+        if (!actif) return;
         const id = setInterval(refresh, 5000);
         return () => clearInterval(id);
-    }, [refresh]);
+    }, [actif, refresh]);
 
     async function onFrequenceChange(recherche, val) {
         const minutes = val === '' ? null : Number(val);
