@@ -91,7 +91,7 @@ export async function initDb() {
     code_postal TEXT,
     type_bien TEXT,
     surface REAL,
-    prix INTEGER,
+    prix NUMERIC,
     recherche_id INTEGER REFERENCES recherches(id) ON DELETE SET NULL,
     scrapee_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     raw_data TEXT,
@@ -132,6 +132,12 @@ export async function initDb() {
     cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   `);
+
+  // Migration : prix Otaree souvent non-entier (TVA incluse) — "233175.36" par exemple.
+  // La colonne était INTEGER (héritée du schéma SQLite d'origine), ce qui faisait échouer
+  // l'import de tout lot dont le prix a des décimales. Idempotent : ré-appliquer NUMERIC sur
+  // une colonne déjà NUMERIC ne fait rien.
+  await db.exec(`ALTER TABLE annonces ALTER COLUMN prix TYPE NUMERIC`);
 
   // Seed default portails if empty
   const nbPortailsResult = await pool.query(`SELECT COUNT(*) AS n FROM portails`);
