@@ -354,17 +354,33 @@ Renvoie UNIQUEMENT un objet JSON strictement conforme à la structure suivante, 
 
     let messageContent = [{ "type": "text", "text": "Voici les données extraites :\n\n" + (textContext || "(Aucun texte, base-toi sur les images)") }];
 
-    const response = await axios.post("https://api.openai.com/v1/chat/completions", {
-        model: "gpt-4o",
-        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: messageContent }],
-        temperature: 0.7,
-        max_tokens: 2000
-    }, {
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+    // Filet de sécurité ajouté avec la génération IA en parallèle sur plusieurs lots (voir
+    // orchestrator.js, CONCURRENCE_ENRICHISSEMENT_IA) : aucune gestion de 429 n'existait avant
+    // (même en séquentiel), donc un dépassement de palier faisait simplement échouer le lot.
+    // Nouvelle tentative avec délai croissant, seulement sur 429 — toute autre erreur remonte
+    // immédiatement, inchangé.
+    let response;
+    for (let tentative = 1; tentative <= 3; tentative++) {
+        try {
+            response = await axios.post("https://api.openai.com/v1/chat/completions", {
+                model: "gpt-4o",
+                messages: [{ role: "system", content: systemPrompt }, { role: "user", content: messageContent }],
+                temperature: 0.7,
+                max_tokens: 2000
+            }, {
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+                }
+            });
+            break;
+        } catch (e) {
+            if (e.response?.status !== 429 || tentative === 3) throw e;
+            const delaiMs = 1000 * 2 ** (tentative - 1);
+            console.log(`[callOpenAI] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
+            await new Promise((r) => setTimeout(r, delaiMs));
         }
-    });
+    }
 
     let content = response.data.choices[0].message.content;
     content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();

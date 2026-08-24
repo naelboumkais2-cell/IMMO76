@@ -1,7 +1,7 @@
 import { db } from '../db.js';
 import * as scraperEngine from '../integrations/scraperEngine.js';
 import * as hubiflowClient from '../integrations/hubiflowRouter.js';
-import { enrichirLot, rechercherLotsOtaree, parseFiltresOtareeDepuisUrl } from '../integrations/otareeSearchClient.js';
+import { enrichirLot, obtenirJwtFrais, rechercherLotsOtaree, parseFiltresOtareeDepuisUrl } from '../integrations/otareeSearchClient.js';
 import { genererDonneesIA } from '../integrations/aiGenerationClient.js';
 import { getMode as getAutoPublishMode, MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 import {
@@ -261,6 +261,19 @@ async function appliquerPortailsChoisis(annonceIds, portailsChoisis) {
     }
 }
 
+// Nombre de lots traités en parallèle pour l'enrichissement + la génération IA (les deux seules
+// étapes indépendantes d'un lot à l'autre — voir audit pipeline). La publication Hubiflow reste
+// volontairement hors de ce groupe, strictement séquentielle, lot par lot puis portail par
+// portail, exactement comme avant. Valeur prudente par défaut (pas de palier OpenAI/Otaree
+// confirmé) — à ajuster si besoin une fois un vrai palier de compte vérifié.
+const CONCURRENCE_ENRICHISSEMENT_IA = 4;
+
+function decouperEnGroupes(liste, taille) {
+    const groupes = [];
+    for (let i = 0; i < liste.length; i += taille) groupes.push(liste.slice(i, i + taille));
+    return groupes;
+}
+
 async function executerTraitement(candidats, mode, rechercheId, portailIds = null) {
     const aTraiter = candidats.slice(0, MAX_PAR_RUN);
 
@@ -275,7 +288,13 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
     demarrerRun(aTraiter.length, rechercheId, mode);
     let annule = false;
     try {
-        for (const { annonce, lotBrut } of aTraiter) {
+        const groupes = decouperEnGroupes(aTraiter, CONCURRENCE_ENRICHISSEMENT_IA);
+        for (const groupe of groupes) {
+            // Vérifiée entre chaque GROUPE, pas entre chaque lot : granularité assumée (voir
+            // audit pipeline) — jusqu'à (CONCURRENCE_ENRICHISSEMENT_IA - 1) lots de plus que la
+            // demande d'annulation peuvent terminer leur enrichissement/génération avant l'arrêt
+            // effectif, mais rien n'est jamais publié au-delà de ce point d'arrêt (la boucle de
+            // publication plus bas reste, elle, strictement séquentielle et s'arrête net).
             if (estAnnulationDemandee()) {
                 annule = true;
                 await log('auto_publish', {
@@ -284,35 +303,66 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
                 });
                 break;
             }
-            marquerLotEnCours(annonce.titre);
-            try {
-                const lotEnrichi = await enrichirLot(lotBrut);
-                const { aiData, images } = await genererDonneesIA(lotEnrichi);
 
-                await db.prepare(`UPDATE annonces SET donnees_ia = ?, images = ? WHERE id = ?`)
-                    .run(JSON.stringify(aiData), JSON.stringify(images), annonce.id);
-                await log('auto_publish', { annonceId: annonce.id, succes: true, message: `Données IA générées automatiquement (mode ${mode})` });
+            marquerLotEnCours(
+                groupe.length > 1
+                    ? `${groupe.length} lots en cours (enrichissement + génération IA) : ${groupe.map(({ annonce }) => annonce.titre).join(', ')}`
+                    : groupe[0].annonce.titre
+            );
 
-                let instances;
-                if (portailIds) {
-                    instances = portailIds.length
-                        ? await db
-                              .prepare(
-                                  `SELECT * FROM annonce_portails WHERE annonce_id = ? AND portail_id IN (${portailIds.map(() => '?').join(',')})`
-                              )
-                              .all(annonce.id, ...portailIds)
-                        : [];
-                } else {
-                    instances = await db.prepare(`SELECT * FROM annonce_portails WHERE annonce_id = ?`).all(annonce.id);
+            // Un seul jeton Otaree pour tout le groupe (voir enrichirLot/obtenirJwtFrais) —
+            // évite une rafale de rafraîchissements simultanés si chaque lot en demandait un.
+            const jetonPartage = await obtenirJwtFrais();
+
+            const resultats = await Promise.allSettled(
+                groupe.map(async ({ lotBrut }) => {
+                    const lotEnrichi = await enrichirLot(lotBrut, jetonPartage);
+                    return genererDonneesIA(lotEnrichi);
+                })
+            );
+
+            // Écriture en base + publication : strictement séquentielle, lot par lot puis
+            // portail par portail, dans l'ordre d'origine du groupe — comportement inchangé par
+            // rapport à avant, la parallélisation s'arrête à la ligne au-dessus.
+            for (let i = 0; i < groupe.length; i++) {
+                const { annonce } = groupe[i];
+                const resultat = resultats[i];
+                marquerLotEnCours(annonce.titre);
+
+                if (resultat.status === 'rejected') {
+                    const raison = resultat.reason;
+                    await log('auto_publish', { annonceId: annonce.id, succes: false, message: raison?.message || String(raison) });
+                    incrementerTraites();
+                    continue;
                 }
-                for (const instance of instances) {
-                    await publierInstance(annonce.id, instance.portail_id, { autoriseAutoPublishOn: mode === 'on' });
+
+                try {
+                    const { aiData, images } = resultat.value;
+                    await db.prepare(`UPDATE annonces SET donnees_ia = ?, images = ? WHERE id = ?`)
+                        .run(JSON.stringify(aiData), JSON.stringify(images), annonce.id);
+                    await log('auto_publish', { annonceId: annonce.id, succes: true, message: `Données IA générées automatiquement (mode ${mode})` });
+
+                    let instances;
+                    if (portailIds) {
+                        instances = portailIds.length
+                            ? await db
+                                  .prepare(
+                                      `SELECT * FROM annonce_portails WHERE annonce_id = ? AND portail_id IN (${portailIds.map(() => '?').join(',')})`
+                                  )
+                                  .all(annonce.id, ...portailIds)
+                            : [];
+                    } else {
+                        instances = await db.prepare(`SELECT * FROM annonce_portails WHERE annonce_id = ?`).all(annonce.id);
+                    }
+                    for (const instance of instances) {
+                        await publierInstance(annonce.id, instance.portail_id, { autoriseAutoPublishOn: mode === 'on' });
+                    }
+                    nbTraites++;
+                } catch (e) {
+                    await log('auto_publish', { annonceId: annonce.id, succes: false, message: e.message });
                 }
-                nbTraites++;
-            } catch (e) {
-                await log('auto_publish', { annonceId: annonce.id, succes: false, message: e.message });
+                incrementerTraites();
             }
-            incrementerTraites();
         }
     } finally {
         terminerRun(annule);

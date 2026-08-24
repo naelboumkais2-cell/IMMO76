@@ -91,7 +91,12 @@ async function paginerRecherche(jwt, credentials, filters) {
 // Credentials + JWT frais, avec erreurs typées (err.code) pour que la route HTTP renvoie un
 // message clair plutôt qu'une erreur technique confuse — partagé entre recherche de lots et
 // recherche de villes, mêmes deux cas d'échec possibles pour les deux.
-async function obtenirJwtFrais() {
+// Exporté pour permettre à orchestrator.js de mutualiser un seul jeton sur tout un groupe de
+// lots traités en parallèle (voir executerTraitement) — plutôt que d'en redemander un par lot,
+// ce qui multiplierait les appels concurrents vers l'endpoint d'authentification (le seul point
+// d'Otaree qui pourrait raisonnablement réagir mal à une rafale, même en l'absence de limite
+// documentée).
+export async function obtenirJwtFrais() {
     const credentials = await getOtareeCredentials();
     if (!credentials) {
         const err = new Error("Aucun accès Otaree connu — navigue sur Otaree avec l'extension active pour capturer un accès.");
@@ -163,28 +168,37 @@ export async function rechercherLocationsOtaree(q) {
 // Nécessaire avant d'appeler /api/generate côté Ubiflow-Auto-API : buildTextContext/
 // downloadOtareeImages attendent lot.images/lot.documents déjà peuplés, comme pour un lot
 // venu de Downloads.
-export async function enrichirLot(lot) {
-    const { jwt, credentials } = await obtenirJwtFrais();
+//
+// Les 2 appels (détail du lot, détail du programme) sont indépendants l'un de l'autre — lancés
+// en parallèle plutôt qu'en série (voir audit pipeline). Les résultats ne sont fusionnés dans
+// `lot` qu'une fois les deux réponses connues, dans un ordre fixe (détail du lot d'abord, puis
+// programme), pour ne pas dépendre de l'ordre d'arrivée des deux requêtes.
+//
+// `jetonPartage` optionnel ({jwt, credentials}) : permet à l'appelant de mutualiser un seul
+// jeton Otaree sur tout un groupe de lots traités en parallèle (voir orchestrator.js,
+// executerTraitement) plutôt que d'en redemander un par lot — évite une rafale de
+// rafraîchissements de jeton simultanés. Si omis, comportement inchangé (jeton frais demandé ici).
+export async function enrichirLot(lot, jetonPartage = null) {
+    const { jwt, credentials } = jetonPartage || (await obtenirJwtFrais());
     const headers = buildHeaders(credentials.device, credentials.instanceId, jwt);
 
-    if (lot['@id']) {
-        const res = await fetch(`${API_BASE}${lot['@id']}`, { method: 'GET', headers });
-        if (res.ok) {
-            const detail = await res.json();
-            lot.documents = detail.documents || [];
-            lot.images = detail.images || [];
-            lot.plan = detail.plan || null;
-        }
+    const [detailRes, progRes] = await Promise.all([
+        lot['@id'] ? fetch(`${API_BASE}${lot['@id']}`, { method: 'GET', headers }) : null,
+        lot.program && lot.program['@id'] ? fetch(`${API_BASE}${lot.program['@id']}`, { method: 'GET', headers }) : null,
+    ]);
+
+    if (detailRes && detailRes.ok) {
+        const detail = await detailRes.json();
+        lot.documents = detail.documents || [];
+        lot.images = detail.images || [];
+        lot.plan = detail.plan || null;
     }
 
-    if (lot.program && lot.program['@id']) {
-        const res = await fetch(`${API_BASE}${lot.program['@id']}`, { method: 'GET', headers });
-        if (res.ok) {
-            const prog = await res.json();
-            if (prog.documents?.length) lot.documents = (lot.documents || []).concat(prog.documents);
-            if (prog.images?.length) lot.images = (lot.images || []).concat(prog.images);
-            if (prog.perspective) lot.images = (lot.images || []).concat([prog.perspective]);
-        }
+    if (progRes && progRes.ok) {
+        const prog = await progRes.json();
+        if (prog.documents?.length) lot.documents = (lot.documents || []).concat(prog.documents);
+        if (prog.images?.length) lot.images = (lot.images || []).concat(prog.images);
+        if (prog.perspective) lot.images = (lot.images || []).concat([prog.perspective]);
     }
 
     return lot;
