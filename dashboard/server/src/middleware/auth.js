@@ -13,7 +13,18 @@ import { executerAvecUtilisateur } from '../services/requestContext.js';
 // fonction intermédiaire n'ait besoin de connaître l'existence de l'authentification.
 export async function exigerConnexion(req, res, next) {
     const jeton = req.cookies?.[NOM_COOKIE];
-    const utilisateur = await resoudreUtilisateurDepuisJeton(jeton);
+    let utilisateur;
+    try {
+        utilisateur = await resoudreUtilisateurDepuisJeton(jeton);
+    } catch (e) {
+        // Sans ce try/catch, une erreur ici (ex: base de données indisponible) fait rejeter
+        // cette fonction async sans qu'Express (v4) ne la rattrape automatiquement — la requête
+        // reste bloquée indéfiniment côté navigateur ("provisional headers", jamais de réponse)
+        // au lieu d'afficher une vraie erreur. Constaté en conditions réelles (quota Neon
+        // dépassé) : l'app entière semblait "figée" plutôt que de signaler clairement la panne.
+        console.error('[exigerConnexion] erreur en résolvant la session :', e.message);
+        return res.status(503).json({ erreur: 'Service temporairement indisponible (base de données injoignable).' });
+    }
     if (!utilisateur) {
         return res.status(401).json({ erreur: 'Connexion requise.' });
     }

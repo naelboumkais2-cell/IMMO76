@@ -60,7 +60,16 @@ authRouter.post('/logout', async (req, res) => {
 // pas derrière exigerConnexion (sinon un utilisateur non connecté recevrait un 401 générique
 // au lieu de pouvoir distinguer "pas connecté" de "erreur serveur").
 authRouter.get('/moi', async (req, res) => {
-    const utilisateur = await resoudreUtilisateurDepuisJeton(req.cookies?.[NOM_COOKIE]);
+    let utilisateur;
+    try {
+        utilisateur = await resoudreUtilisateurDepuisJeton(req.cookies?.[NOM_COOKIE]);
+    } catch (e) {
+        // Voir le même correctif dans middleware/auth.js — sans ça, une base de données
+        // injoignable (quota Neon dépassé, etc.) laisse le frontend bloqué indéfiniment sur
+        // l'écran de chargement au lieu d'afficher clairement le problème.
+        console.error('[auth/moi] erreur en résolvant la session :', e.message);
+        return res.status(503).json({ erreur: 'Service temporairement indisponible (base de données injoignable).' });
+    }
     if (!utilisateur) return res.status(401).json({ erreur: 'Non connecté.' });
     res.json(utilisateur);
 });
