@@ -1,8 +1,8 @@
 async function request(path, options = {}) {
     const res = await fetch(`/api${path}`, {
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         ...options,
+        headers: { 'Content-Type': 'application/json', ...options.headers },
     });
     if (!res.ok) {
         // 401 sur /auth/login ou /auth/moi = état normal (pas encore connecté), pas une session
@@ -78,4 +78,12 @@ export const api = {
     login: (email, motDePasse) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, motDePasse }) }),
     logout: () => request('/auth/logout', { method: 'POST' }),
     getMoi: () => request('/auth/moi'),
+    // Création de compte protégée par la clé admin (pas une inscription libre — voir Login.jsx)
+    // : la clé n'est jamais mémorisée, saisie à chaque création volontairement.
+    creerCompte: (cleAdmin, email, motDePasse, nom) =>
+        request('/auth/comptes', {
+            method: 'POST',
+            headers: { 'X-Admin-Key': cleAdmin },
+            body: JSON.stringify({ email, motDePasse, nom }),
+        }),
 };
