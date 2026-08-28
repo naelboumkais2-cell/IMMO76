@@ -175,10 +175,11 @@ scraperRouter.post('/otaree-search', exigerConnexion, async (req, res) => {
 
 scraperRouter.post('/auto-publish-confirm', exigerConnexion, async (req, res) => {
     try {
-        const { idsSelectionnes, portailsChoisis } = req.body || {};
+        const { idsSelectionnes, portailsChoisis, referencesEditees } = req.body || {};
         const result = await confirmerRunEnAttente(
             Array.isArray(idsSelectionnes) ? idsSelectionnes : null,
-            Array.isArray(portailsChoisis) ? portailsChoisis : null
+            Array.isArray(portailsChoisis) ? portailsChoisis : null,
+            referencesEditees && typeof referencesEditees === 'object' ? referencesEditees : null
         );
         if (!result.success) {
             return res.status(400).json({ erreur: result.error });

@@ -183,6 +183,11 @@ export function ScraperControl() {
     // entièrement sous contrôle de l'utilisateur, jamais recalculée automatiquement (pour ne pas
     // écraser une modification volontaire au fil de la sélection/désélection des lots).
     const [portailsChoix, setPortailsChoix] = useState(() => new Map());
+    // Référence LMNP par lot ({Initiales}-{VILLE}-{n°lot}, voir referenceGenerator.js) —
+    // pré-remplie automatiquement quand le lot est LMNP avec un promoteur reconnu, vide sinon
+    // (mandat direct, promoteur inconnu...). Toujours corrigible à la main : filet de sécurité en
+    // cas de mauvaise classification, voir Map lotId -> string.
+    const [referencesEditees, setReferencesEditees] = useState(() => new Map());
     // Détail d'un lot cliqué sur l'écran de confirmation — panneau imbriqué au-dessus de la
     // confirmation, purement présentationnel : ne touche jamais lotsSelectionnes ni confirmationEnAttente.
     const [lotDetailId, setLotDetailId] = useState(null);
@@ -364,6 +369,7 @@ export function ScraperControl() {
                     resultBase: result,
                 });
                 setLotsSelectionnes(new Set(lots.map((l) => l.id))); // tous cochés par défaut
+                setReferencesEditees(new Map(lots.map((l) => [l.id, l.referenceGeneree || ''])));
                 // Pré-coché = union des portails que les règles de routage ont résolus pour ces
                 // candidats ; mode pré-rempli avec le mode par défaut du portail. Entièrement
                 // modifiable ensuite (voir onTogglePortailChoix/onPortailModeChange).
@@ -388,6 +394,10 @@ export function ScraperControl() {
         } finally {
             if (!laisseEnAttente) setRechercheOtareeEnCours(false);
         }
+    }
+
+    function onReferenceChange(id, value) {
+        setReferencesEditees((prev) => new Map(prev).set(id, value));
     }
 
     function onToggleLotSelectionne(id) {
@@ -448,7 +458,10 @@ export function ScraperControl() {
             const portailsChoisis = [...portailsChoix.entries()]
                 .filter(([, choix]) => choix.publier)
                 .map(([portailId, choix]) => ({ portailId, mode: choix.mode }));
-            const autoPublish = await api.confirmerAutoPublish([...lotsSelectionnes], portailsChoisis);
+            const referencesAEnvoyer = Object.fromEntries(
+                [...lotsSelectionnes].map((id) => [id, referencesEditees.get(id) || ''])
+            );
+            const autoPublish = await api.confirmerAutoPublish([...lotsSelectionnes], portailsChoisis, referencesAEnvoyer);
             const result = { ...attente.resultBase, autoPublish };
             setResultatOtaree({
                 message: construireMessageResultat(result),
@@ -801,6 +814,13 @@ export function ScraperControl() {
                                                 <span className="confirmation-lot-titre">{lot.titre}</span>
                                                 <span className="cell-muted">{lot.ville || '—'}</span>
                                                 <span className="cell-muted">{lot.prix ? `${lot.prix.toLocaleString('fr-FR')} €` : '—'}</span>
+                                                <input
+                                                    className="cell-input cell-input-mono"
+                                                    placeholder="Réf. LMNP (à saisir si vide)"
+                                                    value={referencesEditees.get(lot.id) ?? ''}
+                                                    onChange={(e) => onReferenceChange(lot.id, e.target.value)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                />
                                             </div>
                                         </label>
                                     );

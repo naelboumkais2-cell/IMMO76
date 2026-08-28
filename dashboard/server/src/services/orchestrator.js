@@ -16,6 +16,7 @@ import {
 } from './autoPublishStatus.js';
 import { utilisateurActuelId } from './requestContext.js';
 import { estEnPause, obtenirEtatPause } from './depenseMonitor.js';
+import { genererReferenceLmnp } from './referenceGenerator.js';
 
 // utilisateur_id vient du contexte de requête (voir requestContext.js/index.js), jamais passé
 // explicitement ici — évite d'ajouter un paramètre utilisateurId à chaque fonction de ce
@@ -238,14 +239,17 @@ async function apercuCandidats(candidats) {
         }
     }
 
-    return candidats.map(({ annonce, lotBrut }) => ({
-        id: annonce.id,
-        titre: annonce.titre,
-        ville: annonce.ville,
-        prix: annonce.prix,
-        photo: lotBrut.program?.perspective?.urls?.medium_fit || lotBrut.program?.perspective?.urls?.medium || null,
-        portails: portailsParAnnonce[annonce.id] || [],
-    }));
+    return await Promise.all(
+        candidats.map(async ({ annonce, lotBrut }) => ({
+            id: annonce.id,
+            titre: annonce.titre,
+            ville: annonce.ville,
+            prix: annonce.prix,
+            photo: lotBrut.program?.perspective?.urls?.medium_fit || lotBrut.program?.perspective?.urls?.medium || null,
+            portails: portailsParAnnonce[annonce.id] || [],
+            referenceGeneree: await genererReferenceLmnp(annonce, lotBrut),
+        }))
+    );
 }
 
 async function portailsActifsAvecDefaut() {
@@ -427,7 +431,7 @@ export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null,
     return await executerTraitement(candidats, mode, rechercheId);
 }
 
-export async function confirmerRunEnAttente(idsSelectionnes = null, portailsChoisis = null) {
+export async function confirmerRunEnAttente(idsSelectionnes = null, portailsChoisis = null, referencesEditees = null) {
     const attente = recupererEtViderEnAttente();
     if (!attente) return { success: false, error: 'Aucun run en attente de confirmation.' };
 
@@ -440,6 +444,19 @@ export async function confirmerRunEnAttente(idsSelectionnes = null, portailsChoi
             succes: true,
             message: `${attente.candidats.length - candidats.length} lot(s) désélectionné(s) manuellement avant confirmation, non traité(s) (restent en attente).`,
         });
+    }
+
+    // Référence LMNP (générée automatiquement puis éventuellement corrigée à la main sur l'écran
+    // de confirmation) : enregistrée ici, avant l'éventuelle publication, pour ne jamais la
+    // perdre même si le traitement s'arrête en cours de route (plafond de dépense, annulation).
+    if (referencesEditees && typeof referencesEditees === 'object') {
+        const majReference = db.prepare(`UPDATE annonces SET reference_generee = ? WHERE id = ?`);
+        for (const { annonce } of candidats) {
+            const valeur = referencesEditees[annonce.id];
+            if (typeof valeur === 'string' && valeur.trim()) {
+                await majReference.run(valeur.trim(), annonce.id);
+            }
+        }
     }
 
     let portailIds = null;

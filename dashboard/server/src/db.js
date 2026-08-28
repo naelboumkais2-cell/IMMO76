@@ -234,6 +234,14 @@ export async function initDb() {
   // une colonne déjà NUMERIC ne fait rien.
   await db.exec(`ALTER TABLE annonces ALTER COLUMN prix TYPE NUMERIC`);
 
+  // Migration : référence LMNP générée ({Initiales promoteur}-{VILLE}-{n°lot}, voir
+  // services/referenceGenerator.js) — distincte de `reference` qui reste le n° de lot brut
+  // Otaree. Modifiable à la main sur l'écran de confirmation avant publication.
+  const colonnesAnnonces = (await db.prepare(`SELECT column_name FROM information_schema.columns WHERE table_name = 'annonces'`).all()).map((c) => c.column_name);
+  if (!colonnesAnnonces.includes('reference_generee')) {
+    await db.exec(`ALTER TABLE annonces ADD COLUMN reference_generee TEXT`);
+  }
+
   // Seed default portails if empty
   const nbPortailsResult = await pool.query(`SELECT COUNT(*) AS n FROM portails`);
   const nbPortails = parseInt(nbPortailsResult.rows[0].n, 10);
