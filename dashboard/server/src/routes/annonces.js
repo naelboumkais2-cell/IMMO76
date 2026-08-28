@@ -26,8 +26,7 @@ annoncesRouter.get('/diag-promoteurs', exigerConnexion, async (req, res) => {
         const sansPromoteur = await db
             .prepare(
                 `SELECT id, external_id, reference, titre, ville, code_postal, prix, scrapee_le,
-                        raw_data::jsonb->'program'->'@id' AS program_id,
-                        raw_data::jsonb ? 'program' AS a_program
+                        raw_data::jsonb->'program'->'@id' AS program_id
                  FROM annonces
                  WHERE raw_data::jsonb->'program'->'developer' IS NULL
                  ORDER BY scrapee_le DESC LIMIT 30`
@@ -42,7 +41,19 @@ annoncesRouter.get('/diag-promoteurs', exigerConnexion, async (req, res) => {
                  ORDER BY n DESC LIMIT 20`
             )
             .all();
-        res.json({ total: total.n, avecPromoteur: avecPromoteur.n, sansPromoteur, collisionsVilleLot });
+        const exempleAvecPromoteur = await db
+            .prepare(
+                `SELECT id, ville, reference,
+                        raw_data::jsonb->'law' AS law,
+                        raw_data::jsonb->'program'->'law' AS program_law,
+                        raw_data::jsonb->'program'->'developer'->'@id' AS developer_id,
+                        raw_data::jsonb->'program'->'developer'->'name' AS developer_name
+                 FROM annonces
+                 WHERE raw_data::jsonb->'program'->'developer' IS NOT NULL
+                 ORDER BY scrapee_le DESC LIMIT 5`
+            )
+            .all();
+        res.json({ total: total.n, avecPromoteur: avecPromoteur.n, sansPromoteur, collisionsVilleLot, exempleAvecPromoteur });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
