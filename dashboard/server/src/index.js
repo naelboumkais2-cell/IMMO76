@@ -10,6 +10,8 @@ import { authRouter } from './routes/auth.js';
 import { exigerConnexion, exigerCleMachine } from './middleware/auth.js';
 import { rescraperRechercheFavorite } from './services/orchestrator.js';
 import { mode as hubiflowMode } from './integrations/hubiflowRouter.js';
+import { verifierEtMettreAJourDepenses } from './services/depenseMonitor.js';
+import { depensesRouter } from './routes/depenses.js';
 
 // Filet de sécurité pour le diagnostic en hébergement distant : sans ça, un rejet de promesse
 // non intercepté peut faire quitter le process sans qu'aucun message n'apparaisse dans les logs
@@ -30,6 +32,7 @@ app.use('/api/scraper', scraperRouter);
 app.use('/api/portails', portailsRouter);
 app.use('/api/annonces', annoncesRouter);
 app.use('/api/logs', logsRouter);
+app.use('/api/depenses', depensesRouter);
 
 // Non protégé volontairement : nécessaire aux vérifications de santé de la plateforme
 // d'hébergement (Render), qui n'a évidemment pas de session — ne révèle aucune donnée.
@@ -66,6 +69,16 @@ app.get('/api/cron', exigerCleMachine, async (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
+
+// Plafond de dépense (voir services/depenseMonitor.js) : contrôle toutes les 10 min — plus
+// fréquent n'aurait aucun intérêt, les chiffres de consommation Neon eux-mêmes ne remontent que
+// toutes les ~15 min. Ne tourne que sur un process persistant (jamais utile sur Vercel
+// serverless, voir le garde plus bas), démarré immédiatement puis répété.
+if (!process.env.VERCEL) {
+    const controleDepenses = () => verifierEtMettreAJourDepenses().catch((e) => console.error('[depenseMonitor] échec du contrôle:', e.message));
+    controleDepenses();
+    setInterval(controleDepenses, 10 * 60 * 1000);
+}
 
 // Sur Vercel, `VERCEL` est toujours défini (peu importe NODE_ENV) — écouter un port n'a aucun
 // sens là-bas (fonction serverless, pas de process persistant). Partout ailleurs (local, Render,

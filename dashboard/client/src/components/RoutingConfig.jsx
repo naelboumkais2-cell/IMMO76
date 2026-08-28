@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { IconRoute, IconPlus, IconTrash } from './icons.jsx';
 import { Select } from './Select.jsx';
 import { Overlay } from './Overlay.jsx';
+import { DepenseConfig } from './DepenseConfig.jsx';
 
 const TYPES_BIEN = ['Studio', 'T1', 'T2', 'T3', 'Maison'];
 
@@ -314,6 +315,10 @@ export function RoutingConfig() {
                     </div>
 
                 </div>
+
+                <hr className="divider" />
+
+                <DepenseConfig />
 
                 {erreur && <p className="text-error">{erreur}</p>}
             </div>

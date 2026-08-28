@@ -1322,6 +1322,11 @@ select {
     font-weight: 500;
 }
 .alert svg { flex: none; width: 20px; height: 20px; }
+.alert-danger {
+    background: var(--danger-soft);
+    border-color: var(--danger-border);
+    color: var(--danger);
+}
 
 /* ---------- Tables (Redesigned as Cards or Clean Lists) ---------- */
 .table-wrap { 

@@ -321,6 +321,26 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
+// Tarif officiel gpt-4o (2,50$/million tokens en entrée, 10$/million en sortie) — à mettre à
+// jour si le modèle change un jour (voir l'appel plus bas, "gpt-4o" en dur). Sert au plafond de
+// dépense (voir dashboard/server/src/services/depenseMonitor.js) : chaque appel réel enregistre
+// son coût exact ici, pas une estimation a posteriori.
+const TARIF_GPT4O_USD_PAR_TOKEN = { entree: 2.5 / 1_000_000, sortie: 10 / 1_000_000 };
+
+async function enregistrerUsageOpenAI(usage) {
+    if (!usage) return;
+    const coutUsd = usage.prompt_tokens * TARIF_GPT4O_USD_PAR_TOKEN.entree + usage.completion_tokens * TARIF_GPT4O_USD_PAR_TOKEN.sortie;
+    try {
+        await db
+            .prepare(`INSERT INTO openai_usage_log (prompt_tokens, completion_tokens, cout_usd) VALUES (?, ?, ?)`)
+            .run(usage.prompt_tokens, usage.completion_tokens, coutUsd);
+    } catch (e) {
+        // Ne doit jamais faire échouer la génération elle-même — juste un manque de suivi pour
+        // le plafond de dépense, pas une raison de bloquer une annonce réelle.
+        console.error('[enregistrerUsageOpenAI] échec de l\'enregistrement :', e.message);
+    }
+}
+
 async function callOpenAI(textContext, base64Images) {
     const systemPrompt = `Agis comme un expert immobilier de la loi Pinel et LMNP, rédacteur pour une agence haut de gamme. Tu dois lire ATTENTIVEMENT toutes les informations fournies (textes, documents extraits de PDF, ou plans en image) et en extraire un MAXIMUM de détails concrets et vérifiables pour rédiger une annonce précise, complète et jamais générique.
 Renvoie UNIQUEMENT un objet JSON strictement conforme à la structure suivante, sans aucun markdown ni texte autour :
@@ -381,6 +401,8 @@ Renvoie UNIQUEMENT un objet JSON strictement conforme à la structure suivante, 
             await new Promise((r) => setTimeout(r, delaiMs));
         }
     }
+
+    await enregistrerUsageOpenAI(response.data.usage);
 
     let content = response.data.choices[0].message.content;
     content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();

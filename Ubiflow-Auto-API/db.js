@@ -44,6 +44,19 @@ async function initDb() {
       date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Même base Neon que dashboard/server (voir plafond de dépense, services/depenseMonitor.js
+  // côté dashboard) — définie ici aussi (idempotent) car c'est ce service qui écrit dedans à
+  // chaque appel OpenAI réel (voir callOpenAI).
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS openai_usage_log (
+      id SERIAL PRIMARY KEY,
+      prompt_tokens INTEGER NOT NULL,
+      completion_tokens INTEGER NOT NULL,
+      cout_usd NUMERIC NOT NULL,
+      cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 }
 
 module.exports = { db, initDb };

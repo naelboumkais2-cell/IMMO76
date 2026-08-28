@@ -86,4 +86,11 @@ export const api = {
             headers: { 'X-Admin-Key': cleAdmin },
             body: JSON.stringify({ email, motDePasse, nom }),
         }),
+
+    // Plafond de dépense (Neon + OpenAI)
+    getDepenses: () => request('/depenses'),
+    mettreAJourSeuilsDepense: (parametres) =>
+        request('/depenses/parametres', { method: 'PUT', body: JSON.stringify(parametres) }),
+    reprendreApresPause: () => request('/depenses/reprendre', { method: 'POST' }),
+    verifierDepensesMaintenant: () => request('/depenses/verifier-maintenant', { method: 'POST' }),
 };

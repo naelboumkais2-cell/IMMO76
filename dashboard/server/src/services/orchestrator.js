@@ -15,6 +15,7 @@ import {
     getEnAttente,
 } from './autoPublishStatus.js';
 import { utilisateurActuelId } from './requestContext.js';
+import { estEnPause, obtenirEtatPause } from './depenseMonitor.js';
 
 // utilisateur_id vient du contexte de requête (voir requestContext.js/index.js), jamais passé
 // explicitement ici — évite d'ajouter un paramètre utilisateurId à chaque fonction de ce
@@ -309,6 +310,19 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
                 break;
             }
 
+            // Plafond de dépense (voir services/depenseMonitor.js) : même point de coupure que
+            // l'annulation manuelle, entre deux groupes, jamais en plein milieu d'un lot déjà
+            // commencé. Ne touche que génération IA + auto-publication, jamais la recherche —
+            // les lots déjà en attente restent traitables manuellement après la reprise.
+            if (await estEnPause()) {
+                annule = true;
+                await log('auto_publish', {
+                    succes: true,
+                    message: `Pause automatique (plafond de dépense atteint) — ${nbTraites}/${aTraiter.length} lot(s) traité(s), le reste non traité. Reprise manuelle nécessaire (Réglages).`,
+                });
+                break;
+            }
+
             marquerLotEnCours(
                 groupe.length > 1
                     ? `${groupe.length} lots en cours (enrichissement + génération IA) : ${groupe.map(({ annonce }) => annonce.titre).join(', ')}`
@@ -383,6 +397,20 @@ export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null,
     const candidats = annoncesTraitees.filter(({ annonce, estNouvelle }) =>
         mode === 'test' ? !!annonce.est_annonce_test : estNouvelle
     );
+
+    // Plafond de dépense (voir services/depenseMonitor.js) : vérifié ici aussi, avant même un
+    // éventuel écran de confirmation — sinon un run déjà en pause afficherait quand même
+    // l'écran "Confirmer et lancer" pour rien, avant de s'arrêter immédiatement une fois
+    // confirmé. Les lots restent importés/routés normalement (voir importerLotsOtaree, appelé
+    // avant cette fonction), seule la génération/publication automatique est court-circuitée.
+    if (candidats.length > 0 && (await estEnPause())) {
+        const pause = await obtenirEtatPause();
+        await log('auto_publish', {
+            succes: true,
+            message: `Pause automatique (plafond de dépense atteint, ${pause?.service}) — ${candidats.length} lot(s) restent en attente, non traités. Reprise manuelle nécessaire (Réglages).`,
+        });
+        return { mode, nbCandidats: candidats.length, nbTraites: 0, annule: true };
+    }
 
     if (options.confirmationRequise && mode === 'on' && candidats.length > 0) {
         stockerEnAttente({ candidats, mode, rechercheId });

@@ -12,6 +12,7 @@ export function App() {
     // la réponse de GET /auth/moi) ; null = pas connecté ; objet = connecté.
     const [utilisateur, setUtilisateur] = useState(undefined);
     const [hubiflowMode, setHubiflowMode] = useState(null);
+    const [pauseDepense, setPauseDepense] = useState(null);
     // 'scraper'/'supervision' : les 2 actions principales, à égalité dans la barre de nav.
     // 'routing'/'historique' : accès secondaire (sidebar gauche), pas en concurrence visuelle
     // avec les 2 actions principales — configuration/consultation occasionnelle, pas un geste
@@ -50,6 +51,21 @@ export function App() {
                 .catch(() => setHubiflowMode(null));
         refresh();
         const id = setInterval(refresh, 30000);
+        return () => clearInterval(id);
+    }, [utilisateur]);
+
+    // Bandeau visible en permanence (pas juste dans Réglages) quand la génération IA/
+    // auto-publication est en pause pour dépassement de plafond — voir DepenseConfig.jsx pour
+    // le détail et le bouton de reprise. 60s : cet état ne change pas assez vite pour justifier
+    // un sondage plus fréquent (le contrôle serveur lui-même ne tourne que toutes les 10 min).
+    useEffect(() => {
+        if (!utilisateur) return;
+        const refresh = () =>
+            api.getDepenses()
+                .then((d) => setPauseDepense(d.pause?.en_pause ? d.pause : null))
+                .catch(() => {});
+        refresh();
+        const id = setInterval(refresh, 60000);
         return () => clearInterval(id);
     }, [utilisateur]);
 
@@ -99,6 +115,20 @@ export function App() {
                         </button>
                     </div>
                 </header>
+
+                {pauseDepense && (
+                    <div
+                        className="alert alert-danger"
+                        style={{ margin: 'var(--space-4) var(--space-6) 0', cursor: 'pointer' }}
+                        onClick={() => setActiveTab('routing')}
+                        title="Cliquer pour ouvrir Réglages"
+                    >
+                        <span>
+                            Pipeline en pause — plafond de dépense atteint ({pauseDepense.service}). Génération IA et
+                            auto-publication arrêtées, la recherche reste disponible. Voir Réglages pour reprendre.
+                        </span>
+                    </div>
+                )}
 
                 <main className="app-main">
                     <nav className="nav-tabs nav-tabs-primary">

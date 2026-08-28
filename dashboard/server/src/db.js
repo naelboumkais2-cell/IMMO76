@@ -165,7 +165,60 @@ export async function initDb() {
     ip TEXT,
     cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- Plafond de dépense (voir services/depenseMonitor.js) — une seule ligne, toujours id=1.
+  -- taux_usd_eur : Neon/OpenAI facturent en dollars, le seuil est en euros — taux fixe
+  -- configurable plutôt qu'une API de change externe (un point de dépendance en moins).
+  -- marge_pct : la pause se déclenche à ce pourcentage du seuil, pas à 100% pile, pour absorber
+  -- le délai de ~15 min de l'API de consommation Neon (voir NEON_API_KEY).
+  CREATE TABLE IF NOT EXISTS parametres_depense (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    seuil_neon_eur NUMERIC NOT NULL DEFAULT 15,
+    seuil_openai_eur NUMERIC NOT NULL DEFAULT 15,
+    taux_usd_eur NUMERIC NOT NULL DEFAULT 1.0,
+    marge_pct NUMERIC NOT NULL DEFAULT 90,
+    CONSTRAINT un_seul_id CHECK (id = 1)
+  );
+
+  -- Historique mensuel de dépense estimée, par service — une ligne par (mois, service),
+  -- réécrite à chaque contrôle périodique. Conserve les mois précédents pour l'historique
+  -- affiché dans Réglages.
+  CREATE TABLE IF NOT EXISTS depense_mensuelle (
+    mois DATE NOT NULL,
+    service TEXT NOT NULL,
+    cout_estime_eur NUMERIC NOT NULL DEFAULT 0,
+    maj_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (mois, service)
+  );
+
+  -- Tokens réels de chaque appel OpenAI (voir Ubiflow-Auto-API/index.js, callOpenAI) — écrit au
+  -- fil de l'eau à chaque appel, pas de polling nécessaire : contrairement à Neon, on contrôle
+  -- entièrement ce code, donc le décompte est exact, pas une estimation.
+  CREATE TABLE IF NOT EXISTS openai_usage_log (
+    id SERIAL PRIMARY KEY,
+    prompt_tokens INTEGER NOT NULL,
+    completion_tokens INTEGER NOT NULL,
+    cout_usd NUMERIC NOT NULL,
+    cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- État de pause du pipeline (voir depenseMonitor.js) — une seule ligne, toujours id=1. Ne se
+  -- lève jamais tout seul (même au changement de mois) : seule une action explicite dans
+  -- Réglages (POST /depenses/reprendre) la lève — voir orchestrator.js pour le point de
+  -- vérification (avant chaque groupe de lots, génération IA + auto-publication uniquement, la
+  -- recherche/import reste inchangée).
+  CREATE TABLE IF NOT EXISTS pipeline_pause (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    en_pause INTEGER NOT NULL DEFAULT 0,
+    service TEXT,
+    raison TEXT,
+    declenche_le TIMESTAMP,
+    CONSTRAINT un_seul_id_pause CHECK (id = 1)
+  );
   `);
+
+  await db.exec(`INSERT INTO parametres_depense (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
+  await db.exec(`INSERT INTO pipeline_pause (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
 
   // Migration : qui a déclenché chaque action tracée dans logs_api (recherche lancée,
   // publication confirmée, republish, dépublication...) — nullable, les entrées déjà en base et
