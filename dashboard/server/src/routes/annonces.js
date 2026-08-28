@@ -13,26 +13,6 @@ export const annoncesRouter = Router();
 // d'un dépassement réel du quota de transfert Neon.
 const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test';
 
-// Diagnostic temporaire (à retirer une fois le bug référence LMNP Lyon expliqué) — inspecte les
-// champs bruts law/promoteur/reference d'un lot précis pour comprendre pourquoi referenceGeneree
-// ressort à null sur un lot par ailleurs confirmé LMNP par le filtre de recherche.
-annoncesRouter.get('/diag-lot/:id', exigerConnexion, async (req, res) => {
-    try {
-        const row = await db
-            .prepare(
-                `SELECT id, ville, reference,
-                        raw_data::jsonb->'law' AS law,
-                        raw_data::jsonb->'program'->'developer'->>'@id' AS developer_id,
-                        raw_data::jsonb->'program'->'developer'->>'name' AS developer_name
-                 FROM annonces WHERE id = ?`
-            )
-            .get(req.params.id);
-        res.json(row || null);
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
