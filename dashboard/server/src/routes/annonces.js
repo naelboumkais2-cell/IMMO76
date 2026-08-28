@@ -13,6 +13,41 @@ export const annoncesRouter = Router();
 // d'un dépassement réel du quota de transfert Neon.
 const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test';
 
+// Diagnostic temporaire (à retirer une fois la génération de référence LMNP validée avec
+// l'utilisateur) — sert à vérifier deux hypothèses avant de coder la règle "mandat direct
+// agence" (INT) et la génération de référence : la présence/absence de program.developer dans
+// les lots déjà importés, et le risque réel de collision sur (ville, n° de lot).
+annoncesRouter.get('/diag-promoteurs', exigerConnexion, async (req, res) => {
+    try {
+        const total = await db.prepare(`SELECT COUNT(*)::int AS n FROM annonces`).get();
+        const avecPromoteur = await db
+            .prepare(`SELECT COUNT(*)::int AS n FROM annonces WHERE raw_data::jsonb->'program'->'developer' IS NOT NULL`)
+            .get();
+        const sansPromoteur = await db
+            .prepare(
+                `SELECT id, external_id, reference, titre, ville, code_postal, prix, scrapee_le,
+                        raw_data::jsonb->'program'->'@id' AS program_id,
+                        raw_data::jsonb ? 'program' AS a_program
+                 FROM annonces
+                 WHERE raw_data::jsonb->'program'->'developer' IS NULL
+                 ORDER BY scrapee_le DESC LIMIT 30`
+            )
+            .all();
+        const collisionsVilleLot = await db
+            .prepare(
+                `SELECT ville, reference, COUNT(*)::int AS n
+                 FROM annonces
+                 WHERE reference IS NOT NULL AND ville IS NOT NULL
+                 GROUP BY ville, reference HAVING COUNT(*) > 1
+                 ORDER BY n DESC LIMIT 20`
+            )
+            .all();
+        res.json({ total: total.n, avecPromoteur: avecPromoteur.n, sansPromoteur, collisionsVilleLot });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
