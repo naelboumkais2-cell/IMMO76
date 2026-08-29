@@ -13,41 +13,6 @@ export const annoncesRouter = Router();
 // d'un dépassement réel du quota de transfert Neon.
 const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test';
 
-// Diagnostic temporaire (à retirer après identification des codes law) — dump du raw_data
-// complet d'une annonce déjà en base, pour chercher un champ texte lisible accompagnant le champ
-// law brut (même méthode que pour program.developer.name côté promoteur).
-annoncesRouter.get('/diag-raw/:id', exigerConnexion, async (req, res) => {
-    try {
-        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(req.params.id);
-        if (!row) return res.status(404).json({ erreur: 'introuvable' });
-        res.json(JSON.parse(row.raw_data));
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-// Diagnostic temporaire — construit la correspondance law -> lawsKeys/laws (libellés lisibles)
-// sur un échantillon d'annonces couvrant les valeurs de law déjà observées en base.
-annoncesRouter.get('/diag-laws-mapping', exigerConnexion, async (req, res) => {
-    try {
-        const rows = await db
-            .prepare(
-                `SELECT DISTINCT ON (raw_data::jsonb->'law') id, raw_data::jsonb->'law' AS law
-                 FROM annonces WHERE raw_data IS NOT NULL ORDER BY raw_data::jsonb->'law', id`
-            )
-            .all();
-        const resultat = [];
-        for (const r of rows) {
-            const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(r.id);
-            const lot = JSON.parse(row.raw_data);
-            resultat.push({ id: r.id, law: lot.law, lawsKeys: lot.lawsKeys, laws: lot.laws });
-        }
-        res.json(resultat);
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
