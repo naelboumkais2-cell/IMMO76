@@ -255,7 +255,7 @@ app.get('/api/diag-annonce-brute/:id', async (req, res) => {
 // redéployer à chaque fois. Retourne aussi le nombre total de résultats (via _links.last) pour
 // vérifier objectivement si un filtre réel s'est appliqué (moins que le listing complet).
 app.get('/api/diag-recherche-hubiflow', async (req, res) => {
-    const { espaceLoginAttendu, paramName, value } = req.query;
+    const { espaceLoginAttendu, paramName, value, idAnnonceur, etat, annoncesActivees } = req.query;
     if (!espaceLoginAttendu || !paramName || !value) {
         return res.status(400).json({ success: false, error: 'espaceLoginAttendu, paramName et value requis' });
     }
@@ -264,7 +264,10 @@ app.get('/api/diag-recherche-hubiflow', async (req, res) => {
         return res.status(401).json({ success: false, error: resolu.erreur });
     }
     try {
-        const url = `https://espace-client-backend.ubiflow.net/annonce?champsRechercheLibre[]=ville&champsRechercheLibre[]=titre&champsRechercheLibre[]=reference&${encodeURIComponent(paramName)}=${encodeURIComponent(value)}&etat=A&page=1&perPage=10&orderBy=-DC&advanced=false&lang=fr`;
+        const idAnnonceurPart = idAnnonceur ? `&idAnnonceur=${encodeURIComponent(idAnnonceur)}` : '';
+        const etatPart = `&etat=${encodeURIComponent(etat || 'A')}`;
+        const annoncesActiveesPart = annoncesActivees ? `&annoncesActivees=${encodeURIComponent(annoncesActivees)}` : '';
+        const url = `https://espace-client-backend.ubiflow.net/annonce?champsRechercheLibre[]=ville&champsRechercheLibre[]=titre&champsRechercheLibre[]=reference&${encodeURIComponent(paramName)}=${encodeURIComponent(value)}${idAnnonceurPart}${etatPart}${annoncesActiveesPart}&page=1&perPage=10&orderBy=-DC&advanced=false&lang=fr`;
         const response = await axios.get(url, {
             headers: {
                 'Accept': 'application/json, text/plain, */*',
