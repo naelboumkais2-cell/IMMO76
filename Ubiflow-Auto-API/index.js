@@ -217,9 +217,54 @@ app.get('/api/annonce/:id/etat', async (req, res) => {
     if (!espaceLoginAttendu) return res.status(400).json({ success: false, error: 'espaceLoginAttendu requis' });
     const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
     if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
-    
+
     const result = await lireEtatAnnonceHubiflow(req.params.id, resolu.token);
     res.status(result.success ? 200 : 502).json(result);
+});
+
+// Recherche libre Hubiflow — sert au dédup "avertissement" avant publication (dashboard/,
+// bouton explicite "Vérifier les doublons", jamais automatique). Deux appels (etat=A actif +
+// etat=B brouillon) car `etat` est obligatoire côté Hubiflow et ne couvre qu'un seul statut à la
+// fois — une annonce jamais activée (brouillon) serait invisible avec etat=A seul, cas réel
+// rencontré en le vérifiant. Paramètre rechercheLibre confirmé par capture réseau réelle (pas
+// "search", qui ne filtre rien). Lecture seule, aucun effet de bord.
+async function rechercherAnnoncesParVille(espaceLoginAttendu, ville) {
+    const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
+    if (resolu.erreur) return { success: false, error: resolu.erreur };
+
+    const items = [];
+    for (const etat of ['A', 'B']) {
+        try {
+            const url = `https://espace-client-backend.ubiflow.net/annonce?champsRechercheLibre[]=ville&champsRechercheLibre[]=titre&champsRechercheLibre[]=reference&rechercheLibre=${encodeURIComponent(ville)}&etat=${etat}&page=1&perPage=20&orderBy=-DC&advanced=false&lang=fr`;
+            const response = await axios.get(url, {
+                headers: { 'Accept': 'application/json, text/plain, */*', 'Authorization': `Bearer ${resolu.token}` },
+            });
+            items.push(...(response.data?._embedded?.annonce || []));
+        } catch (error) {
+            console.error(`[doublons] échec recherche Hubiflow (etat=${etat}, ville=${ville}) :`, error.message);
+        }
+    }
+    return {
+        success: true,
+        annonces: items.map((a) => ({
+            id: a.id,
+            reference: a.reference,
+            titre: a.titre,
+            prix: a.prix,
+            etat: a.etat,
+            ville: a.donnees?.ville?.valeur || null,
+            lien: `https://espace-client.ubiflow.net/posts/edit/${a.id}`,
+        })),
+    };
+}
+
+app.get('/api/rechercher-doublons-hubiflow', async (req, res) => {
+    const { espaceLoginAttendu, ville } = req.query;
+    if (!espaceLoginAttendu || !ville) {
+        return res.status(400).json({ success: false, error: 'espaceLoginAttendu et ville requis' });
+    }
+    const result = await rechercherAnnoncesParVille(espaceLoginAttendu, ville);
+    res.status(result.success ? 200 : 401).json(result);
 });
 
 app.post('/api/publish-payload', async (req, res) => {

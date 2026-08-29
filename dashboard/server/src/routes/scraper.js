@@ -10,6 +10,7 @@ import {
     detailLotEnAttente,
 } from '../services/orchestrator.js';
 import { getEtatAutoPublish, demanderAnnulation } from '../services/autoPublishStatus.js';
+import { verifierDoublonsHubiflow } from '../services/doublonsChecker.js';
 import { sauvegarderRefreshToken, getOtareeTokenState } from '../integrations/otareeTokenStore.js';
 import {
     rechercherLotsOtaree,
@@ -183,6 +184,25 @@ scraperRouter.post('/auto-publish-confirm', exigerConnexion, async (req, res) =>
         );
         if (!result.success) {
             return res.status(400).json({ erreur: result.error });
+        }
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+// Bouton explicite "Vérifier les doublons" sur l'écran de confirmation — jamais automatique
+// (voir doublonsChecker.js : évite de déclencher 2 appels Hubiflow par lot sur un run de 40-80+
+// lots sans action volontaire de l'utilisateur).
+scraperRouter.post('/verifier-doublons', exigerConnexion, async (req, res) => {
+    try {
+        const { ids, portailsChoisis } = req.body || {};
+        const result = await verifierDoublonsHubiflow(
+            Array.isArray(ids) ? ids : [],
+            Array.isArray(portailsChoisis) ? portailsChoisis : []
+        );
+        if (result.erreur) {
+            return res.status(400).json({ erreur: result.erreur });
         }
         res.json(result);
     } catch (e) {

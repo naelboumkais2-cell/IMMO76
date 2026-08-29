@@ -188,6 +188,14 @@ export function ScraperControl() {
     // (mandat direct, promoteur inconnu...). Toujours corrigible à la main : filet de sécurité en
     // cas de mauvaise classification, voir Map lotId -> string.
     const [referencesEditees, setReferencesEditees] = useState(() => new Map());
+    // Doublons Hubiflow potentiels par lot (Map lotId -> [{titre, prix, portailNom, lien}]) —
+    // uniquement à la demande (bouton "Vérifier les doublons"), jamais automatique : sur un run
+    // de 40-80+ lots, lancer ça systématiquement à l'ouverture ferait 2 appels Hubiflow par lot
+    // d'un coup, avec le même risque de rythme de requêtes excessif qui avait déjà déclenché la
+    // protection Cloudflare sur notre propre hébergement (voir dépenses/monitoring).
+    const [doublonsTrouves, setDoublonsTrouves] = useState(() => new Map());
+    const [verifDoublonsEnCours, setVerifDoublonsEnCours] = useState(false);
+    const [erreurDoublons, setErreurDoublons] = useState(null);
     // Détail d'un lot cliqué sur l'écran de confirmation — panneau imbriqué au-dessus de la
     // confirmation, purement présentationnel : ne touche jamais lotsSelectionnes ni confirmationEnAttente.
     const [lotDetailId, setLotDetailId] = useState(null);
@@ -370,6 +378,8 @@ export function ScraperControl() {
                 });
                 setLotsSelectionnes(new Set(lots.map((l) => l.id))); // tous cochés par défaut
                 setReferencesEditees(new Map(lots.map((l) => [l.id, l.referenceGeneree || ''])));
+                setDoublonsTrouves(new Map());
+                setErreurDoublons(null);
                 // Pré-coché = union des portails que les règles de routage ont résolus pour ces
                 // candidats ; mode pré-rempli avec le mode par défaut du portail. Entièrement
                 // modifiable ensuite (voir onTogglePortailChoix/onPortailModeChange).
@@ -446,6 +456,23 @@ export function ScraperControl() {
         setLotDetailId(null);
         setLotDetail(null);
         setLotDetailErreur(null);
+    }
+
+    async function onVerifierDoublons() {
+        if (lotsSelectionnes.size === 0) return;
+        setVerifDoublonsEnCours(true);
+        setErreurDoublons(null);
+        try {
+            const portailsChoisis = [...portailsChoix.entries()]
+                .filter(([, choix]) => choix.publier)
+                .map(([portailId, choix]) => ({ portailId, mode: choix.mode }));
+            const { resultats } = await api.verifierDoublons([...lotsSelectionnes], portailsChoisis);
+            setDoublonsTrouves(new Map(Object.entries(resultats || {}).map(([id, v]) => [Number(id), v])));
+        } catch (err) {
+            setErreurDoublons(err.message);
+        } finally {
+            setVerifDoublonsEnCours(false);
+        }
     }
 
     async function onConfirmerEnvoi() {
@@ -782,9 +809,27 @@ export function ScraperControl() {
                                 )}
                             </div>
 
+                            <div className="field-row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                                <p className="hint" style={{ margin: 0 }}>
+                                    Vérifie si des annonces similaires existent déjà sur Hubiflow (même ville, prix
+                                    proche) avant de confirmer — pas automatique, ça part vers Hubiflow uniquement sur
+                                    demande.
+                                </p>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    onClick={onVerifierDoublons}
+                                    disabled={verifDoublonsEnCours || lotsSelectionnes.size === 0}
+                                >
+                                    {verifDoublonsEnCours ? 'Vérification…' : 'Vérifier les doublons'}
+                                </button>
+                            </div>
+                            {erreurDoublons && <p className="text-error">{erreurDoublons}</p>}
+
                             <div className="confirmation-lots-grid">
                                 {confirmationEnAttente.lots.map((lot) => {
                                     const coche = lotsSelectionnes.has(lot.id);
+                                    const doublons = doublonsTrouves.get(lot.id);
                                     return (
                                         <label
                                             key={lot.id}
@@ -814,6 +859,17 @@ export function ScraperControl() {
                                                 <span className="confirmation-lot-titre">{lot.titre}</span>
                                                 <span className="cell-muted">{lot.ville || '—'}</span>
                                                 <span className="cell-muted">{lot.prix ? `${lot.prix.toLocaleString('fr-FR')} €` : '—'}</span>
+                                                {doublons?.length > 0 && (
+                                                    <span
+                                                        className="badge badge-en_attente"
+                                                        title={doublons
+                                                            .map((d) => `${d.titre} — ${d.prix ? `${d.prix.toLocaleString('fr-FR')} €` : '?'} (${d.portailNom}, ${d.etat === 'B' ? 'brouillon' : 'actif'})`)
+                                                            .join('\n')}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        ⚠ {doublons.length} similaire{doublons.length > 1 ? 's' : ''} sur Hubiflow
+                                                    </span>
+                                                )}
                                                 <input
                                                     className="cell-input cell-input-mono"
                                                     placeholder="Réf. LMNP (à saisir si vide)"
