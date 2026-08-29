@@ -222,35 +222,6 @@ app.get('/api/annonce/:id/etat', async (req, res) => {
     res.status(result.success ? 200 : 502).json(result);
 });
 
-// Diagnostic temporaire (à retirer après livraison du rapport à l'utilisateur) — lecture seule,
-// vérifie s'il y a eu un contact/lead sur une annonce déjà publiée avant toute dépublication liée
-// à la correction du routage LMNP/Neuf.
-app.get('/api/diag-contacts-annonce/:id', async (req, res) => {
-    const { espaceLoginAttendu } = req.query;
-    if (!espaceLoginAttendu) return res.status(400).json({ success: false, error: 'espaceLoginAttendu requis' });
-    const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
-    if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
-    try {
-        const response = await axios.get(`https://espace-client-backend.ubiflow.net/annonce/${req.params.id}?lang=fr`, {
-            headers: { 'Accept': 'application/json, text/plain, */*', 'Authorization': `Bearer ${resolu.token}` },
-        });
-        const a = response.data;
-        res.json({
-            success: true,
-            id: a.id,
-            reference: a.reference,
-            etat: a.etat,
-            nbMessages: Array.isArray(a.messages) ? a.messages.length : a.messages,
-            nbDiffusions: a.nbDiffusions,
-            nbPortailsActifs: a.nbPortailsActifs,
-            firstSentAt: a.firstSentAt,
-            dateDerniereDiffusion: a.dateDerniereDiffusion,
-        });
-    } catch (error) {
-        res.status(502).json({ success: false, error: error.message, details: error.response ? error.response.data : null });
-    }
-});
-
 // Recherche libre Hubiflow — sert au dédup "avertissement" avant publication (dashboard/,
 // bouton explicite "Vérifier les doublons", jamais automatique). Deux appels (etat=A actif +
 // etat=B brouillon) car `etat` est obligatoire côté Hubiflow et ne couvre qu'un seul statut à la
