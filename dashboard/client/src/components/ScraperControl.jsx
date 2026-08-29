@@ -183,12 +183,6 @@ export function ScraperControl() {
     const [annulationDemandee, setAnnulationDemandee] = useState(false);
     const [resultatOtaree, setResultatOtaree] = useState(null);
     const [erreurOtaree, setErreurOtaree] = useState(null);
-    // Préférence globale du dashboard, pas par recherche — persistée pour survivre au
-    // rechargement de page. Désactivée par défaut : comportement "zéro clic" inchangé (publie
-    // immédiatement en utilisant le routage automatique et le mode par défaut de chaque portail).
-    const [demanderConfirmation, setDemanderConfirmation] = useState(
-        () => localStorage.getItem('demanderConfirmationAvantEnvoi') === '1'
-    );
     const [confirmationEnAttente, setConfirmationEnAttente] = useState(null);
     const [confirmationEnCours, setConfirmationEnCours] = useState(false);
     const [photosEnErreur, setPhotosEnErreur] = useState(() => new Set());
@@ -226,10 +220,6 @@ export function ScraperControl() {
     // ni ne déclenche d'annulation, le run continue exactement pareil en arrière-plan.
     const [panneauProgressionOuvert, setPanneauProgressionOuvert] = useState(false);
     const dernierRunOuvertRef = useRef(null);
-
-    useEffect(() => {
-        localStorage.setItem('demanderConfirmationAvantEnvoi', demanderConfirmation ? '1' : '0');
-    }, [demanderConfirmation]);
 
     // Ouvre automatiquement le panneau plein écran au démarrage réel d'un run (autoPublishStatus
     // passe à enCours) — une seule fois par recherche (suivi par rechercheId), pour ne pas le
@@ -382,7 +372,7 @@ export function ScraperControl() {
         // le `finally` ne réactive le formulaire QUE si on ne vient pas de créer une attente.
         let laisseEnAttente = false;
         try {
-            const result = await api.rechercherOtaree(filters, nomRecherche.trim(), resume, demanderConfirmation);
+            const result = await api.rechercherOtaree(filters, nomRecherche.trim(), resume);
             if (result.autoPublish?.enAttente) {
                 // Rien n'a été envoyé à Hubiflow — le récapitulatif attend une confirmation
                 // explicite (voir onConfirmerEnvoi/onAnnulerEnvoiEnAttente).
@@ -633,19 +623,6 @@ export function ScraperControl() {
                                     value={nomRecherche}
                                     onChange={(e) => setNomRecherche(e.target.value)}
                                 />
-                            </label>
-                            <label
-                                className="switch"
-                                style={{ margin: '4px 4px 4px 12px' }}
-                                title="Quand activé : affiche un récapitulatif (lots, portails, mode de publication) avant de lancer la génération/publication automatique — rien ne part vers Hubiflow sans confirmation explicite. Désactivé : publication immédiate avec le routage automatique et le mode par défaut de chaque portail."
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={demanderConfirmation}
-                                    onChange={(e) => setDemanderConfirmation(e.target.checked)}
-                                />
-                                <span className="switch-track" />
-                                <span className="switch-label">Demander confirmation avant envoi</span>
                             </label>
                             <button
                                 type="button"

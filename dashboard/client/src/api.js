@@ -29,8 +29,8 @@ export const api = {
     getAlertes: () => request('/scraper/alertes'),
     marquerAlertesConsultees: () => request('/scraper/alertes/consultees', { method: 'POST' }),
     runScraper: (url) => request('/scraper/run', { method: 'POST', body: JSON.stringify({ url }) }),
-    rechercherOtaree: (filters, nom, resume, confirmationRequise) =>
-        request('/scraper/otaree-search', { method: 'POST', body: JSON.stringify({ filters, nom, resume, confirmationRequise }) }),
+    rechercherOtaree: (filters, nom, resume) =>
+        request('/scraper/otaree-search', { method: 'POST', body: JSON.stringify({ filters, nom, resume }) }),
     compterOtaree: (filters) => request('/scraper/otaree-count', { method: 'POST', body: JSON.stringify({ filters }) }),
     rechercherVillesOtaree: (q) => request(`/scraper/otaree-locations?q=${encodeURIComponent(q)}`),
     getAutoPublishStatus: () => request('/scraper/auto-publish-status'),

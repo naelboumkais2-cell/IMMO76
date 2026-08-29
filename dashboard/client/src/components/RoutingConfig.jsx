@@ -11,9 +11,8 @@ const MODE_DEFAUT_OPTIONS = [
     { value: 'brouillon', label: 'Brouillon' },
     {
         value: 'actif',
-        label: 'Annonce active (bloqué par défaut de portail)',
-        disabled: true,
-        title: "Implémenté (voir l'override manuel par annonce dans Supervision, ou le choix par portail sur l'écran de confirmation quand \"Demander confirmation avant envoi\" est activé), mais volontairement bloqué comme défaut ici : avec AUTO_PUBLISH=on permanent et le switch de confirmation désactivable, un défaut de portail sur 'actif' publierait automatiquement en direct chaque nouveau lot trouvé, sans validation par lot.",
+        label: 'Annonce active',
+        title: "L'écran de confirmation (portails/mode par lot, modifiable) s'affiche désormais systématiquement avant toute publication réelle — un défaut de portail sur 'actif' ne publie donc jamais rien sans validation humaine explicite.",
     },
 ];
 
@@ -239,12 +238,11 @@ export function RoutingConfig() {
                         la connexion se fait manuellement dans Chrome, comme aujourd'hui.
                     </p>
                     <p className="hint">
-                        « Annonce active » est implémenté (override manuel par annonce dans Supervision, ou choix
-                        explicite par portail sur l'écran de confirmation quand « Demander confirmation avant
-                        envoi » est activé), mais volontairement bloqué comme défaut de portail ici — avec
-                        AUTO_PUBLISH=on permanent et ce switch désactivable, un défaut « actif » publierait
-                        automatiquement en direct chaque nouveau lot trouvé par une recherche, sans validation par
-                        lot. À activer un jour uniquement après plusieurs publications actives manuelles validées.
+                        « Annonce active » comme mode par défaut de portail est désormais disponible (override
+                        manuel par annonce toujours possible dans Supervision) — sûr depuis que l'écran de
+                        confirmation (portails/mode par lot, modifiable) s'affiche systématiquement avant toute
+                        publication réelle : aucun lot ne part plus jamais vers Hubiflow sans validation humaine
+                        explicite, quel que soit le mode par défaut du portail.
                     </p>
 
                     <form className="field-row" style={{ marginTop: 12 }} onSubmit={onCreatePortail}>

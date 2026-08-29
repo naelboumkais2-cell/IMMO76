@@ -426,7 +426,7 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
     return { mode, nbCandidats: candidats.length, nbTraites, annule };
 }
 
-export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null, options = {}) {
+export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null) {
     const mode = getAutoPublishMode();
     if (mode === 'off' || !annoncesTraitees?.length) return { mode, nbCandidats: 0, nbTraites: 0 };
 
@@ -448,7 +448,12 @@ export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null,
         return { mode, nbCandidats: candidats.length, nbTraites: 0, annule: true };
     }
 
-    if (options.confirmationRequise && mode === 'on' && candidats.length > 0) {
+    // Écran de confirmation systématique pour toute publication réelle (mode 'on') — plus
+    // optionnel : c'est ce qui rend sûr de laisser "Annonce active" comme mode par défaut d'un
+    // portail (voir RoutingConfig.jsx), aucune publication ne part plus jamais sans validation
+    // humaine explicite. Le mode 'test' reste direct (déjà indépendant de ceci auparavant), et le
+    // rescraping programmé (scheduler, voir index.js) n'appelle jamais cette fonction du tout.
+    if (mode === 'on' && candidats.length > 0) {
         stockerEnAttente({ candidats, mode, rechercheId });
         return {
             mode,

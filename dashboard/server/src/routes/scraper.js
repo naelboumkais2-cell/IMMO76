@@ -156,7 +156,7 @@ scraperRouter.post('/otaree-count', exigerConnexion, async (req, res) => {
 
 scraperRouter.post('/otaree-search', exigerConnexion, async (req, res) => {
     try {
-        const { filters, nom, resume, confirmationRequise } = req.body || {};
+        const { filters, nom, resume } = req.body || {};
         if (!filters || typeof filters !== 'object') {
             return res.status(400).json({ erreur: 'filters requis' });
         }
@@ -164,7 +164,7 @@ scraperRouter.post('/otaree-search', exigerConnexion, async (req, res) => {
         const { lots, tronque } = await rechercherLotsOtaree(filters);
         const url = construireUrlRechercheOtaree(filters);
         const { annonces, ...result } = await importerLotsOtaree(url, lots, nom?.trim() || null, resume?.trim() || null);
-        const autoPublish = await autoGenererEtPublier(annonces, result.rechercheId, { confirmationRequise: !!confirmationRequise });
+        const autoPublish = await autoGenererEtPublier(annonces, result.rechercheId);
         res.json({ ...result, tronque, autoPublish });
     } catch (e) {
         if (e.code === 'NO_CREDENTIALS' || e.code === 'REFRESH_FAILED') {
