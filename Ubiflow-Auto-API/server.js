@@ -327,6 +327,41 @@ async function lireEtatAnnonceHubiflow(adId, token) {
     }
 }
 
+// Diagnostic temporaire (à retirer après vérification manuelle avec l'utilisateur) — teste en
+// conditions réelles si le listing Hubiflow /annonce accepte une recherche libre par
+// ville/titre/référence (déduit d'une capture réseau existante, jamais testé en direct jusqu'ici).
+// Lecture seule (GET), aucun risque d'effet de bord côté Hubiflow.
+app.get('/api/diag-espaces', (req, res) => {
+    res.json({ espaces: Object.keys(tokensParEspace), dernierConnecte: currentEspaceLogin });
+});
+
+app.get('/api/diag-recherche-hubiflow', async (req, res) => {
+    const { espaceLoginAttendu, search } = req.query;
+    if (!espaceLoginAttendu || !search) {
+        return res.status(400).json({ success: false, error: 'espaceLoginAttendu et search requis' });
+    }
+    const resolu = resoudreTokenPourEspace(espaceLoginAttendu);
+    if (resolu.erreur) {
+        return res.status(401).json({ success: false, error: resolu.erreur });
+    }
+    try {
+        const url = `https://espace-client-backend.ubiflow.net/annonce?champsRechercheLibre[]=ville&champsRechercheLibre[]=titre&champsRechercheLibre[]=reference&search=${encodeURIComponent(search)}&etat=A&page=1&perPage=10&orderBy=-DC&advanced=false&lang=fr`;
+        const response = await axios.get(url, {
+            headers: {
+                'Accept': 'application/json, text/plain, */*',
+                'Authorization': `Bearer ${resolu.token}`,
+            },
+        });
+        res.json({ success: true, url, data: response.data });
+    } catch (error) {
+        res.status(502).json({
+            success: false,
+            error: error.message,
+            details: error.response ? error.response.data : null,
+        });
+    }
+});
+
 app.get('/api/annonce/:id/etat', async (req, res) => {
     const { espaceLoginAttendu } = req.query;
     if (!espaceLoginAttendu) {
