@@ -39,36 +39,60 @@ app.use('/api/depenses', depensesRouter);
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 app.get('/api/hubiflow-mode', exigerConnexion, (req, res) => res.json({ mode: hubiflowMode }));
 
-// Vercel Cron Endpoint replacing the setInterval — route machine (aucun humain connecté), voir
-// middleware/auth.js.
+// Recherches à fréquence programmée dues — factorisé pour être appelable à la fois depuis
+// /api/cron (si un jour un vrai cron externe est branché dessus) et depuis le setInterval
+// ci-dessous (le déclencheur réellement actif aujourd'hui, voir commentaire plus bas). Passe par
+// rescraperRechercheFavorite -> importerLotsOtaree, qui n'appelle jamais autoGenererEtPublier :
+// le rescraping programmé importe uniquement, ne publie jamais rien tout seul (décision de
+// sécurité explicite, voir orchestrator.js).
+async function executerRecherchesDues() {
+    const dues = await db
+        .prepare(
+            `SELECT * FROM recherches
+             WHERE frequence_minutes IS NOT NULL
+             AND (
+               derniere_execution_le IS NULL
+               OR EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - derniere_execution_le)) >= frequence_minutes * 60
+             )`
+        )
+        .all();
+
+    let nbExecuted = 0;
+    for (const recherche of dues) {
+        try {
+            await rescraperRechercheFavorite(recherche);
+            nbExecuted++;
+        } catch (e) {
+            console.error('[cron] échec du scraping programmé pour', recherche.id, ':', e.message);
+        }
+    }
+    return nbExecuted;
+}
+
+// Route machine (aucun humain connecté), voir middleware/auth.js — conservée au cas où un vrai
+// cron externe serait un jour configuré, mais rien ne l'appelle actuellement (voir setInterval
+// ci-dessous, seul déclencheur réel aujourd'hui : aucune section "crons" dans dashboard/vercel.json
+// et aucun setInterval ne subsistait après le remplacement historique de ce mécanisme — les
+// recherches à fréquence programmée ne se relançaient donc plus jamais automatiquement).
 app.get('/api/cron', exigerCleMachine, async (req, res) => {
     try {
-        const dues = await db
-            .prepare(
-                `SELECT * FROM recherches
-                 WHERE frequence_minutes IS NOT NULL
-                 AND (
-                   derniere_execution_le IS NULL
-                   OR EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - derniere_execution_le)) >= frequence_minutes * 60
-                 )`
-            )
-            .all();
-
-        let nbExecuted = 0;
-        for (const recherche of dues) {
-            try {
-                await rescraperRechercheFavorite(recherche);
-                nbExecuted++;
-            } catch (e) {
-                console.error('[cron] échec du scraping programmé pour', recherche.id, ':', e.message);
-            }
-        }
-        res.json({ success: true, count: nbExecuted });
+        const count = await executerRecherchesDues();
+        res.json({ success: true, count });
     } catch (e) {
         console.error('[cron] erreur globale:', e.message);
         res.status(500).json({ error: e.message });
     }
 });
+
+// Déclencheur réel du rescraping programmé — voir commentaire au-dessus de executerRecherchesDues.
+// 1 min : la fréquence configurable la plus fine étant 15 min (voir FREQUENCE_OPTIONS côté
+// client), une vérification par minute suffit largement à rester réactif sans solliciter la base
+// inutilement. Ne tourne que sur un process persistant (jamais utile sur Vercel serverless).
+if (!process.env.VERCEL) {
+    const verifierRecherchesDues = () => executerRecherchesDues().catch((e) => console.error('[scheduler] échec:', e.message));
+    verifierRecherchesDues();
+    setInterval(verifierRecherchesDues, 60 * 1000);
+}
 
 // Plafond de dépense (voir services/depenseMonitor.js) : contrôle toutes les 10 min — plus
 // fréquent n'aurait aucun intérêt, les chiffres de consommation Neon eux-mêmes ne remontent que
