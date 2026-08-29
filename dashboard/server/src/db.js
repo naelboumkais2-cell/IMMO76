@@ -287,4 +287,13 @@ export async function initDb() {
       );
     }
   }
+
+  // Migration : rôle admin/employe — sert uniquement à la gestion des comptes (voir
+  // routes/auth.js, middleware/auth.js exigerAdmin), aucun autre droit ne dépend de cette colonne
+  // ailleurs dans le système. 'employe' par défaut, promotion 'admin' réservée à un geste manuel
+  // via la clé X-Admin-Key (voir PUT /auth/comptes/:id), jamais un menu déroulant courant.
+  const colonnesUtilisateurs = (await db.prepare(`SELECT column_name FROM information_schema.columns WHERE table_name = 'utilisateurs'`).all()).map((c) => c.column_name);
+  if (!colonnesUtilisateurs.includes('role')) {
+    await db.exec(`ALTER TABLE utilisateurs ADD COLUMN role TEXT NOT NULL DEFAULT 'employe' CHECK (role IN ('admin', 'employe'))`);
+  }
 }

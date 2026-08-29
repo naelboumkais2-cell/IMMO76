@@ -4,6 +4,7 @@ import { IconRoute, IconPlus, IconTrash } from './icons.jsx';
 import { Select } from './Select.jsx';
 import { Overlay } from './Overlay.jsx';
 import { DepenseConfig } from './DepenseConfig.jsx';
+import { ComptesConfig } from './ComptesConfig.jsx';
 
 const TYPES_BIEN = ['Studio', 'T1', 'T2', 'T3', 'Maison'];
 
@@ -16,7 +17,7 @@ const MODE_DEFAUT_OPTIONS = [
     },
 ];
 
-export function RoutingConfig() {
+export function RoutingConfig({ utilisateur }) {
     const [portails, setPortails] = useState([]);
     const [regles, setRegles] = useState([]);
     const [nouveauNom, setNouveauNom] = useState('');
@@ -321,6 +322,13 @@ export function RoutingConfig() {
                 <hr className="divider" />
 
                 <DepenseConfig />
+
+                {utilisateur?.role === 'admin' && (
+                    <>
+                        <hr className="divider" />
+                        <ComptesConfig />
+                    </>
+                )}
 
                 {erreur && <p className="text-error">{erreur}</p>}
             </div>

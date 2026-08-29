@@ -10,7 +10,7 @@ import {
     optionsCookie,
     NOM_COOKIE,
 } from '../services/authService.js';
-import { exigerCleAdmin } from '../middleware/auth.js';
+import { exigerAdmin } from '../middleware/auth.js';
 
 export const authRouter = Router();
 
@@ -44,7 +44,7 @@ authRouter.post('/login', async (req, res) => {
     const { jeton, expireLe } = await creerSession(utilisateur.id);
     await journaliserConnexion(utilisateur.id, 'connexion', req);
     res.cookie(NOM_COOKIE, jeton, optionsCookie(estLocal(req), expireLe));
-    res.json({ id: utilisateur.id, email: utilisateur.email, nom: utilisateur.nom });
+    res.json({ id: utilisateur.id, email: utilisateur.email, nom: utilisateur.nom, role: utilisateur.role });
 });
 
 authRouter.post('/logout', async (req, res) => {
@@ -74,9 +74,10 @@ authRouter.get('/moi', async (req, res) => {
     res.json(utilisateur);
 });
 
-// Gestion des comptes — protégée par une clé d'admin séparée (voir exigerCleAdmin), pas par une
-// session utilisateur classique : au tout premier lancement, aucun compte n'existe encore.
-authRouter.post('/comptes', exigerCleAdmin, async (req, res) => {
+// Gestion des comptes — voir exigerAdmin (middleware/auth.js) : au quotidien, une session
+// utilisateur avec le rôle 'admin' suffit ; la clé X-Admin-Key reste acceptée en filet de
+// sécurité (ex: au tout premier lancement, aucun compte n'existe encore pour se connecter).
+authRouter.post('/comptes', exigerAdmin, async (req, res) => {
     const { email, motDePasse, nom } = req.body || {};
     if (!email || !motDePasse) {
         return res.status(400).json({ erreur: 'email et motDePasse requis.' });
@@ -86,10 +87,12 @@ authRouter.post('/comptes', exigerCleAdmin, async (req, res) => {
     }
     const hash = await hacherMotDePasse(motDePasse);
     try {
+        // Toujours 'employe' à la création — promouvoir admin reste un geste manuel réservé à la
+        // clé (voir PUT ci-dessous), jamais un choix courant dans ce formulaire.
         const info = await db
             .prepare(`INSERT INTO utilisateurs (email, mot_de_passe_hash, nom) VALUES (?, ?, ?)`)
             .run(email.trim().toLowerCase(), hash, nom || null);
-        res.status(201).json(await db.prepare(`SELECT id, email, nom, actif FROM utilisateurs WHERE id = ?`).get(info.lastInsertRowid));
+        res.status(201).json(await db.prepare(`SELECT id, email, nom, actif, role FROM utilisateurs WHERE id = ?`).get(info.lastInsertRowid));
     } catch (e) {
         if (String(e.message).includes('duplicate key')) {
             return res.status(409).json({ erreur: 'Un compte existe déjà avec cet email.' });
@@ -98,16 +101,26 @@ authRouter.post('/comptes', exigerCleAdmin, async (req, res) => {
     }
 });
 
-authRouter.get('/comptes', exigerCleAdmin, async (req, res) => {
-    res.json(await db.prepare(`SELECT id, email, nom, actif, cree_le FROM utilisateurs ORDER BY cree_le DESC`).all());
+authRouter.get('/comptes', exigerAdmin, async (req, res) => {
+    res.json(await db.prepare(`SELECT id, email, nom, actif, role, cree_le FROM utilisateurs ORDER BY cree_le DESC`).all());
 });
 
 // Désactiver/réactiver un compte (jamais de suppression, voir db.js) — coupe aussi ses sessions
 // en cours immédiatement en cas de désactivation, pour un effet réel tout de suite plutôt que
-// d'attendre l'expiration naturelle du cookie déjà émis.
-authRouter.put('/comptes/:id', exigerCleAdmin, async (req, res) => {
-    const { actif } = req.body || {};
-    await db.prepare(`UPDATE utilisateurs SET actif = ? WHERE id = ?`).run(actif ? 1 : 0, req.params.id);
-    if (!actif) await supprimerSessionsUtilisateur(req.params.id);
-    res.json(await db.prepare(`SELECT id, email, nom, actif FROM utilisateurs WHERE id = ?`).get(req.params.id));
+// d'attendre l'expiration naturelle du cookie déjà émis. `role` optionnel dans le body : pas
+// exposé dans l'interface de gestion des comptes (voir plus haut), utilisé uniquement pour le
+// bootstrap manuel du tout premier admin via la clé X-Admin-Key.
+authRouter.put('/comptes/:id', exigerAdmin, async (req, res) => {
+    const { actif, role } = req.body || {};
+    if (role !== undefined && !['admin', 'employe'].includes(role)) {
+        return res.status(400).json({ erreur: "role doit être 'admin' ou 'employe'." });
+    }
+    if (actif !== undefined) {
+        await db.prepare(`UPDATE utilisateurs SET actif = ? WHERE id = ?`).run(actif ? 1 : 0, req.params.id);
+        if (!actif) await supprimerSessionsUtilisateur(req.params.id);
+    }
+    if (role !== undefined) {
+        await db.prepare(`UPDATE utilisateurs SET role = ? WHERE id = ?`).run(role, req.params.id);
+    }
+    res.json(await db.prepare(`SELECT id, email, nom, actif, role FROM utilisateurs WHERE id = ?`).get(req.params.id));
 });

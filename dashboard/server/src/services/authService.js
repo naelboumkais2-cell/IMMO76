@@ -44,7 +44,7 @@ export async function resoudreUtilisateurDepuisJeton(jeton) {
     if (!jeton) return null;
     const row = await db
         .prepare(
-            `SELECT u.id, u.email, u.nom
+            `SELECT u.id, u.email, u.nom, u.role
              FROM sessions s
              JOIN utilisateurs u ON u.id = s.utilisateur_id
              WHERE s.id = ? AND s.expire_le > CURRENT_TIMESTAMP AND u.actif = 1`

@@ -72,3 +72,21 @@ export function exigerCleAdmin(req, res, next) {
     }
     next();
 }
+
+// Gestion des comptes au quotidien (voir routes/auth.js, GestionComptes.jsx) : un compte connecté
+// avec le rôle 'admin' suffit — plus besoin de ressortir X-Admin-Key à chaque fois. La clé reste
+// acceptée en filet de sécurité technique (ex: aucun admin encore désigné, session cassée) —
+// si l'en-tête est présent, elle est vérifiée et prime ; sinon on retombe sur la session normale
+// avec un vrai contrôle serveur du rôle (403 explicite pour un compte 'employe', pas un simple
+// masquage côté UI qu'un appel direct à la route contournerait).
+export async function exigerAdmin(req, res, next) {
+    if (req.get('X-Admin-Key')) {
+        return exigerCleAdmin(req, res, next);
+    }
+    return exigerConnexion(req, res, () => {
+        if (req.utilisateur?.role !== 'admin') {
+            return res.status(403).json({ erreur: 'Réservé aux comptes administrateur.' });
+        }
+        next();
+    });
+}

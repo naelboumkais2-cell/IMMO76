@@ -89,6 +89,14 @@ export const api = {
             body: JSON.stringify({ email, motDePasse, nom }),
         }),
 
+    // Gestion des comptes (Réglages, réservé aux comptes admin) — session normale, pas de clé :
+    // voir exigerAdmin côté serveur, qui vérifie le rôle sur la session en l'absence de X-Admin-Key.
+    getComptes: () => request('/auth/comptes'),
+    creerCompteAdmin: (email, motDePasse, nom) =>
+        request('/auth/comptes', { method: 'POST', body: JSON.stringify({ email, motDePasse, nom }) }),
+    toggleCompteActif: (id, actif) =>
+        request(`/auth/comptes/${id}`, { method: 'PUT', body: JSON.stringify({ actif }) }),
+
     // Plafond de dépense (Neon + OpenAI)
     getDepenses: () => request('/depenses'),
     mettreAJourSeuilsDepense: (parametres) =>
