@@ -13,6 +13,49 @@ export const annoncesRouter = Router();
 // d'un dépassement réel du quota de transfert Neon.
 const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test';
 
+// Diagnostic temporaire (à retirer après livraison de la liste à l'utilisateur) — repère,
+// SANS RIEN MODIFIER, les annonces déjà publiées dont le routage ne correspondrait pas à la
+// nouvelle règle LMNP/Neuf (lecture seule sur annonces + annonce_portails + portails).
+annoncesRouter.get('/diag-routage-lmnp', exigerConnexion, async (req, res) => {
+    try {
+        const rows = await db
+            .prepare(
+                `SELECT a.id, a.ville, a.reference, a.prix,
+                        raw_data::jsonb->'law' AS law,
+                        p.nom AS portail_nom, p.login AS portail_login,
+                        ap.statut
+                 FROM annonces a
+                 JOIN annonce_portails ap ON ap.annonce_id = a.id
+                 JOIN portails p ON p.id = ap.portail_id
+                 WHERE ap.statut IN ('publiee', 'envoyee')
+                 ORDER BY a.id`
+            )
+            .all();
+
+        const parAnnonce = {};
+        for (const r of rows) {
+            (parAnnonce[r.id] ??= { id: r.id, ville: r.ville, reference: r.reference, prix: r.prix, law: r.law, portails: [] }).portails.push({
+                nom: r.portail_nom,
+                login: r.portail_login,
+                statut: r.statut,
+            });
+        }
+
+        const malRoutees = [];
+        for (const a of Object.values(parAnnonce)) {
+            const estLmnp = typeof a.law === 'number' && (a.law & 4) === 4;
+            const surLmnp = a.portails.some((p) => p.login === 'ag762215');
+            const surNeuf = a.portails.some((p) => p.login === 'ag762216');
+            if (estLmnp && surNeuf) malRoutees.push({ ...a, probleme: 'LMNP publié aussi sur Neuf' });
+            else if (!estLmnp && surLmnp) malRoutees.push({ ...a, probleme: 'Non-LMNP publié sur LMNP' });
+        }
+
+        res.json({ totalAnnoncesPubliees: Object.keys(parAnnonce).length, nbMalRoutees: malRoutees.length, malRoutees });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
