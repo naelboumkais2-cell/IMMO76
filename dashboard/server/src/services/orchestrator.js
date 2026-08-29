@@ -240,15 +240,28 @@ async function apercuCandidats(candidats) {
     }
 
     return await Promise.all(
-        candidats.map(async ({ annonce, lotBrut }) => ({
-            id: annonce.id,
-            titre: annonce.titre,
-            ville: annonce.ville,
-            prix: annonce.prix,
-            photo: lotBrut.program?.perspective?.urls?.medium_fit || lotBrut.program?.perspective?.urls?.medium || null,
-            portails: portailsParAnnonce[annonce.id] || [],
-            referenceGeneree: await genererReferenceLmnp(annonce, lotBrut),
-        }))
+        candidats.map(async ({ annonce, lotBrut }) => {
+            const referenceGeneree = await genererReferenceLmnp(annonce, lotBrut);
+            // Hypothèse INT (mandat direct agence) pas encore confirmée sur un vrai cas — voir
+            // referenceGenerator.js. Loggé explicitement à chaque occurrence pour que
+            // l'utilisateur puisse vérifier chaque premier cas avant de le considérer acquis.
+            if (referenceGeneree?.startsWith('INT-')) {
+                await log('auto_publish', {
+                    annonceId: annonce.id,
+                    succes: true,
+                    message: `Référence INT générée automatiquement (${referenceGeneree}) — hypothèse "mandat direct" non encore confirmée sur un cas réel, à vérifier manuellement.`,
+                });
+            }
+            return {
+                id: annonce.id,
+                titre: annonce.titre,
+                ville: annonce.ville,
+                prix: annonce.prix,
+                photo: lotBrut.program?.perspective?.urls?.medium_fit || lotBrut.program?.perspective?.urls?.medium || null,
+                portails: portailsParAnnonce[annonce.id] || [],
+                referenceGeneree,
+            };
+        })
     );
 }
 
