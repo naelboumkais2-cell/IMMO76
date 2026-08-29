@@ -13,6 +13,19 @@ export const annoncesRouter = Router();
 // d'un dépassement réel du quota de transfert Neon.
 const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test';
 
+// Diagnostic temporaire (à retirer après identification des codes law) — dump du raw_data
+// complet d'une annonce déjà en base, pour chercher un champ texte lisible accompagnant le champ
+// law brut (même méthode que pour program.developer.name côté promoteur).
+annoncesRouter.get('/diag-raw/:id', exigerConnexion, async (req, res) => {
+    try {
+        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(req.params.id);
+        if (!row) return res.status(404).json({ erreur: 'introuvable' });
+        res.json(JSON.parse(row.raw_data));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
