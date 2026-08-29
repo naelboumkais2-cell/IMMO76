@@ -1,15 +1,6 @@
 import { db } from '../db.js';
 import { promoteurDepuisLot } from './promoteurs.js';
-
-// Bit du champ `law` (bitmask brut Otaree, un bit par dispositif fiscal) correspondant à LMNP —
-// confirmé empiriquement (100% des lots d'une recherche filtrée uniquement sur LMNP ont
-// law === 4, ce bit n'apparaissant dans aucune autre valeur observée en base), pas une valeur
-// devinée à partir de l'ID utilisé dans le filtre de recherche.
-const BIT_LOI_LMNP = 4;
-
-function estLotLmnp(lot) {
-    return typeof lot?.law === 'number' && (lot.law & BIT_LOI_LMNP) === BIT_LOI_LMNP;
-}
+import { estLotLmnp } from './dispositifFiscal.js';
 
 function normaliserVille(ville) {
     return (ville || '').toUpperCase().replace(/\s+/g, '');

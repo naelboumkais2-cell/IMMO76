@@ -256,4 +256,35 @@ export async function initDb() {
       ['Plusimmo - La Centrale du Neuf', 'ag762216']
     );
   }
+
+  // Migration : routage par dispositif fiscal (LMNP -> portail LMNP, tout le reste -> portail
+  // Neuf), voir orchestrator.js/resolvePortailsPourAnnonce. NULL = "peu importe le dispositif"
+  // (comportement d'une règle par type_bien classique, inchangé).
+  const colonnesReglesRoutage = (await db.prepare(`SELECT column_name FROM information_schema.columns WHERE table_name = 'regles_routage'`).all()).map((c) => c.column_name);
+  if (!colonnesReglesRoutage.includes('dispositif')) {
+    await db.exec(`ALTER TABLE regles_routage ADD COLUMN dispositif TEXT`);
+  }
+
+  // Seed des 2 règles LMNP/Neuf si absentes — une vraie ligne par cas, visible/modifiable dans
+  // l'écran Réglages comme n'importe quelle autre règle de routage, pas un cas caché dans le code.
+  const nbReglesDispositif = parseInt(
+    (await pool.query(`SELECT COUNT(*) AS n FROM regles_routage WHERE dispositif IS NOT NULL`)).rows[0].n,
+    10
+  );
+  if (nbReglesDispositif === 0) {
+    const portailLmnp = (await pool.query(`SELECT id FROM portails WHERE login = 'ag762215'`)).rows[0];
+    const portailNeuf = (await pool.query(`SELECT id FROM portails WHERE login = 'ag762216'`)).rows[0];
+    if (portailLmnp) {
+      await pool.query(
+        `INSERT INTO regles_routage (type_bien, portail_id, dispositif, actif) VALUES (NULL, $1, 'lmnp', 1)`,
+        [portailLmnp.id]
+      );
+    }
+    if (portailNeuf) {
+      await pool.query(
+        `INSERT INTO regles_routage (type_bien, portail_id, dispositif, actif) VALUES (NULL, $1, 'non_lmnp', 1)`,
+        [portailNeuf.id]
+      );
+    }
+  }
 }

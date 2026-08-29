@@ -89,11 +89,14 @@ portailsRouter.get('/regles-routage', exigerConnexion, async (req, res) => {
 
 portailsRouter.post('/regles-routage', exigerConnexion, async (req, res) => {
     try {
-        const { type_bien = null, portail_id } = req.body;
+        const { type_bien = null, portail_id, dispositif = null } = req.body;
         if (!portail_id) return res.status(400).json({ erreur: 'portail_id requis' });
+        if (dispositif && !['lmnp', 'non_lmnp'].includes(dispositif)) {
+            return res.status(400).json({ erreur: "dispositif doit être 'lmnp', 'non_lmnp' ou absent" });
+        }
         const info = await db
-            .prepare(`INSERT INTO regles_routage (type_bien, portail_id, actif) VALUES (?, ?, 1) RETURNING id`)
-            .run(type_bien, portail_id);
+            .prepare(`INSERT INTO regles_routage (type_bien, portail_id, dispositif, actif) VALUES (?, ?, ?, 1) RETURNING id`)
+            .run(type_bien, portail_id, dispositif);
         res.status(201).json(await db.prepare(`SELECT * FROM regles_routage WHERE id = ?`).get(info.lastInsertRowid));
     } catch (e) {
         res.status(500).json({ erreur: e.message });

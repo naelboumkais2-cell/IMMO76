@@ -51,8 +51,8 @@ export const api = {
 
     // Règles de routage
     getReglesRoutage: () => request('/portails/regles-routage'),
-    createRegleRoutage: (type_bien, portail_id) =>
-        request('/portails/regles-routage', { method: 'POST', body: JSON.stringify({ type_bien, portail_id }) }),
+    createRegleRoutage: (type_bien, portail_id, dispositif) =>
+        request('/portails/regles-routage', { method: 'POST', body: JSON.stringify({ type_bien, portail_id, dispositif }) }),
     deleteRegleRoutage: (id) => request(`/portails/regles-routage/${id}`, { method: 'DELETE' }),
 
     // Annonces / supervision — q optionnel : recherche par id/titre/ville, sans se limiter

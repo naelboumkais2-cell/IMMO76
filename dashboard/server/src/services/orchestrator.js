@@ -17,6 +17,7 @@ import {
 import { utilisateurActuelId } from './requestContext.js';
 import { estEnPause, obtenirEtatPause } from './depenseMonitor.js';
 import { genererReferenceLmnp } from './referenceGenerator.js';
+import { estLotLmnp } from './dispositifFiscal.js';
 
 // utilisateur_id vient du contexte de requête (voir requestContext.js/index.js), jamais passé
 // explicitement ici — évite d'ajouter un paramètre utilisateurId à chaque fonction de ce
@@ -28,13 +29,31 @@ async function log(type, { annonceId = null, portailId = null, succes, message }
     ).run(type, annonceId, portailId, succes ? 1 : 0, message, utilisateurActuelId());
 }
 
+// Dispositif du lot ('lmnp' | 'non_lmnp' | null si indéterminé — raw_data absent/illisible, ou
+// mode mock qui n'a pas de champ `law`) — voir dispositifFiscal.js pour le détail du bit utilisé.
+// null : aucune règle "lmnp"/"non_lmnp" ne matchera (dispositif = NULL en SQL n'égale jamais
+// 'lmnp' ni 'non_lmnp'), donc on retombe sur le comportement de secours existant plus bas — jamais
+// un lot silencieusement non publié nulle part faute de dispositif connu.
+function dispositifPourAnnonce(annonce) {
+    try {
+        const raw = typeof annonce.raw_data === 'string' ? JSON.parse(annonce.raw_data) : annonce.raw_data;
+        if (typeof raw?.law !== 'number') return null;
+        return estLotLmnp(raw) ? 'lmnp' : 'non_lmnp';
+    } catch {
+        return null;
+    }
+}
+
 async function resolvePortailsPourAnnonce(annonce) {
+    const dispositif = dispositifPourAnnonce(annonce);
     const reglesMatch = await db
         .prepare(
             `SELECT * FROM regles_routage
-             WHERE actif = 1 AND (type_bien IS NULL OR type_bien = ?)`
+             WHERE actif = 1
+               AND (type_bien IS NULL OR type_bien = ?)
+               AND (dispositif IS NULL OR dispositif = ?)`
         )
-        .all(annonce.type_bien);
+        .all(annonce.type_bien, dispositif);
 
     if (reglesMatch.length > 0) {
         const portailIds = [...new Set(reglesMatch.map((r) => r.portail_id))];

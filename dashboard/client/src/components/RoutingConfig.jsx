@@ -25,6 +25,7 @@ export function RoutingConfig() {
     const [erreur, setErreur] = useState(null);
     const [regleType, setRegleType] = useState('');
     const [reglePortail, setReglePortail] = useState('');
+    const [regleDispositif, setRegleDispositif] = useState('');
     const [panneauRegleOuvert, setPanneauRegleOuvert] = useState(false);
 
     const refresh = useCallback(() => {
@@ -117,9 +118,10 @@ export function RoutingConfig() {
             return;
         }
         try {
-            await api.createRegleRoutage(regleType || null, Number(reglePortail));
+            await api.createRegleRoutage(regleType || null, Number(reglePortail), regleDispositif || null);
             setRegleType('');
             setReglePortail('');
+            setRegleDispositif('');
             setErreur(null);
             setPanneauRegleOuvert(false);
             refresh();
@@ -285,6 +287,7 @@ export function RoutingConfig() {
                             <thead>
                                 <tr>
                                     <th>Type de bien</th>
+                                    <th>Dispositif</th>
                                     <th>Portail</th>
                                     <th></th>
                                 </tr>
@@ -293,6 +296,7 @@ export function RoutingConfig() {
                                 {regles.map((r) => (
                                     <tr key={r.id}>
                                         <td>{r.type_bien ?? 'Tous types'}</td>
+                                        <td>{r.dispositif === 'lmnp' ? 'LMNP' : r.dispositif === 'non_lmnp' ? 'Non-LMNP' : 'Tous'}</td>
                                         <td>{r.portail_nom}</td>
                                         <td className="col-tight">
                                             <button
@@ -307,7 +311,7 @@ export function RoutingConfig() {
                                 ))}
                                 {regles.length === 0 && (
                                     <tr className="empty-row">
-                                        <td colSpan={3}>Aucune règle — toutes les annonces sont diffusées vers tous les portails actifs.</td>
+                                        <td colSpan={4}>Aucune règle — toutes les annonces sont diffusées vers tous les portails actifs.</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -338,6 +342,16 @@ export function RoutingConfig() {
                             value={regleType}
                             onChange={setRegleType}
                             options={[{ value: '', label: 'Tous types' }, ...TYPES_BIEN.map((t) => ({ value: t, label: t }))]}
+                            style={{ minWidth: 160 }}
+                        />
+                        <Select
+                            value={regleDispositif}
+                            onChange={setRegleDispositif}
+                            options={[
+                                { value: '', label: 'Tous dispositifs' },
+                                { value: 'lmnp', label: 'LMNP' },
+                                { value: 'non_lmnp', label: 'Non-LMNP' },
+                            ]}
                             style={{ minWidth: 160 }}
                         />
                         <Select
