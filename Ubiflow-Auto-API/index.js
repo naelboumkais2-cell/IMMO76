@@ -231,24 +231,57 @@ app.get('/api/diag-espaces', async (req, res) => {
     res.json({ espaces: rows.map((r) => r.espace_login), dernierConnecte: currentEspaceLogin });
 });
 
+// Lit le champ `reference` (et titre/ville) tel que réellement stocké côté Hubiflow pour une
+// annonce déjà publiée — nécessaire car la valeur peut différer du n° de lot Otaree utilisé côté
+// dashboard, avant de choisir une valeur de test fiable pour diag-recherche-hubiflow.
+app.get('/api/diag-annonce-brute/:id', async (req, res) => {
+    const { espaceLoginAttendu } = req.query;
+    if (!espaceLoginAttendu) return res.status(400).json({ success: false, error: 'espaceLoginAttendu requis' });
+    const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
+    if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
+    try {
+        const response = await axios.get(`https://espace-client-backend.ubiflow.net/annonce/${req.params.id}?lang=fr`, {
+            headers: { 'Accept': 'application/json, text/plain, */*', 'Authorization': `Bearer ${resolu.token}` },
+        });
+        const a = response.data;
+        res.json({ success: true, id: a.id, reference: a.reference, titre: a.titre, ville: a.ville || a.adresse?.ville, adresse: a.adresse });
+    } catch (error) {
+        res.status(502).json({ success: false, error: error.message, details: error.response ? error.response.data : null });
+    }
+});
+
+// paramName/value : nom du paramètre à tester (déduction du bon nom en cours, plusieurs candidats
+// possibles — q, texte, libre, query...) et sa valeur ; permet de tester plusieurs hypothèses sans
+// redéployer à chaque fois. Retourne aussi le nombre total de résultats (via _links.last) pour
+// vérifier objectivement si un filtre réel s'est appliqué (moins que le listing complet).
 app.get('/api/diag-recherche-hubiflow', async (req, res) => {
-    const { espaceLoginAttendu, search } = req.query;
-    if (!espaceLoginAttendu || !search) {
-        return res.status(400).json({ success: false, error: 'espaceLoginAttendu et search requis' });
+    const { espaceLoginAttendu, paramName, value } = req.query;
+    if (!espaceLoginAttendu || !paramName || !value) {
+        return res.status(400).json({ success: false, error: 'espaceLoginAttendu, paramName et value requis' });
     }
     const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
     if (resolu.erreur) {
         return res.status(401).json({ success: false, error: resolu.erreur });
     }
     try {
-        const url = `https://espace-client-backend.ubiflow.net/annonce?champsRechercheLibre[]=ville&champsRechercheLibre[]=titre&champsRechercheLibre[]=reference&search=${encodeURIComponent(search)}&etat=A&page=1&perPage=10&orderBy=-DC&advanced=false&lang=fr`;
+        const url = `https://espace-client-backend.ubiflow.net/annonce?champsRechercheLibre[]=ville&champsRechercheLibre[]=titre&champsRechercheLibre[]=reference&${encodeURIComponent(paramName)}=${encodeURIComponent(value)}&etat=A&page=1&perPage=10&orderBy=-DC&advanced=false&lang=fr`;
         const response = await axios.get(url, {
             headers: {
                 'Accept': 'application/json, text/plain, */*',
                 'Authorization': `Bearer ${resolu.token}`,
             },
         });
-        res.json({ success: true, url, data: response.data });
+        const items = response.data?._embedded?.annonce || [];
+        const lastHref = response.data?._links?.last?.href || '';
+        const pageMatch = lastHref.match(/[?&]page=(\d+)/);
+        const dernierePage = pageMatch ? parseInt(pageMatch[1], 10) : 1;
+        res.json({
+            success: true,
+            url,
+            nbResultatsPage: items.length,
+            totalEstime: dernierePage * 10,
+            references: items.map((a) => a.reference),
+        });
     } catch (error) {
         res.status(502).json({
             success: false,
