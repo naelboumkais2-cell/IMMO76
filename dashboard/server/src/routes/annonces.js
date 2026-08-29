@@ -13,33 +13,6 @@ export const annoncesRouter = Router();
 // d'un dépassement réel du quota de transfert Neon.
 const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test';
 
-// Action temporaire, un seul usage (à retirer après exécution) — republie sur un portail donné
-// une liste d'annonces déjà réellement publiées ailleurs (donnees_ia déjà présent), en contournant
-// la liste blanche "annonce de test uniquement" du republish manuel classique. Sert uniquement à
-// corriger les 16 annonces "LMNP second marché" dépubliées à tort du portail LMNP avant qu'on
-// élargisse la définition de LMNP — action explicitement demandée par l'utilisateur après
-// confirmation, pas un chemin réutilisable pour un usage général.
-annoncesRouter.post('/republier-force', exigerConnexion, async (req, res) => {
-    try {
-        const { ids, portailId } = req.body || {};
-        if (!Array.isArray(ids) || !portailId) return res.status(400).json({ erreur: 'ids[] et portailId requis' });
-        const resultats = [];
-        for (const id of ids) {
-            const avant = await db.prepare(`SELECT * FROM annonce_portails WHERE annonce_id = ? AND portail_id = ?`).get(id, portailId);
-            if (!avant) {
-                resultats.push({ id, erreur: 'aucune instance annonce_portails pour ce portail' });
-                continue;
-            }
-            await publierInstance(id, portailId, { autoriseAutoPublishOn: true });
-            const apres = await db.prepare(`SELECT * FROM annonce_portails WHERE annonce_id = ? AND portail_id = ?`).get(id, portailId);
-            resultats.push({ id, statut: apres.statut, ad_id_externe: apres.ad_id_externe, derniere_erreur: apres.derniere_erreur });
-        }
-        res.json({ resultats });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
