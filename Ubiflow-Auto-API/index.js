@@ -265,7 +265,9 @@ app.get('/api/diag-recherche-hubiflow', async (req, res) => {
     }
     try {
         const idAnnonceurPart = idAnnonceur ? `&idAnnonceur=${encodeURIComponent(idAnnonceur)}` : '';
-        const etatPart = `&etat=${encodeURIComponent(etat || 'A')}`;
+        // etat=__omit__ : n'envoie pas du tout le paramètre etat, pour vérifier si son absence
+        // cherche parmi tous les statuts (brouillon + actif) au lieu d'un seul.
+        const etatPart = etat === '__omit__' ? '' : `&etat=${encodeURIComponent(etat || 'A')}`;
         const annoncesActiveesPart = annoncesActivees ? `&annoncesActivees=${encodeURIComponent(annoncesActivees)}` : '';
         const url = `https://espace-client-backend.ubiflow.net/annonce?champsRechercheLibre[]=ville&champsRechercheLibre[]=titre&champsRechercheLibre[]=reference&${encodeURIComponent(paramName)}=${encodeURIComponent(value)}${idAnnonceurPart}${etatPart}${annoncesActiveesPart}&page=1&perPage=10&orderBy=-DC&advanced=false&lang=fr`;
         const response = await axios.get(url, {
