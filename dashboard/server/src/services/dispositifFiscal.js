@@ -1,10 +1,15 @@
-// Bit du champ `law` (bitmask brut Otaree, un bit par dispositif fiscal) correspondant à LMNP —
-// confirmé empiriquement (100% des lots d'une recherche filtrée uniquement sur LMNP ont
-// law === 4, ce bit n'apparaissant dans aucune autre valeur observée en base), pas une valeur
-// devinée à partir de l'ID utilisé dans le filtre de recherche. Source unique partagée entre
-// referenceGenerator.js (génération de référence) et orchestrator.js (routage par portail).
-const BIT_LOI_LMNP = 4;
+// Codes `lawsKeys` (identifiants numériques accompagnés du libellé lisible `laws` sur chaque lot
+// brut Otaree — ex. lawsKeys:[21], laws:["LMNP second marché"]) confirmés comme appartenant à la
+// famille LMNP, lus directement sur de vrais lots, aucune supposition. Décision confirmée avec
+// l'utilisateur (2026-08-30) : les 4 variantes comptent comme LMNP pour le routage vers le
+// portail LMNP et la génération de référence automatique — pas seulement le code 2 "LMNP" seul.
+const CODES_LMNP = [2, 21, 30, 32]; // LMNP, LMNP second marché, LMNP non géré, LMNP non géré réhabilité
 
+// Volontairement basé sur lawsKeys (tableau d'entiers) plutôt que sur le bitmask `law` : les
+// opérateurs bit à bit de JS tronquent tout opérande à 32 bits signés, ce qui donnait un résultat
+// faux pour le code 32 (2^32 dépasse cette plage) — découvert en élargissant la détection LMNP
+// au-delà du seul code 2. lawsKeys est un tableau simple, sans cette limite.
 export function estLotLmnp(lot) {
-    return typeof lot?.law === 'number' && (lot.law & BIT_LOI_LMNP) === BIT_LOI_LMNP;
+    if (!Array.isArray(lot?.lawsKeys)) return false;
+    return lot.lawsKeys.some((k) => CODES_LMNP.includes(k));
 }

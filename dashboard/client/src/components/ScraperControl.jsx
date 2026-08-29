@@ -51,12 +51,31 @@ const FLOOR_OPTIONS = [
     { value: 2000, label: 'Étage 2000 (?)' },
 ];
 
-// Un seul libellé confirmé pour l'instant (2 = LMNP, sondage direct : coché seul dans le
-// formulaire "Dispositif" au moment de la capture) — pas un 10e code parmi les 9 déjà présents,
-// à ajouter en plus, les 9 autres restent provisoires ("Loi X").
+// Libellés confirmés en lisant directement le champ `laws` (texte lisible accompagnant `lawsKeys`
+// sur chaque lot brut Otaree) sur de vrais lots couvrant chaque code — même méthode que pour
+// program.developer.name côté promoteur, aucun nom deviné. 3 codes de la liste d'origine restent
+// non identifiés faute de lot en base les couvrant (38, 10, 36) : laissés en "Loi X" volontairement,
+// à corriger dès qu'un lot réel permet de les confirmer.
 const LAW_OPTIONS = [
     { value: 2, label: 'LMNP' },
-    ...[41, 29, 38, 39, 11, 10, 8, 36, 21].map((v) => ({ value: v, label: `Loi ${v}` })),
+    { value: 4, label: 'Malraux' },
+    { value: 5, label: 'Monument historique' },
+    { value: 7, label: 'TVA réduite' },
+    { value: 8, label: 'Droit commun' },
+    { value: 9, label: 'PTZ' },
+    { value: 10, label: 'Loi 10' },
+    { value: 11, label: 'Déficit foncier' },
+    { value: 14, label: 'Nue propriété' },
+    { value: 17, label: 'RP neuf' },
+    { value: 21, label: 'LMNP second marché' },
+    { value: 29, label: 'BRS' },
+    { value: 30, label: 'LMNP non géré' },
+    { value: 32, label: 'LMNP non géré réhabilité' },
+    { value: 36, label: 'Loi 36' },
+    { value: 37, label: 'LLI' },
+    { value: 38, label: 'Loi 38' },
+    { value: 39, label: 'Colocation' },
+    { value: 41, label: 'Bailleur privé - Jeanbrun' },
 ];
 
 // Confirmés par sondage direct (developer id -> nom lu dans program.developer.name des
