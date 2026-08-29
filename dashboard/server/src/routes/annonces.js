@@ -26,6 +26,28 @@ annoncesRouter.get('/diag-raw/:id', exigerConnexion, async (req, res) => {
     }
 });
 
+// Diagnostic temporaire — construit la correspondance law -> lawsKeys/laws (libellés lisibles)
+// sur un échantillon d'annonces couvrant les valeurs de law déjà observées en base.
+annoncesRouter.get('/diag-laws-mapping', exigerConnexion, async (req, res) => {
+    try {
+        const rows = await db
+            .prepare(
+                `SELECT DISTINCT ON (raw_data::jsonb->'law') id, raw_data::jsonb->'law' AS law
+                 FROM annonces WHERE raw_data IS NOT NULL ORDER BY raw_data::jsonb->'law', id`
+            )
+            .all();
+        const resultat = [];
+        for (const r of rows) {
+            const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(r.id);
+            const lot = JSON.parse(row.raw_data);
+            resultat.push({ id: r.id, law: lot.law, lawsKeys: lot.lawsKeys, laws: lot.laws });
+        }
+        res.json(resultat);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
