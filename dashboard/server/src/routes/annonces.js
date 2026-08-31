@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { exigerConnexion } from '../middleware/auth.js';
 import { publierInstance, depublierInstance, synchroniserInstance } from '../services/orchestrator.js';
+import { enrichirLot, obtenirJwtFrais } from '../integrations/otareeSearchClient.js';
+import { genererDonneesIA } from '../integrations/aiGenerationClient.js';
 
 export const annoncesRouter = Router();
 
@@ -12,6 +14,43 @@ export const annoncesRouter = Router();
 // pouvait retransmettre plusieurs centaines de Mo par minute — identifié comme responsable
 // d'un dépassement réel du quota de transfert Neon.
 const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test';
+
+// Action temporaire, un seul usage (à retirer après exécution) — reproduit exactement les étapes
+// réelles d'executerTraitement (orchestrator.js) pour des annonces déjà en base n'ayant jamais
+// été générées via le vrai pipeline : enrichissement, génération IA (déclenche le prompt V2 pour
+// les lots LMNP), persistance donnees_ia/images, puis publication sur UN portail précis (jamais
+// les deux). Sert uniquement à publier pour de vrai les 3 lots de test du prompt V2 validés avec
+// l'utilisateur — pas un chemin réutilisable.
+annoncesRouter.post('/generer-et-publier-force', exigerConnexion, async (req, res) => {
+    try {
+        const { ids, portailId } = req.body || {};
+        if (!Array.isArray(ids) || !portailId) return res.status(400).json({ erreur: 'ids[] et portailId requis' });
+        const jetonPartage = await obtenirJwtFrais();
+        const resultats = [];
+        for (const id of ids) {
+            try {
+                const row = await db.prepare(`SELECT * FROM annonces WHERE id = ?`).get(id);
+                if (!row) {
+                    resultats.push({ id, erreur: 'introuvable' });
+                    continue;
+                }
+                const lotBrut = JSON.parse(row.raw_data);
+                const lotEnrichi = await enrichirLot(lotBrut, jetonPartage);
+                const { aiData, images } = await genererDonneesIA(lotEnrichi);
+                await db.prepare(`UPDATE annonces SET donnees_ia = ?, images = ? WHERE id = ?`)
+                    .run(JSON.stringify(aiData), JSON.stringify(images), id);
+                await publierInstance(id, portailId, { autoriseAutoPublishOn: true });
+                const instance = await db.prepare(`SELECT * FROM annonce_portails WHERE annonce_id = ? AND portail_id = ?`).get(id, portailId);
+                resultats.push({ id, titre: aiData.titre, texte: aiData.texte, statut: instance?.statut, ad_id_externe: instance?.ad_id_externe, derniere_erreur: instance?.derniere_erreur });
+            } catch (e) {
+                resultats.push({ id, erreur: e.message });
+            }
+        }
+        res.json({ resultats });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
 
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
