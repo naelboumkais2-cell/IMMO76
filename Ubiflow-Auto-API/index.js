@@ -413,8 +413,19 @@ function donneesFinancieresFiablesDepuisLot(lot) {
     if (!p) return null;
     const donnees = {};
     if (typeof p.price === 'number') donnees.prix = p.price;
-    if (typeof p.monthlyRent === 'number') donnees.loyerMensuel = p.monthlyRent;
-    if (p.vatRate === 0 && typeof p.profitability === 'number') donnees.rentabilite = p.profitability;
+
+    if (typeof p.price === 'number' && p.price > 0 && typeof p.monthlyRent === 'number') {
+        const rendementImplicite = (p.monthlyRent * 12 / p.price) * 100;
+        // Garde-fou anti-donnée aberrante : constaté sur un vrai lot Otaree en test (loyer mensuel
+        // sans rapport plausible avec le prix, ~50% de rendement implicite) — une erreur dans la
+        // donnée source elle-même, pas une invention de l'IA, mais jamais à transmettre comme
+        // "connue avec certitude" si le rendement qu'elle impliquerait est hors de toute
+        // plausibilité pour du LMNP géré (typiquement 2 à 7%, marge large jusqu'à 15%).
+        if (rendementImplicite >= 1 && rendementImplicite <= 15) {
+            donnees.loyerMensuel = p.monthlyRent;
+            if (p.vatRate === 0 && typeof p.profitability === 'number') donnees.rentabilite = p.profitability;
+        }
+    }
     return Object.keys(donnees).length > 0 ? donnees : null;
 }
 
