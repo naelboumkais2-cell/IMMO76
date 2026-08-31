@@ -533,6 +533,12 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
                 messages: [{ role: 'system', content: PROMPT_SYSTEME_LMNP_V2 }, { role: 'user', content: messageContent }],
                 temperature: 0.7,
                 max_tokens: 2000,
+                // Mode JSON strict d'OpenAI — sans ça, un texte long avec guillemets/apostrophes
+                // (ex: nom de résidence entre guillemets dans la description) peut produire un
+                // JSON mal formé et faire échouer JSON.parse malgré le prompt qui le demande déjà
+                // en texte. Constaté en conditions réelles (lot Le Havre) : erreur de parsing
+                // JSON alors que les 2 autres lots testés en même temps ont fonctionné.
+                response_format: { type: 'json_object' },
             }, {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
             });
