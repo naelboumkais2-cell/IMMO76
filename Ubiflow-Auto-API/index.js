@@ -4,6 +4,7 @@ const cors = require('cors');
 const axios = require('axios');
 const crypto = require('crypto');
 const { db, initDb } = require('./db.js');
+const { estLotLmnp } = require('./dispositifFiscal.js');
 
 // Filet de sécurité pour le diagnostic en hébergement distant — voir le commentaire équivalent
 // dans dashboard/server/src/index.js.
@@ -347,6 +348,198 @@ function buildTextContext(lot) {
     return text;
 }
 
+// "T3" -> 3, "Studio" -> 1 — même convention que TYPOLOGY_OPTIONS côté dashboard
+// (ScraperControl.jsx). Renvoie null si non reconnaissable, jamais une valeur devinée.
+function piecesDepuisTypologie(typology) {
+    if (!typology) return null;
+    const t = String(typology).toUpperCase();
+    if (t === 'STUDIO') return 1;
+    const m = t.match(/^T(\d+)$/);
+    return m ? parseInt(m[1], 10) : null;
+}
+
+// Champs structurés qu'on connaît déjà avec certitude depuis les données Otaree du lot — jamais
+// à faire deviner par l'IA (voir callOpenAILmnp, qui ne génère plus que titre+texte pour les lots
+// LMNP). Mêmes clés que le schéma JSON historique, pour ne rien changer à buildUbiflowPayload en
+// aval : seule la SOURCE de ces valeurs change (code plutôt qu'IA), pas leur format.
+function champsConnusDepuisLot(lot) {
+    const champs = {};
+    if (typeof lot.surface === 'number') champs.surface = String(lot.surface);
+
+    const pieces = piecesDepuisTypologie(lot.typology);
+    if (pieces !== null) champs.pieces = String(pieces);
+
+    if (typeof lot.floor === 'number') champs.etage = String(lot.floor);
+
+    if (Array.isArray(lot.annexesSurfaces)) {
+        const balcons = lot.annexesSurfaces.filter((a) => a.type === 'BALCON' || a.type === 'TERRASSE');
+        if (balcons.length > 0) {
+            champs.balcon = true;
+            champs.nb_balcons = String(balcons.length);
+            if (typeof balcons[0].surface === 'number') champs.surface_balcon = String(balcons[0].surface);
+        } else if (Array.isArray(lot.annexes)) {
+            champs.balcon = false;
+        }
+    }
+
+    if (typeof lot.parkingCount === 'number') {
+        champs.parking = lot.parkingCount > 0;
+        champs.nb_parkings = String(lot.parkingCount);
+    }
+
+    if (Array.isArray(lot.exposures) && lot.exposures.length > 0) {
+        champs.exposition = lot.exposures.join('').toLowerCase();
+    }
+
+    // energyClass est une lettre (A-G) quand elle est connue — jamais une consommation chiffrée
+    // (qu'on n'a pas) : on ne remplit dpe_conso/dpe_ges que si la lettre est réellement présente,
+    // jamais une valeur par défaut.
+    if (typeof lot.energyClass === 'string' && lot.energyClass) {
+        champs.dpe_conso = lot.energyClass;
+    }
+
+    return champs;
+}
+
+// Rentabilité Otaree (prices[0].profitability) vérifiée empiriquement (838 lots LMNP en base,
+// 2026-08-30) : correspond exactement à loyer HT x12 / prix HT UNIQUEMENT quand vatRate === 0
+// (635/635 lots, écart nul). Dès que la TVA entre en jeu (vatRate 20 ou -1/inconnu), la méthode
+// réelle d'Otaree diverge de façon incohérente (115/203 seulement) — jamais assez fiable pour
+// être affichée. Ne jamais l'utiliser hors de ce cas précis, et ne jamais recalculer nous-mêmes
+// une alternative non vérifiée : conforme à la consigne "ne jamais afficher un chiffre dont on
+// n'est pas sûr qu'il suit la bonne méthode".
+function donneesFinancieresFiablesDepuisLot(lot) {
+    const p = lot.prices?.[0];
+    if (!p) return null;
+    const donnees = {};
+    if (typeof p.price === 'number') donnees.prix = p.price;
+    if (typeof p.monthlyRent === 'number') donnees.loyerMensuel = p.monthlyRent;
+    if (p.vatRate === 0 && typeof p.profitability === 'number') donnees.rentabilite = p.profitability;
+    return Object.keys(donnees).length > 0 ? donnees : null;
+}
+
+const PROMPT_SYSTEME_LMNP_V2 = `Tu es le rédacteur immobilier de La Centrale du LMNP, spécialiste de la commercialisation de biens immobiliers destinés à l'investissement en LMNP géré en résidences de services.
+
+Les annonces sont destinées au grand public et diffusées principalement sur des portails immobiliers tels que Leboncoin et SeLoger.
+
+Les biens proposés appartiennent à cinq catégories distinctes : Résidences étudiantes, Résidences services seniors, EHPAD, Résidences de tourisme, Résidences affaires.
+
+RÈGLE ABSOLUE : NE JAMAIS INVENTER UNE INFORMATION. Ne jamais extrapoler une information absente. Ne jamais transformer une hypothèse en fait. Ne jamais compléter une information manquante en utilisant une connaissance générale supposée de la résidence, de l'exploitant ou de la ville. Lorsqu'une information est absente, incertaine ou contradictoire, privilégie son omission.
+
+=== DONNÉES RÉELLEMENT DISPONIBLES DANS CE PIPELINE (à lire avant toute chose) ===
+
+Contrairement à un dossier commercialisation complet, tu ne reçois JAMAIS ici : le bail commercial et ses annexes, des brochures ou plaquettes, des diagnostics, des documents officiels sur l'exploitant, ou des données financières détaillées (charges de copropriété, taxe foncière). Ces sources n'existent pas dans ce pipeline — n'y fais jamais référence comme si tu les avais consultées, et ne comble jamais leur absence par une supposition.
+
+Tu reçois uniquement : les données structurées du lot Otaree (JSON ci-dessous), des photos, et éventuellement un descriptif partenaire s'il existe dans ces données.
+
+IDENTITÉ DE L'EXPLOITANT — VIGILANCE PARTICULIÈRE : le champ "developer" des données Otaree est le PROMOTEUR (celui qui a construit/vendu le programme), jamais l'exploitant (le gestionnaire qui exploite au quotidien la résidence et verse le loyer). Ces deux identités sont très souvent différentes. Ne cite JAMAIS de nom d'exploitant, ni ne le déduis du nom du promoteur, sauf s'il apparaît explicitement et sans ambiguïté dans un texte descriptif fourni. En l'absence de cette information (le cas normal ici), reste générique : "un exploitant professionnel", "le gestionnaire de la résidence", sans jamais inventer de nom. Pour la même raison, le paragraphe spécifique "POURQUOI INVESTIR CHEZ CENTER PARCS ?" ne doit être inséré QUE si le nom "Center Parcs" apparaît explicitement et sans ambiguïté dans les données fournies — jamais par déduction.
+
+DONNÉES FINANCIÈRES FIABLES : quand elles te sont fournies explicitement dans un bloc "DONNÉES CONNUES AVEC CERTITUDE" du message utilisateur, utilise EXCLUSIVEMENT ces valeurs pour prix/loyer/rentabilité — ne recalcule jamais une rentabilité toi-même, et si aucune rentabilité fiable n'est fournie dans ce bloc, omets simplement la ligne correspondante dans les chiffres clés (ne jamais écrire "non communiquée").
+
+=== PRINCIPE FONDAMENTAL : ANALYSER AVANT DE RÉDIGER ===
+
+Avant de rédiger l'annonce, analyse l'intégralité des informations disponibles afin d'établir une fiche fiable du bien. Cette analyse est une étape interne, elle ne doit pas apparaître dans l'annonce finale. Identifie : la catégorie exacte de résidence, le type de logement, la surface, les annexes, le prix, le loyer, la rentabilité si fournie, les caractéristiques de la résidence, les services, l'emplacement, les points d'intérêt, les arguments commerciaux réellement différenciants. Ne cherche pas à utiliser toutes les informations disponibles — identifie les plus utiles.
+
+=== HIÉRARCHIE ET FIABILITÉ DES SOURCES ===
+
+Pour les informations contractuelles, privilégie toujours les documents contractuels (absents ici, donc omets toute affirmation contractuelle spécifique à ce bien au-delà du fonctionnement général du LMNP géré). En cas de contradiction entre plusieurs sources, utilise la plus fiable. Si le doute subsiste, n'utilise pas l'information.
+
+=== TITRE ===
+
+Titre court, attractif, concret, factuel. Doit obligatoirement comporter "LMNP géré" (tourisme/étudiant) ou "LMNP" (senior/EHPAD/affaires). Précise la catégorie quand cela améliore la compréhension (LMNP géré Tourisme, LMNP géré Étudiant, LMNP Senior, LMNP EHPAD, LMNP Affaires). Met en avant 1-2 caractéristiques réellement différenciantes du bien ou de la résidence. Ne répète pas commune/prix/surface/nombre de pièces si déjà affichés par le portail. Hiérarchie : 1) caractéristique exceptionnelle du bien/résidence, 2) emplacement attractif, 3) avantage contractuel spécifique (si documenté), 4) occupation personnelle (uniquement si explicitement documentée — jamais ici en pratique), 5) rendement si notable (>= 6,5%, et uniquement si la rentabilité fournie est fiable). Évite superlatifs non justifiés, majuscules inutiles, promesses de sécurité absolue, formulations génériques. Longueur : entre 55 et 60 caractères maximum, jamais plus.
+
+=== LONGUEUR ET STYLE DU DESCRIPTIF ===
+
+Minimum 500 caractères. Cible : environ 1500 à 2200 caractères espaces compris. Cette longueur est une cible, pas une obligation absolue — ne jamais allonger artificiellement, ne jamais produire une annonce excessivement courte si le dossier contient des informations importantes. Style : clair, professionnel, pédagogique, commercial sans excès, fluide, crédible, accessible au grand public, orienté investisseur. Utilise des listes pour les chiffres clés. Évite jargon CGP, formulations administratives, répétitions, superlatifs, slogans génériques. Facile à parcourir sur smartphone.
+
+=== STRUCTURE OBLIGATOIRE (5 BLOCS) ===
+
+BLOC 1 — COMPRENDRE IMMÉDIATEMENT LE LMNP GÉRÉ : introduction courte expliquant qu'il s'agit d'un investissement locatif en LMNP géré sous bail commercial — exploitation confiée à un gestionnaire professionnel (l'exploitant, locataire du bien), pas de gestion locative quotidienne ni de travaux courants pour le propriétaire, loyer versé selon les conditions du bail que le bien soit libre ou occupé, intérêt fiscal potentiel du statut LMNP et de l'amortissement (selon situation de l'investisseur et réglementation applicable). Explique tôt la contrainte principale : le propriétaire ne peut pas habiter librement le logement ni y loger un proche pendant l'exécution du bail commercial — formule cela de façon pédagogique, jamais agressive (jamais "INUTILE DE NOUS CONTACTER POUR Y HABITER"). Comme aucune donnée de bail n'est disponible dans ce dossier, n'affirme jamais qu'une occupation personnelle est prévue — reste sur la règle générale.
+
+BLOC 2 — LES CHIFFRES CLÉS : intertitre "LES CHIFFRES CLÉS" en majuscules sur sa propre ligne, puis une donnée par ligne au format "Libellé : valeur", en n'utilisant QUE les données fournies dans le bloc "DONNÉES CONNUES AVEC CERTITUDE" du message utilisateur (prix, loyer annuel = loyer mensuel x12, rentabilité si fournie). N'affiche jamais une ligne "charges de copropriété", "taxe foncière", "gestion locative", "travaux courants" ou toute autre donnée non explicitement fournie — omets la ligne plutôt que d'écrire "non communiqué(e)". Ne jamais indiquer durée restante du bail, date de renouvellement, fonds travaux, ou effort d'épargne mensuel.
+
+BLOC 3 — POURQUOI CETTE CATÉGORIE ? : intertitre "POURQUOI INVESTIR DANS [TYPE DE RÉSIDENCE] ?" en majuscules, 2 à 4 lignes contextualisant l'investissement selon la catégorie identifiée (utilise les statistiques de marché ci-dessous UNIQUEMENT si elles sont pertinentes pour la catégorie identifiée, jamais inventées) :
+- Résidence étudiante : plus de 3 millions d'étudiants pour 400 000 places en résidence étudiante, soit une place pour huit étudiants.
+- Résidence services seniors : 22% de la population française a plus de 65 ans aujourd'hui, près de 40% d'ici 15 ans. Une résidence services seniors n'est PAS un EHPAD — jamais de vocabulaire médicalisé si ce n'est pas le cas.
+- EHPAD : 1,6 million de personnes de plus de 85 ans aujourd'hui, près de 5 millions en 2050. Environ 92 places en EHPAD pour 1000 personnes de plus de 75 ans ; dans certaines zones, 50 à 100 demandes pour une seule place. Ne jamais présenter un EHPAD comme une résidence services seniors.
+- Résidence de tourisme : la France, première puissance touristique mondiale, plus de 100 millions de visiteurs étrangers par an (7% de la richesse nationale, 2 millions d'emplois). Si l'exploitant "Center Parcs" est explicitement identifié (jamais déduit), insère le paragraphe dédié (voir plus haut).
+- Résidence affaires : mets en avant clientèle professionnelle, centre-ville, quartier d'affaires, proximité gare/aéroport/métro/tramway UNIQUEMENT si confirmés par les données du lot.
+
+BLOC 4 — LE BIEN ET LA RÉSIDENCE : intertitre "LE BIEN ET LA RÉSIDENCE" en majuscules. Réécris dans un langage naturel (ne recopie jamais mécaniquement un descriptif partenaire). Sélectionne 3 à 6 caractéristiques réellement différenciantes parmi celles confirmées par les données (emplacement, transports, commerces, piscine/spa/sauna, qualité du bâtiment, exploitant si documenté...). Ne transforme pas en inventaire.
+
+BLOC 5 — APPEL À L'ACTION : court, en 2 lignes distinctes séparées (RDV conseiller / comparer les biens LMNP avec le chat 7j/7 de La Centrale du LMNP).
+
+=== FISCALITÉ ET SÉCURITÉ — INTERDICTIONS STRICTES ===
+
+Ne jamais affirmer : "zéro impôt", "exonération d'impôt garantie", "revenus totalement défiscalisés", "loyers nets d'impôts", "aucun impôt pendant X années", "loyers garantis", "revenus garantis", "investissement sans risque", "aucune vacance locative", "aucun risque d'impayé", "rentabilité garantie", "investissement totalement sécurisé". Préfère : "L'exploitant locataire verse au propriétaire le loyer prévu au bail commercial selon les conditions contractuelles, indépendamment de l'occupation effective du logement."
+
+=== MARCHÉ SECONDAIRE ===
+
+Ce pipeline ne diffuse que du LMNP d'occasion / marché secondaire — valorise-le comme une sécurité quand pertinent : résidence déjà construite et exploitée, historique d'exploitation existant, bail commercial déjà en place, loyer contractuel déjà connu, perception immédiate de revenus locatifs. Ne jamais affirmer automatiquement qu'un LMNP d'occasion est moins cher que le neuf sans donnée le démontrant.
+
+=== CONTRÔLE QUALITÉ AVANT DE RÉPONDRE ===
+
+Vérifie silencieusement : ai-je inventé une information ? Ai-je confondu promoteur et exploitant ? Ai-je correctement identifié la catégorie de résidence ? Ai-je évité toute confusion résidence senior / EHPAD ? Le titre fait-il 55-60 caractères et contient-il LMNP ? Les chiffres affichés viennent-ils exclusivement du bloc DONNÉES CONNUES ? Ai-je évité toute promesse fiscale ou de sécurité absolue ? Ai-je respecté la structure en 5 blocs avec intertitres en majuscules ?
+
+=== FORMAT DE SORTIE ===
+
+Réponds UNIQUEMENT avec un objet JSON strictement conforme à cette structure, sans aucun markdown ni texte autour :
+{"titre": "...", "texte": "..."}
+
+"titre" : le titre (55-60 caractères).
+"texte" : la description complète prête à publier, avec les 5 blocs, intertitres en MAJUSCULES sur leur propre ligne, une ligne vide entre chaque paragraphe et avant/après chaque intertitre, paragraphes courts (2-3 phrases max).
+
+Ne retourne rien d'autre : pas ton analyse, pas les informations écartées, pas tes raisonnements, pas de commentaire sur la qualité du dossier.`;
+
+async function callOpenAILmnp(textContext, base64Images, lot) {
+    const donneesFiables = donneesFinancieresFiablesDepuisLot(lot);
+    const residenceType = lot.program?.residenceType || null;
+
+    let blocDonneesConnues = 'DONNÉES CONNUES AVEC CERTITUDE :\n';
+    blocDonneesConnues += residenceType ? `- Catégorie de résidence (Otaree) : ${residenceType}\n` : '- Catégorie de résidence : non fournie, déduis-la du contexte disponible sans jamais confondre senior et EHPAD.\n';
+    if (donneesFiables?.prix != null) blocDonneesConnues += `- Prix : ${donneesFiables.prix} €\n`;
+    if (donneesFiables?.loyerMensuel != null) blocDonneesConnues += `- Loyer mensuel : ${donneesFiables.loyerMensuel} € (loyer annuel = x12)\n`;
+    if (donneesFiables?.rentabilite != null) {
+        blocDonneesConnues += `- Rentabilité : ${donneesFiables.rentabilite}% (déjà calculée, méthode loyer HT x12/prix HT — utilise cette valeur telle quelle, ne recalcule jamais)\n`;
+    } else {
+        blocDonneesConnues += `- Rentabilité : non disponible avec certitude — omets la ligne "Rentabilité" dans les chiffres clés.\n`;
+    }
+
+    const messageContent = [
+        { type: 'text', text: blocDonneesConnues + '\n\nDonnées structurées complètes du lot :\n\n' + (textContext || '(Aucun texte, base-toi sur les images)') },
+    ];
+    for (const img of base64Images) {
+        messageContent.push({ type: 'image_url', image_url: { url: img } });
+    }
+
+    let response;
+    for (let tentative = 1; tentative <= 3; tentative++) {
+        try {
+            response = await axios.post('https://api.openai.com/v1/chat/completions', {
+                model: 'gpt-4o',
+                messages: [{ role: 'system', content: PROMPT_SYSTEME_LMNP_V2 }, { role: 'user', content: messageContent }],
+                temperature: 0.7,
+                max_tokens: 2000,
+            }, {
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+            });
+            break;
+        } catch (e) {
+            if (e.response?.status !== 429 || tentative === 3) throw e;
+            const delaiMs = 1000 * 2 ** (tentative - 1);
+            console.log(`[callOpenAILmnp] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
+            await new Promise((r) => setTimeout(r, delaiMs));
+        }
+    }
+
+    await enregistrerUsageOpenAI(response.data.usage);
+
+    let content = response.data.choices[0].message.content;
+    content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+    const resultat = JSON.parse(content);
+    return { titre: resultat.titre, texte: resultat.texte };
+}
+
 app.post('/api/generate', async (req, res) => {
     try {
         const { lot } = req.body || {};
@@ -357,7 +550,16 @@ app.post('/api/generate', async (req, res) => {
         const villeConnue = lot.program?.address?.city?.name || null;
         const codePostalConnu = lot.program?.address?.zipCode || null;
 
-        const aiData = await callOpenAI(buildTextContext(lot), lotImages);
+        // Prompt V2 dédié pour les lots LMNP (2/21/30/32) — titre+texte seulement, le reste des
+        // champs structurés vient directement des données Otaree connues, jamais de l'IA. Tout
+        // autre dispositif (Pinel, autres lois, Neuf) garde le prompt générique existant inchangé.
+        let aiData;
+        if (estLotLmnp(lot)) {
+            const { titre, texte } = await callOpenAILmnp(buildTextContext(lot), lotImages, lot);
+            aiData = { ...champsConnusDepuisLot(lot), titre, texte };
+        } else {
+            aiData = await callOpenAI(buildTextContext(lot), lotImages);
+        }
         res.json({ success: true, aiData, images: lotImages, villeConnue, codePostalConnu });
     } catch (error) {
         let errorMsg = error.message;

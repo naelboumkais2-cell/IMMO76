@@ -13,43 +13,6 @@ export const annoncesRouter = Router();
 // d'un dépassement réel du quota de transfert Neon.
 const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test';
 
-// Diagnostic temporaire (à retirer après vérification de la méthode de calcul de la rentabilité
-// Otaree) — vérifie sur TOUS les lots LMNP en base si prices[0].profitability correspond
-// exactement à loyer HT x12 / prix HT (méthode exigée par le prompt V2), pas juste un échantillon
-// de 2-3 lots.
-annoncesRouter.get('/diag-rentabilite', exigerConnexion, async (req, res) => {
-    try {
-        const rows = await db.prepare(`SELECT id, raw_data FROM annonces WHERE raw_data IS NOT NULL`).all();
-        const resultats = [];
-        for (const r of rows) {
-            let lot;
-            try {
-                lot = JSON.parse(r.raw_data);
-            } catch {
-                continue;
-            }
-            if (!Array.isArray(lot.lawsKeys) || !lot.lawsKeys.some((k) => [2, 21, 30, 32].includes(k))) continue;
-            const p = lot.prices?.[0];
-            if (!p || p.price == null || p.monthlyRent == null || p.profitability == null) continue;
-            const calcule = (p.monthlyRent * 12 / p.price) * 100;
-            const ecart = Math.abs(calcule - p.profitability);
-            resultats.push({
-                id: r.id,
-                price: p.price,
-                monthlyRent: p.monthlyRent,
-                vatRate: p.vatRate,
-                profitabilityOtaree: p.profitability,
-                calcule: Math.round(calcule * 10000) / 10000,
-                ecart: Math.round(ecart * 10000) / 10000,
-            });
-        }
-        const nbCorrespond = resultats.filter((r) => r.ecart < 0.01).length;
-        res.json({ total: resultats.length, nbCorrespond, resultats });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
