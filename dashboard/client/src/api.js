@@ -31,6 +31,7 @@ export const api = {
     runScraper: (url) => request('/scraper/run', { method: 'POST', body: JSON.stringify({ url }) }),
     rechercherOtaree: (filters, nom, resume) =>
         request('/scraper/otaree-search', { method: 'POST', body: JSON.stringify({ filters, nom, resume }) }),
+    getRechercheStatus: () => request('/scraper/otaree-search-status'),
     compterOtaree: (filters) => request('/scraper/otaree-count', { method: 'POST', body: JSON.stringify({ filters }) }),
     rechercherVillesOtaree: (q) => request(`/scraper/otaree-locations?q=${encodeURIComponent(q)}`),
     getAutoPublishStatus: () => request('/scraper/auto-publish-status'),

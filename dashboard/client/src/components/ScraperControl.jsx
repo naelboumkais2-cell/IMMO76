@@ -177,6 +177,16 @@ export function ScraperControl() {
     const [numeroBien, setNumeroBien] = useState('');
     const [surfaceDependancesMin, setSurfaceDependancesMin] = useState('');
     const [rechercheOtareeEnCours, setRechercheOtareeEnCours] = useState(false);
+    // Suivi de la pagination Otaree + import en base (phase distincte de l'auto-publication qui
+    // suit, voir autoPublishStatus plus bas) — asynchrone côté serveur depuis l'incident du 502
+    // sur un gros volume (~200 lots) : le proxy externe Vercel coupe au bout de 120s alors que
+    // Render continue de traiter normalement (voir rechercheStatus.js, services/). pollingImportActif
+    // est volontairement distinct de rechercheOtareeEnCours : une fois le résultat consommé (écran
+    // de confirmation ouvert ou message affiché), on arrête CE polling précis sans forcément
+    // réactiver le formulaire — sinon on interrogerait le même statut terminé indéfiniment et on
+    // écraserait les choix de l'utilisateur sur l'écran de confirmation à chaque tick.
+    const [pollingImportActif, setPollingImportActif] = useState(false);
+    const [rechercheImportStatus, setRechercheImportStatus] = useState(null);
     const [comptageEnCours, setComptageEnCours] = useState(false);
     const [comptageOtaree, setComptageOtaree] = useState(null);
     const [autoPublishStatus, setAutoPublishStatus] = useState(null);
@@ -278,6 +288,81 @@ export function ScraperControl() {
         return () => clearInterval(id);
     }, [rechercheOtareeEnCours]);
 
+    // Reprise après rafraîchissement de la page : l'état de la recherche+import vit côté serveur
+    // (rechercheStatus.js), pas dans ce state React — sans ce contrôle au montage, rouvrir le
+    // dashboard pendant qu'un gros import tourne encore donnerait l'impression qu'il n'y a rien
+    // en cours, alors que le traitement continue bel et bien en arrière-plan.
+    useEffect(() => {
+        api.getRechercheStatus()
+            .then((s) => {
+                if (s.enCours) {
+                    setRechercheOtareeEnCours(true);
+                    setPollingImportActif(true);
+                }
+            })
+            .catch(() => {});
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Polling de la recherche+import (voir pollingImportActif, distinct de rechercheOtareeEnCours
+    // — s'arrête dès que le résultat est consommé, voir l'effet suivant).
+    useEffect(() => {
+        if (!pollingImportActif) return;
+        const poll = () => api.getRechercheStatus().then(setRechercheImportStatus).catch(() => {});
+        poll();
+        const id = setInterval(poll, 2000);
+        return () => clearInterval(id);
+    }, [pollingImportActif]);
+
+    // Traite le résultat une seule fois dès qu'il est disponible (recherche+import terminés côté
+    // serveur, avec ou sans erreur) — reprend exactement la logique qui s'exécutait avant en
+    // ligne après le await synchrone de l'ancienne route. Coupe le polling immédiatement pour ne
+    // pas re-déclencher ce traitement à chaque tick suivant (voir commentaire sur pollingImportActif).
+    useEffect(() => {
+        if (!rechercheImportStatus || rechercheImportStatus.enCours) return;
+        setPollingImportActif(false);
+
+        if (rechercheImportStatus.erreur) {
+            setErreurOtaree(rechercheImportStatus.erreur);
+            setRechercheOtareeEnCours(false);
+            return;
+        }
+        const result = rechercheImportStatus.resultat;
+        if (!result) return; // état initial (aucune recherche encore lancée) — rien à traiter
+
+        if (result.autoPublish?.enAttente) {
+            const lots = result.autoPublish.candidatsApercu || [];
+            const portailsDisponibles = result.autoPublish.portailsDisponibles || [];
+            setConfirmationEnAttente({
+                nbCandidats: result.autoPublish.nbCandidats,
+                lots,
+                portailsDisponibles,
+                resultBase: result,
+            });
+            setLotsSelectionnes(new Set(lots.map((l) => l.id)));
+            setReferencesEditees(new Map(lots.map((l) => [l.id, l.referenceGeneree || ''])));
+            setDoublonsTrouves(new Map());
+            setErreurDoublons(null);
+            const portailsResolus = new Set(lots.flatMap((l) => (l.portails || []).map((p) => p.id)));
+            setPortailsChoix(
+                new Map(
+                    portailsDisponibles.map((p) => [
+                        p.id,
+                        { publier: portailsResolus.has(p.id), mode: p.mode_publication_defaut },
+                    ])
+                )
+            );
+            return;
+        }
+        setResultatOtaree({
+            message: construireMessageResultat(result),
+            tronque: !!result.tronque,
+            annule: !!result.autoPublish?.annule,
+        });
+        setRechercheOtareeEnCours(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rechercheImportStatus]);
+
     // Partagé entre le comptage rapide et la vraie recherche — même filtres, une seule source.
     function construireFiltres() {
         const where = [{ label: villeSelectionnee.name, key: villeSelectionnee.code, value: villeSelectionnee.code }];
@@ -366,52 +451,16 @@ export function ScraperControl() {
         const resume = construireResumeFiltres({ villeSelectionnee, maxPrice, typologie, nature, statut, loi, promoteur });
 
         setRechercheOtareeEnCours(true);
-        // Un seul run "en attente de confirmation" possible côté serveur à la fois — tant que
-        // celui-ci n'est pas confirmé/annulé, le formulaire doit rester bloqué (sinon relancer
-        // une 2e recherche écraserait silencieusement l'attente en cours). D'où le flag local :
-        // le `finally` ne réactive le formulaire QUE si on ne vient pas de créer une attente.
-        let laisseEnAttente = false;
         try {
-            const result = await api.rechercherOtaree(filters, nomRecherche.trim(), resume);
-            if (result.autoPublish?.enAttente) {
-                // Rien n'a été envoyé à Hubiflow — le récapitulatif attend une confirmation
-                // explicite (voir onConfirmerEnvoi/onAnnulerEnvoiEnAttente).
-                laisseEnAttente = true;
-                const lots = result.autoPublish.candidatsApercu || [];
-                const portailsDisponibles = result.autoPublish.portailsDisponibles || [];
-                setConfirmationEnAttente({
-                    nbCandidats: result.autoPublish.nbCandidats,
-                    lots,
-                    portailsDisponibles,
-                    resultBase: result,
-                });
-                setLotsSelectionnes(new Set(lots.map((l) => l.id))); // tous cochés par défaut
-                setReferencesEditees(new Map(lots.map((l) => [l.id, l.referenceGeneree || ''])));
-                setDoublonsTrouves(new Map());
-                setErreurDoublons(null);
-                // Pré-coché = union des portails que les règles de routage ont résolus pour ces
-                // candidats ; mode pré-rempli avec le mode par défaut du portail. Entièrement
-                // modifiable ensuite (voir onTogglePortailChoix/onPortailModeChange).
-                const portailsResolus = new Set(lots.flatMap((l) => (l.portails || []).map((p) => p.id)));
-                setPortailsChoix(
-                    new Map(
-                        portailsDisponibles.map((p) => [
-                            p.id,
-                            { publier: portailsResolus.has(p.id), mode: p.mode_publication_defaut },
-                        ])
-                    )
-                );
-                return;
-            }
-            setResultatOtaree({
-                message: construireMessageResultat(result),
-                tronque: !!result.tronque,
-                annule: !!result.autoPublish?.annule,
-            });
+            // Ne renvoie plus le résultat directement : la recherche+import tourne en arrière-plan
+            // côté serveur (voir rechercheStatus.js — évite le timeout de 120s du proxy Vercel sur
+            // un gros volume). Le polling démarré ci-dessous (voir pollingImportActif) prend le
+            // relais pour suivre la progression et traiter le résultat une fois terminé.
+            await api.rechercherOtaree(filters, nomRecherche.trim(), resume);
+            setPollingImportActif(true);
         } catch (err) {
             setErreurOtaree(err.message);
-        } finally {
-            if (!laisseEnAttente) setRechercheOtareeEnCours(false);
+            setRechercheOtareeEnCours(false);
         }
     }
 
@@ -533,6 +582,21 @@ export function ScraperControl() {
 
     return (
         <section className="panel">
+            {/* Recherche + import Otaree en cours (phase asynchrone, voir rechercheStatus.js) —
+                pas cliquable (pas de panneau plein écran dédié pour cette phase), juste
+                informatif : évite de laisser croire que rien ne se passe pendant qu'un gros
+                volume de lots est importé en arrière-plan. */}
+            {rechercheOtareeEnCours && pollingImportActif && (
+                <div className="progress-banner" style={{ margin: 'var(--space-6)' }}>
+                    <span>
+                        Recherche et import Otaree en cours
+                        {rechercheImportStatus?.nbTrouves
+                            ? ` : ${rechercheImportStatus.nbImportes}/${rechercheImportStatus.nbTrouves} lot(s) importé(s)`
+                            : '…'}
+                    </span>
+                </div>
+            )}
+
             {/* Bandeau de repli de la progression — visible quelle que soit la vue (accueil ou
                 filtres), pour ne jamais perdre la visibilité d'un run réellement en cours. */}
             {autoPublishStatus?.enCours && !panneauProgressionOuvert && (

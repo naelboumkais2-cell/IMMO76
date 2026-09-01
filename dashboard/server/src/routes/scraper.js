@@ -11,6 +11,14 @@ import {
 } from '../services/orchestrator.js';
 import { getEtatAutoPublish, demanderAnnulation } from '../services/autoPublishStatus.js';
 import { verifierDoublonsHubiflow } from '../services/doublonsChecker.js';
+import {
+    demarrerRecherche,
+    mettreAJourProgression,
+    terminerRecherche,
+    echouerRecherche,
+    getEtatRecherche,
+} from '../services/rechercheStatus.js';
+import { executerAvecUtilisateur, utilisateurActuelId } from '../services/requestContext.js';
 import { sauvegarderRefreshToken, getOtareeTokenState } from '../integrations/otareeTokenStore.js';
 import {
     rechercherLotsOtaree,
@@ -154,24 +162,50 @@ scraperRouter.post('/otaree-count', exigerConnexion, async (req, res) => {
     }
 });
 
+// Asynchrone depuis l'incident du 502 sur un gros volume (~200 lots à Toulouse) : la pagination
+// Otaree + l'import séquentiel en base peuvent dépasser la limite de 120s du proxy externe Vercel
+// (dashboard/vercel.json), qui renvoie alors une erreur au navigateur alors que Render continue
+// de traiter normalement — voir rechercheStatus.js. La route répond donc immédiatement avec
+// enCours:true, le traitement réel continue après coup ; le dashboard suit/retrouve la
+// progression par polling sur GET /otaree-search-status, même principe que l'auto-publication
+// (voir autoPublishStatus.js) — y compris après un rafraîchissement de page, l'état vit côté
+// serveur, pas dans le state React.
 scraperRouter.post('/otaree-search', exigerConnexion, async (req, res) => {
-    try {
-        const { filters, nom, resume } = req.body || {};
-        if (!filters || typeof filters !== 'object') {
-            return res.status(400).json({ erreur: 'filters requis' });
-        }
-
-        const { lots, tronque } = await rechercherLotsOtaree(filters);
-        const url = construireUrlRechercheOtaree(filters);
-        const { annonces, ...result } = await importerLotsOtaree(url, lots, nom?.trim() || null, resume?.trim() || null);
-        const autoPublish = await autoGenererEtPublier(annonces, result.rechercheId);
-        res.json({ ...result, tronque, autoPublish });
-    } catch (e) {
-        if (e.code === 'NO_CREDENTIALS' || e.code === 'REFRESH_FAILED') {
-            return res.status(401).json({ erreur: e.message });
-        }
-        res.status(500).json({ erreur: e.message });
+    const { filters, nom, resume } = req.body || {};
+    if (!filters || typeof filters !== 'object') {
+        return res.status(400).json({ erreur: 'filters requis' });
     }
+    if (getEtatRecherche().enCours) {
+        return res.status(409).json({ erreur: 'Une recherche est déjà en cours — attends sa fin avant d\'en lancer une autre.' });
+    }
+
+    demarrerRecherche(nom?.trim() || null);
+    res.json({ enCours: true });
+
+    // Utilisateur courant capturé avant le retour de la requête HTTP (le contexte de requête
+    // d'origine, voir requestContext.js, ne survit pas au-delà — le traitement continue dans une
+    // tâche détachée) pour que log()/logs_api gardent la bonne attribution malgré l'exécution en
+    // arrière-plan.
+    const utilisateurId = utilisateurActuelId();
+    executerAvecUtilisateur(utilisateurId, async () => {
+        try {
+            const { lots, tronque } = await rechercherLotsOtaree(filters);
+            mettreAJourProgression(lots.length, 0);
+            const url = construireUrlRechercheOtaree(filters);
+            const { annonces, ...result } = await importerLotsOtaree(
+                url, lots, nom?.trim() || null, resume?.trim() || null,
+                (fait, total) => mettreAJourProgression(total, fait)
+            );
+            const autoPublish = await autoGenererEtPublier(annonces, result.rechercheId);
+            terminerRecherche({ ...result, tronque, autoPublish });
+        } catch (e) {
+            echouerRecherche(e.message);
+        }
+    });
+});
+
+scraperRouter.get('/otaree-search-status', exigerConnexion, (req, res) => {
+    res.json(getEtatRecherche());
 });
 
 scraperRouter.post('/auto-publish-confirm', exigerConnexion, async (req, res) => {

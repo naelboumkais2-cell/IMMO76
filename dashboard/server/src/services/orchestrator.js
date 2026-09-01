@@ -183,7 +183,7 @@ function mapLotOtareeVersAnnonce(lot) {
     };
 }
 
-export async function importerLotsOtaree(url, lotsBruts, nom, resume) {
+export async function importerLotsOtaree(url, lotsBruts, nom, resume, onProgress = () => {}) {
     const recherche = await upsertRecherche(url, nom, resume);
 
     const insertAnnonce = db.prepare(
@@ -214,6 +214,7 @@ export async function importerLotsOtaree(url, lotsBruts, nom, resume) {
             await insertInstance.run(row.id, portail.id, portail.mode_publication_defaut);
         }
         annoncesTraitees.push({ annonce: row, lotBrut, estNouvelle });
+        onProgress(annoncesTraitees.length, lotsBruts.length);
     }
 
     await db.prepare(
