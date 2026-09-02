@@ -510,7 +510,7 @@ function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, esp
         localText: aiData.texte || "Description à rédiger",
         texte: aiData.texte || "Description à rédiger",
         prix: parseInt(aiData.prix) || 0,
-        surface_habitable: (parseInt(aiData.surface) / 10).toString() || "0",
+        surface_habitable: (parseInt(aiData.surface) || 0).toString(),
         nb_pieces_logement: parseInt(aiData.pieces) || 1,
         // Priorité à la donnée structurée Otaree (donneesConnues), fiable à 100% quand elle existe.
         // Sur les lots avec beaucoup de documents, l'IA peut se tromper de ville en essayant de la

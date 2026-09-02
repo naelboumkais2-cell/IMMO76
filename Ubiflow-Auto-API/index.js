@@ -727,7 +727,7 @@ function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, esp
         // sur aiData.prix uniquement si le prix connu est vraiment absent (ne devrait pas
         // arriver en usage normal).
         prix: donneesConnues.prix != null ? Math.round(Number(donneesConnues.prix)) : (parseInt(aiData.prix) || 0),
-        surface_habitable: (parseInt(aiData.surface) / 10).toString() || "0",
+        surface_habitable: (parseInt(aiData.surface) || 0).toString(),
         nb_pieces_logement: parseInt(aiData.pieces) || 1,
         code_postal_reel: donneesConnues.codePostal ? String(donneesConnues.codePostal) : (aiData.code_postal ? String(aiData.code_postal) : "76000"),
         ville_reelle: donneesConnues.ville ? String(donneesConnues.ville) : (aiData.ville ? String(aiData.ville) : "Rouen"),
