@@ -223,6 +223,24 @@ app.get('/api/annonce/:id/etat', async (req, res) => {
     res.status(result.success ? 200 : 502).json(result);
 });
 
+// TEMPORAIRE — diagnostic ponctuel : vérifier le champ surface_habitable réel sur Hubiflow
+// après le fix de la division par 10 (buildUbiflowPayload). À retirer après vérification.
+app.get('/api/diag-annonce-surface/:id', async (req, res) => {
+    const { espaceLoginAttendu } = req.query;
+    if (!espaceLoginAttendu) return res.status(400).json({ success: false, error: 'espaceLoginAttendu requis' });
+    const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
+    if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
+    try {
+        const response = await axios.get(
+            `https://espace-client-backend.ubiflow.net/annonce/${parseInt(req.params.id, 10)}?lang=fr`,
+            { headers: { 'Accept': 'application/json, text/plain, */*', 'Authorization': `Bearer ${resolu.token}` } }
+        );
+        res.json({ success: true, surface_habitable: response.data.surface_habitable, titre: response.data.titre });
+    } catch (error) {
+        res.status(502).json({ success: false, error: error.message });
+    }
+});
+
 // Recherche libre Hubiflow — sert au dédup "avertissement" avant publication (dashboard/,
 // bouton explicite "Vérifier les doublons", jamais automatique). Deux appels (etat=A actif +
 // etat=B brouillon) car `etat` est obligatoire côté Hubiflow et ne couvre qu'un seul statut à la
