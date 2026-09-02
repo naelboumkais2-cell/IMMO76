@@ -211,6 +211,12 @@ export function ScraperControl() {
     // (mandat direct, promoteur inconnu...). Toujours corrigible à la main : filet de sécurité en
     // cas de mauvaise classification, voir Map lotId -> string.
     const [referencesEditees, setReferencesEditees] = useState(() => new Map());
+    // Sélection manuelle de photos par lot (Map lotId -> { premiere: name|null, exclues: [name...] })
+    // — repérée sur le panneau détail (voir onOuvrirLotDetail/lotDetail plus bas), pour corriger le
+    // cas où la 1ère photo affichée sur Hubiflow n'est pas une vraie photo du bien (ex. portrait
+    // d'agent mélangé dans les photos Otaree, sans aucun signal fiable pour le détecter tout seul —
+    // voir échange avec l'utilisateur). Vide par défaut = comportement inchangé (tri existant).
+    const [imagesEditees, setImagesEditees] = useState(() => new Map());
     // Doublons Hubiflow potentiels par lot (Map lotId -> [{titre, prix, portailNom, lien}]) —
     // uniquement à la demande (bouton "Vérifier les doublons"), jamais automatique : sur un run
     // de 40-80+ lots, lancer ça systématiquement à l'ouverture ferait 2 appels Hubiflow par lot
@@ -347,6 +353,7 @@ export function ScraperControl() {
             });
             setLotsSelectionnes(new Set(lots.map((l) => l.id)));
             setReferencesEditees(new Map(lots.map((l) => [l.id, l.referenceGeneree || ''])));
+            setImagesEditees(new Map());
             setDoublonsTrouves(new Map());
             setErreurDoublons(null);
             const portailsResolus = new Set(lots.flatMap((l) => (l.portails || []).map((p) => p.id)));
@@ -474,6 +481,33 @@ export function ScraperControl() {
         setReferencesEditees((prev) => new Map(prev).set(id, value));
     }
 
+    // Sélection de photos par lot (voir imagesEditees plus haut) — mettre une photo en premier
+    // annule son exclusion si elle l'était (contradictoire sinon) ; exclure la photo actuellement
+    // "première" annule ce statut (elle ne peut pas être en tête si elle n'est pas envoyée).
+    function onPhotoMettrePremiere(lotId, nom) {
+        if (!nom) return;
+        setImagesEditees((prev) => {
+            const next = new Map(prev);
+            const actuel = next.get(lotId) || { premiere: null, exclues: [] };
+            next.set(lotId, { premiere: nom, exclues: actuel.exclues.filter((n) => n !== nom) });
+            return next;
+        });
+    }
+
+    function onPhotoToggleExclue(lotId, nom) {
+        if (!nom) return;
+        setImagesEditees((prev) => {
+            const next = new Map(prev);
+            const actuel = next.get(lotId) || { premiere: null, exclues: [] };
+            const dejaExclue = actuel.exclues.includes(nom);
+            next.set(lotId, {
+                premiere: !dejaExclue && actuel.premiere === nom ? null : actuel.premiere,
+                exclues: dejaExclue ? actuel.exclues.filter((n) => n !== nom) : [...actuel.exclues, nom],
+            });
+            return next;
+        });
+    }
+
     function onToggleLotSelectionne(id) {
         setLotsSelectionnes((prev) => {
             const next = new Set(prev);
@@ -552,7 +586,15 @@ export function ScraperControl() {
             const referencesAEnvoyer = Object.fromEntries(
                 [...lotsSelectionnes].map((id) => [id, referencesEditees.get(id) || ''])
             );
-            await api.confirmerAutoPublish([...lotsSelectionnes], portailsChoisis, referencesAEnvoyer);
+            // N'envoie que les lots où l'utilisateur a réellement touché aux photos — un lot
+            // absent de cet objet suit exactement le comportement par défaut (aucune régression
+            // pour tout ce qui n'a pas été modifié sur l'écran de confirmation).
+            const imagesAEnvoyer = Object.fromEntries(
+                [...lotsSelectionnes]
+                    .map((id) => [id, imagesEditees.get(id)])
+                    .filter(([, sel]) => sel && (sel.premiere || sel.exclues.length > 0))
+            );
+            await api.confirmerAutoPublish([...lotsSelectionnes], portailsChoisis, referencesAEnvoyer, imagesAEnvoyer);
             // Ne renvoie plus le résultat final directement (voir orchestrator.js,
             // confirmerRunEnAttente) : le traitement réel continue en arrière-plan et peut
             // dépasser largement les 25-30 min. Le polling autoPublishStatus déjà en place
@@ -1014,11 +1056,45 @@ export function ScraperControl() {
                             {lotDetail.ville || '—'} · {lotDetail.prix ? `${lotDetail.prix.toLocaleString('fr-FR')} €` : '—'}
                         </p>
                         {lotDetail.images.length > 0 ? (
-                            <div className="lot-detail-gallery">
-                                {lotDetail.images.map((src, i) => (
-                                    <img key={i} src={src} alt="" className="lot-detail-photo" />
-                                ))}
-                            </div>
+                            <>
+                                <p className="hint">
+                                    Corrige ici si une photo n'est pas une vraie photo du bien (ex. portrait
+                                    d'agent mélangé aux photos Otaree) — aucune détection automatique fiable
+                                    n'existe, à vérifier au cas par cas.
+                                </p>
+                                <div className="lot-detail-gallery">
+                                    {lotDetail.images.map((img, i) => {
+                                        const selection = imagesEditees.get(lotDetail.id) || { premiere: null, exclues: [] };
+                                        const estPremiere = !!img.name && selection.premiere === img.name;
+                                        const estExclue = !!img.name && selection.exclues.includes(img.name);
+                                        return (
+                                            <div key={i} className={`lot-detail-photo-wrap${estExclue ? ' lot-detail-photo-exclue' : ''}`}>
+                                                <img src={img.url} alt="" className="lot-detail-photo" />
+                                                {estPremiere && <span className="badge badge-publiee lot-detail-photo-badge">1ère position</span>}
+                                                {img.name && (
+                                                    <div className="lot-detail-photo-actions">
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-secondary btn-sm"
+                                                            disabled={estExclue || estPremiere}
+                                                            onClick={() => onPhotoMettrePremiere(lotDetail.id, img.name)}
+                                                        >
+                                                            Mettre en 1ère position
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className={`btn btn-sm ${estExclue ? 'btn-secondary' : 'btn-ghost-danger'}`}
+                                                            onClick={() => onPhotoToggleExclue(lotDetail.id, img.name)}
+                                                        >
+                                                            {estExclue ? 'Inclure' : 'Exclure'}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
                         ) : (
                             <div className="confirmation-lot-photo confirmation-lot-photo-vide lot-detail-photo-vide">
                                 <IconRadar width={28} height={28} />

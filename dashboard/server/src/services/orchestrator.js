@@ -371,9 +371,9 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
             const jetonPartage = await obtenirJwtFrais();
 
             const resultats = await Promise.allSettled(
-                groupe.map(async ({ lotBrut }) => {
+                groupe.map(async ({ lotBrut, imagesSelection }) => {
                     const lotEnrichi = await enrichirLot(lotBrut, jetonPartage);
-                    return genererDonneesIA(lotEnrichi);
+                    return genererDonneesIA(lotEnrichi, imagesSelection);
                 })
             );
 
@@ -469,13 +469,22 @@ export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null)
     return await executerTraitement(candidats, mode, rechercheId);
 }
 
-export async function confirmerRunEnAttente(idsSelectionnes = null, portailsChoisis = null, referencesEditees = null) {
+export async function confirmerRunEnAttente(idsSelectionnes = null, portailsChoisis = null, referencesEditees = null, imagesEditees = null) {
     const attente = recupererEtViderEnAttente();
     if (!attente) return { success: false, error: 'Aucun run en attente de confirmation.' };
 
-    const candidats = idsSelectionnes
+    const candidatsFiltres = idsSelectionnes
         ? attente.candidats.filter(({ annonce }) => idsSelectionnes.includes(annonce.id))
         : attente.candidats;
+
+    // Sélection manuelle de photos (mettre en premier/exclure, voir ScraperControl.jsx) —
+    // attachée en mémoire à chaque candidat, même durée de vie que le reste du run (pas de
+    // colonne DB : comme lotBrut, ne survit pas à un redémarrage serveur, mais le run entier ne
+    // le fait déjà pas non plus). Lue par executerTraitement juste avant genererDonneesIA.
+    const candidats =
+        imagesEditees && typeof imagesEditees === 'object'
+            ? candidatsFiltres.map((c) => ({ ...c, imagesSelection: imagesEditees[c.annonce.id] || null }))
+            : candidatsFiltres;
 
     if (idsSelectionnes && candidats.length < attente.candidats.length) {
         await log('auto_publish', {
@@ -541,9 +550,16 @@ export async function detailLotEnAttente(annonceId) {
 
     const lotEnrichi = await enrichirLot(structuredClone(candidat.lotBrut));
 
+    // name conservé (en plus de l'url) : c'est le seul identifiant à peu près stable pour
+    // faire le lien avec la sélection manuelle de photos (mettre en premier/exclure, voir
+    // ScraperControl.jsx) au moment où executerTraitement refera son propre enrichirLot, plus
+    // tard — deux appels Otaree indépendants, jamais le même objet. Documents non-image (plans
+    // PDF...) exclus ici aussi, comme downloadOtareeImages le fera à la génération : inutile de
+    // proposer à l'utilisateur de "mettre en premier" un PDF.
     const images = (lotEnrichi.images || [])
-        .map((img) => img.urls?.medium_fit || img.urls?.medium || img.urls?.large)
-        .filter(Boolean);
+        .filter((img) => !img.mimeType || img.mimeType.startsWith('image/'))
+        .map((img) => ({ name: img.name || null, url: img.urls?.medium_fit || img.urls?.medium || img.urls?.large }))
+        .filter((img) => img.url);
 
     return {
         success: true,

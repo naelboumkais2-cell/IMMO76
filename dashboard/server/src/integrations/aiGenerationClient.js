@@ -4,11 +4,11 @@
 // une librairie importable, on réutilise donc son endpoint plutôt que de dupliquer le prompt IA.
 const SERVER_URL = process.env.UBIFLOW_AUTO_API_URL || 'http://localhost:4000';
 
-export async function genererDonneesIA(lotEnrichi) {
+export async function genererDonneesIA(lotEnrichi, imagesSelection = null) {
     const res = await fetch(`${SERVER_URL}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lot: lotEnrichi }),
+        body: JSON.stringify({ lot: lotEnrichi, imagesSelection }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) {

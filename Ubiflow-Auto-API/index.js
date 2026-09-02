@@ -291,24 +291,41 @@ app.post('/api/publish-payload', async (req, res) => {
     res.status(statusCode).json(body);
 });
 
-async function downloadOtareeImages(lot) {
+async function downloadOtareeImages(lot, imagesSelection) {
     const images = Array.isArray(lot.images) ? lot.images : [];
     if (images.length === 0) return [];
 
-    const sorted = [...images].sort((a, b) => {
-        const an = (a.name || '').toLowerCase();
-        const bn = (b.name || '').toLowerCase();
-        const aExt = an.includes('perspective') || an.includes('exterieur');
-        const bExt = bn.includes('perspective') || bn.includes('exterieur');
-        if (aExt && !bExt) return -1;
-        if (!aExt && bExt) return 1;
-        return an.localeCompare(bn);
-    });
+    // Sélection manuelle faite sur l'écran de confirmation (voir ScraperControl.jsx) — par
+    // `name`, seul identifiant à peu près stable entre l'aperçu (/lot-detail, un premier
+    // enrichirLot) et cet appel (un second enrichirLot, indépendant, refait ici). Si le nom
+    // choisi n'existe plus dans ce second fetch, silencieusement ignoré : retombe sur le tri
+    // par défaut plutôt que de planter la génération pour ça.
+    const exclues = new Set((imagesSelection?.exclues || []).map((n) => (n || '').toLowerCase()));
+    const premiere = (imagesSelection?.premiere || '').toLowerCase() || null;
+
+    const sorted = [...images]
+        .filter((img) => !exclues.has((img.name || '').toLowerCase()))
+        .sort((a, b) => {
+            const an = (a.name || '').toLowerCase();
+            const bn = (b.name || '').toLowerCase();
+            if (premiere) {
+                if (an === premiere && bn !== premiere) return -1;
+                if (bn === premiere && an !== premiere) return 1;
+            }
+            const aExt = an.includes('perspective') || an.includes('exterieur');
+            const bExt = bn.includes('perspective') || bn.includes('exterieur');
+            if (aExt && !bExt) return -1;
+            if (!aExt && bExt) return 1;
+            return an.localeCompare(bn);
+        });
 
     const result = [];
-    const seenHashes = new Set(); 
+    const seenHashes = new Set();
     for (const img of sorted) {
         if (result.length >= 20) break;
+        // Otaree mélange parfois des documents (plans PDF...) dans le même tableau que les photos ;
+        // mimeType est fiable pour les exclure (contrairement au content-type CloudFront de l'URL, lui erroné).
+        if (img.mimeType && !img.mimeType.startsWith('image/')) continue;
         const url = img.urls && (img.urls.large || img.urls.medium || img.urls.medium_fit || img.urls.small);
         if (!url) continue;
         let buf = null;
@@ -563,10 +580,10 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
 
 app.post('/api/generate', async (req, res) => {
     try {
-        const { lot } = req.body || {};
+        const { lot, imagesSelection } = req.body || {};
         if (!lot || typeof lot !== 'object') return res.status(400).json({ success: false, error: 'lot requis' });
 
-        const lotImageData = await downloadOtareeImages(lot);
+        const lotImageData = await downloadOtareeImages(lot, imagesSelection);
         const lotImages = lotImageData.map(img => img.data);
         const villeConnue = lot.program?.address?.city?.name || null;
         const codePostalConnu = lot.program?.address?.zipCode || null;

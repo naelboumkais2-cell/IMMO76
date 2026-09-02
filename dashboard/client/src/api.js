@@ -36,8 +36,8 @@ export const api = {
     rechercherVillesOtaree: (q) => request(`/scraper/otaree-locations?q=${encodeURIComponent(q)}`),
     getAutoPublishStatus: () => request('/scraper/auto-publish-status'),
     annulerAutoPublish: () => request('/scraper/auto-publish-cancel', { method: 'POST' }),
-    confirmerAutoPublish: (idsSelectionnes, portailsChoisis, referencesEditees) =>
-        request('/scraper/auto-publish-confirm', { method: 'POST', body: JSON.stringify({ idsSelectionnes, portailsChoisis, referencesEditees }) }),
+    confirmerAutoPublish: (idsSelectionnes, portailsChoisis, referencesEditees, imagesEditees) =>
+        request('/scraper/auto-publish-confirm', { method: 'POST', body: JSON.stringify({ idsSelectionnes, portailsChoisis, referencesEditees, imagesEditees }) }),
     annulerAutoPublishEnAttente: () => request('/scraper/auto-publish-discard-pending', { method: 'POST' }),
     getLotDetail: (annonceId) => request('/scraper/lot-detail', { method: 'POST', body: JSON.stringify({ annonceId }) }),
     verifierDoublons: (ids, portailsChoisis) =>

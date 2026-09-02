@@ -660,25 +660,42 @@ function buildTextContext(lot) {
 
 // Télécharge les images d'un lot depuis les URLs Otaree (champ "images" du JSON) et les convertit en base64.
 // Retourne un tableau [{ name, data }] où data est un data-URI utilisable directement par Ubiflow.
-async function downloadOtareeImages(lot) {
+async function downloadOtareeImages(lot, imagesSelection) {
     const images = Array.isArray(lot.images) ? lot.images : [];
     if (images.length === 0) return [];
 
+    // Sélection manuelle faite sur l'écran de confirmation (voir ScraperControl.jsx) — par
+    // `name`, seul identifiant à peu près stable entre l'aperçu (/lot-detail, un premier
+    // enrichirLot) et cet appel (un second enrichirLot, indépendant, refait ici). Si le nom
+    // choisi n'existe plus dans ce second fetch, silencieusement ignoré : retombe sur le tri
+    // par défaut plutôt que de planter la génération pour ça.
+    const exclues = new Set((imagesSelection?.exclues || []).map((n) => (n || '').toLowerCase()));
+    const premiere = (imagesSelection?.premiere || '').toLowerCase() || null;
+
     // Trier : perspectives (extérieures) en premier, comme pour les fichiers locaux
-    const sorted = [...images].sort((a, b) => {
-        const an = (a.name || '').toLowerCase();
-        const bn = (b.name || '').toLowerCase();
-        const aExt = an.includes('perspective') || an.includes('exterieur');
-        const bExt = bn.includes('perspective') || bn.includes('exterieur');
-        if (aExt && !bExt) return -1;
-        if (!aExt && bExt) return 1;
-        return an.localeCompare(bn);
-    });
+    const sorted = [...images]
+        .filter((img) => !exclues.has((img.name || '').toLowerCase()))
+        .sort((a, b) => {
+            const an = (a.name || '').toLowerCase();
+            const bn = (b.name || '').toLowerCase();
+            if (premiere) {
+                if (an === premiere && bn !== premiere) return -1;
+                if (bn === premiere && an !== premiere) return 1;
+            }
+            const aExt = an.includes('perspective') || an.includes('exterieur');
+            const bExt = bn.includes('perspective') || bn.includes('exterieur');
+            if (aExt && !bExt) return -1;
+            if (!aExt && bExt) return 1;
+            return an.localeCompare(bn);
+        });
 
     const result = [];
     const seenHashes = new Set(); // pour éviter d'envoyer des doublons (Otaree renvoie parfois la même image)
     for (const img of sorted) {
         if (result.length >= 20) break; // limite à 20 photos
+        // Otaree mélange parfois des documents (plans PDF...) dans le même tableau que les photos ;
+        // mimeType est fiable pour les exclure (contrairement au content-type CloudFront de l'URL, lui erroné).
+        if (img.mimeType && !img.mimeType.startsWith('image/')) continue;
         const url = img.urls && (img.urls.large || img.urls.medium || img.urls.medium_fit || img.urls.small);
         if (!url) continue;
         // Jusqu'à 3 tentatives : un timeout/reset réseau ponctuel ne doit pas faire perdre la photo.
