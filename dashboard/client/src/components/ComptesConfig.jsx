@@ -11,7 +11,7 @@ function formatDate(dateStr) {
 // N'est rendue par RoutingConfig que si utilisateur.role === 'admin' (côté client, confort
 // d'affichage) ; le vrai contrôle est côté serveur (exigerAdmin, 403 pour un compte employe même
 // en appelant la route directement) — voir middleware/auth.js.
-export function ComptesConfig() {
+export function ComptesConfig({ actif }) {
     const [comptes, setComptes] = useState(null);
     const [erreur, setErreur] = useState(null);
     const [email, setEmail] = useState('');
@@ -28,9 +28,11 @@ export function ComptesConfig() {
             .catch((e) => setErreur(e.message));
     }, []);
 
+    // Gated par actif — voir le commentaire équivalent dans RoutingConfig.jsx.
     useEffect(() => {
+        if (!actif) return;
         refresh();
-    }, [refresh]);
+    }, [actif, refresh]);
 
     async function onCreerCompte(e) {
         e.preventDefault();

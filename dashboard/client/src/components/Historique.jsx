@@ -39,9 +39,11 @@ export function Historique({ actif }) {
         api.getRecherches().then(setRecherches).catch((e) => setErreur(e.message));
     }, []);
 
+    // Gated par actif — voir le commentaire équivalent dans Supervision.jsx.
     useEffect(() => {
+        if (!actif) return;
         refresh();
-    }, [refresh]);
+    }, [actif, refresh]);
 
     useEffect(() => {
         if (!actif) return;

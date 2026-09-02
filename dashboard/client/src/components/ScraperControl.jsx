@@ -583,10 +583,13 @@ export function ScraperControl() {
     return (
         <section className="panel">
             {/* Recherche + import Otaree en cours (phase asynchrone, voir rechercheStatus.js) —
-                pas cliquable (pas de panneau plein écran dédié pour cette phase), juste
-                informatif : évite de laisser croire que rien ne se passe pendant qu'un gros
-                volume de lots est importé en arrière-plan. */}
-            {rechercheOtareeEnCours && pollingImportActif && (
+                affiché dès le clic sur "Rechercher" (rechercheOtareeEnCours passe à true de façon
+                synchrone, avant même la réponse du serveur), pas seulement une fois la progression
+                réelle connue (pollingImportActif) : sans ça, il y avait un délai — parfois
+                perceptible — où rien ne rassurait l'utilisateur que son clic avait été pris en
+                compte, entre le clic et la première réponse serveur. Masqué dès que l'écran de
+                confirmation prend le relais (confirmationEnAttente), qui a son propre affichage. */}
+            {rechercheOtareeEnCours && !confirmationEnAttente && (
                 <div className="progress-banner" style={{ margin: 'var(--space-6)' }}>
                     <span>
                         Recherche et import Otaree en cours

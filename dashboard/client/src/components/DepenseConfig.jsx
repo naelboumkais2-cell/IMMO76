@@ -22,7 +22,7 @@ function formatMois(moisStr) {
 // orchestrator.js). Neon : chiffre officiel via son API de consommation, avec ~15 min de retard
 // (d'où la marge de sécurité avant coupure). OpenAI : chiffre exact, calculé au fil de l'eau à
 // chaque appel réel (voir Ubiflow-Auto-API/index.js).
-export function DepenseConfig() {
+export function DepenseConfig({ actif }) {
     const [etat, setEtat] = useState(null);
     const [erreur, setErreur] = useState(null);
     const [enCours, setEnCours] = useState(false);
@@ -44,9 +44,11 @@ export function DepenseConfig() {
             .catch((e) => setErreur(e.message));
     }, []);
 
+    // Gated par actif — voir le commentaire équivalent dans RoutingConfig.jsx.
     useEffect(() => {
+        if (!actif) return;
         refresh();
-    }, [refresh]);
+    }, [actif, refresh]);
 
     async function onEnregistrerSeuils(e) {
         e.preventDefault();

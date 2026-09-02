@@ -17,7 +17,7 @@ const MODE_DEFAUT_OPTIONS = [
     },
 ];
 
-export function RoutingConfig({ utilisateur }) {
+export function RoutingConfig({ utilisateur, actif }) {
     const [portails, setPortails] = useState([]);
     const [regles, setRegles] = useState([]);
     const [nouveauNom, setNouveauNom] = useState('');
@@ -38,9 +38,16 @@ export function RoutingConfig({ utilisateur }) {
             .catch((e) => setErreur(e.message));
     }, []);
 
+    // Gated par actif (onglet Réglages réellement affiché) — plutôt qu'un fetch systématique au
+    // montage : ce panneau, comme les autres, reste monté en permanence (voir App.jsx), donc sans
+    // ce garde il interrogerait Neon dès le tout premier chargement de la page, même si
+    // l'utilisateur reste sur "Rechercher". Se redéclenche à chaque fois que l'onglet redevient
+    // actif (actif dans les dépendances), pour ne jamais afficher de données périmées ou vides à
+    // la première visite.
     useEffect(() => {
+        if (!actif) return;
         refresh();
-    }, [refresh]);
+    }, [actif, refresh]);
 
     async function onCreatePortail(e) {
         e.preventDefault();
@@ -321,12 +328,12 @@ export function RoutingConfig({ utilisateur }) {
 
                 <hr className="divider" />
 
-                <DepenseConfig />
+                <DepenseConfig actif={actif} />
 
                 {utilisateur?.role === 'admin' && (
                     <>
                         <hr className="divider" />
-                        <ComptesConfig />
+                        <ComptesConfig actif={actif} />
                     </>
                 )}
 

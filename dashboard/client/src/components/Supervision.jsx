@@ -63,11 +63,16 @@ export function Supervision({ actif }) {
     // mauvais endroit) une fois la vraie intégration branchée.
     const portailsNonActifs = new Set(portails.filter((p) => !p.est_espace_actif).map((p) => p.id));
 
-    // Debounce léger : évite une requête par frappe pendant la saisie de la recherche.
+    // Debounce léger : évite une requête par frappe pendant la saisie de la recherche. Gated par
+    // actif (comme le polling juste en dessous) : ce panneau reste monté en permanence (voir
+    // App.jsx), donc sans ce garde ce fetch initial partirait dès le chargement de la page même
+    // si l'utilisateur reste sur un autre onglet — actif dans les dépendances redéclenche bien un
+    // fetch frais à chaque fois qu'on revient sur Superviser, jamais d'affichage vide au premier clic.
     useEffect(() => {
+        if (!actif) return;
         const id = setTimeout(() => refresh(recherche), 300);
         return () => clearTimeout(id);
-    }, [recherche, refresh]);
+    }, [actif, recherche, refresh]);
 
     useEffect(() => {
         if (!actif) return;

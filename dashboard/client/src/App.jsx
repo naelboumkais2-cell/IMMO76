@@ -166,7 +166,7 @@ export function App() {
                             <ScraperControl />
                         </div>
                         <div style={{ display: activeTab === 'routing' ? 'block' : 'none' }}>
-                            <RoutingConfig utilisateur={utilisateur} />
+                            <RoutingConfig utilisateur={utilisateur} actif={activeTab === 'routing'} />
                         </div>
                         <div style={{ display: activeTab === 'supervision' ? 'block' : 'none' }}>
                             <Supervision actif={activeTab === 'supervision'} />
