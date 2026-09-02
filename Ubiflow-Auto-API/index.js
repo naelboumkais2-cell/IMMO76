@@ -223,6 +223,29 @@ app.get('/api/annonce/:id/etat', async (req, res) => {
     res.status(result.success ? 200 : 502).json(result);
 });
 
+// TEMPORAIRE — diagnostic ponctuel : vérifier l'ordre/exclusion réel des photos publiées sur
+// Hubiflow suite au chantier "mettre en 1ère position / exclure" (écran de confirmation).
+// À retirer après vérification, même pattern que les routes diag- déjà utilisées ce chantier.
+app.get('/api/diag-annonce-photos/:id', async (req, res) => {
+    const { espaceLoginAttendu } = req.query;
+    if (!espaceLoginAttendu) return res.status(400).json({ success: false, error: 'espaceLoginAttendu requis' });
+    const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
+    if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
+    try {
+        const response = await axios.get(
+            `https://espace-client-backend.ubiflow.net/annonce/${parseInt(req.params.id, 10)}?lang=fr`,
+            { headers: { 'Accept': 'application/json, text/plain, */*', 'Authorization': `Bearer ${resolu.token}` } }
+        );
+        res.json({
+            success: true,
+            photoPrincipale: response.data.photoPrincipale,
+            photos: (response.data.photos || []).map(p => ({ url: p.url, nom_source: p.nom_source })),
+        });
+    } catch (error) {
+        res.status(502).json({ success: false, error: error.message });
+    }
+});
+
 // Recherche libre Hubiflow — sert au dédup "avertissement" avant publication (dashboard/,
 // bouton explicite "Vérifier les doublons", jamais automatique). Deux appels (etat=A actif +
 // etat=B brouillon) car `etat` est obligatoire côté Hubiflow et ne couvre qu'un seul statut à la
