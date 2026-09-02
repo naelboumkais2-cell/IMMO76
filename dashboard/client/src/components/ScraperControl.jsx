@@ -230,6 +230,12 @@ export function ScraperControl() {
     // ni ne déclenche d'annulation, le run continue exactement pareil en arrière-plan.
     const [panneauProgressionOuvert, setPanneauProgressionOuvert] = useState(false);
     const dernierRunOuvertRef = useRef(null);
+    // Données de la recherche d'origine (nbLots/nbNouvelles/tronque), à réassembler avec le
+    // statut final une fois le polling autoPublishStatus signalé terminé — /auto-publish-confirm
+    // ne renvoie plus ce résultat directement (fire-and-forget, voir orchestrator.js) pour ne pas
+    // dépendre d'une réponse HTTP qui peut dépasser le timeout du proxy Vercel sur un gros volume.
+    // Une ref plutôt qu'un state : ne doit jamais déclencher de re-render à elle seule.
+    const confirmationResultBaseRef = useRef(null);
 
     // Ouvre automatiquement le panneau plein écran au démarrage réel d'un run (autoPublishStatus
     // passe à enCours) — une seule fois par recherche (suivi par rechercheId), pour ne pas le
@@ -546,20 +552,45 @@ export function ScraperControl() {
             const referencesAEnvoyer = Object.fromEntries(
                 [...lotsSelectionnes].map((id) => [id, referencesEditees.get(id) || ''])
             );
-            const autoPublish = await api.confirmerAutoPublish([...lotsSelectionnes], portailsChoisis, referencesAEnvoyer);
-            const result = { ...attente.resultBase, autoPublish };
-            setResultatOtaree({
-                message: construireMessageResultat(result),
-                tronque: !!result.tronque,
-                annule: !!autoPublish.annule,
-            });
+            await api.confirmerAutoPublish([...lotsSelectionnes], portailsChoisis, referencesAEnvoyer);
+            // Ne renvoie plus le résultat final directement (voir orchestrator.js,
+            // confirmerRunEnAttente) : le traitement réel continue en arrière-plan et peut
+            // dépasser largement les 25-30 min. Le polling autoPublishStatus déjà en place
+            // (effet juste au-dessus) prend le relais ; l'effet ci-dessous construit le message
+            // final dès qu'il signale enCours:false.
+            confirmationResultBaseRef.current = attente.resultBase;
         } catch (err) {
             setErreurOtaree(err.message);
+            setRechercheOtareeEnCours(false);
         } finally {
             setConfirmationEnCours(false);
-            setRechercheOtareeEnCours(false);
         }
     }
+
+    // Finalise l'écran de résultat une fois que le polling autoPublishStatus (déjà en place, voir
+    // l'effet au-dessus) signale que le traitement déclenché par onConfirmerEnvoi est terminé —
+    // seule source de vérité désormais, /auto-publish-confirm ne renvoyant plus le résultat final.
+    useEffect(() => {
+        if (!confirmationResultBaseRef.current) return;
+        if (!autoPublishStatus || autoPublishStatus.enCours) return;
+        const resultBase = confirmationResultBaseRef.current;
+        confirmationResultBaseRef.current = null;
+        const result = {
+            ...resultBase,
+            autoPublish: {
+                annule: autoPublishStatus.annule,
+                nbTraites: autoPublishStatus.traites,
+                nbCandidats: autoPublishStatus.total,
+            },
+        };
+        setResultatOtaree({
+            message: construireMessageResultat(result),
+            tronque: !!result.tronque,
+            annule: !!autoPublishStatus.annule,
+        });
+        setRechercheOtareeEnCours(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoPublishStatus]);
 
     async function onAnnulerEnvoiEnAttente() {
         const attente = confirmationEnAttente;

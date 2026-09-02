@@ -507,8 +507,19 @@ export async function confirmerRunEnAttente(idsSelectionnes = null, portailsChoi
         });
     }
 
-    const result = await executerTraitement(candidats, attente.mode, attente.rechercheId, portailIds);
-    return { success: true, ...result };
+    // Fire-and-forget : executerTraitement peut prendre 25-30 min sur un gros volume, largement
+    // au-delà des 120s du proxy externe Vercel — l'attendre ici faisait échouer la requête HTTP
+    // côté navigateur bien avant la fin réelle du traitement (constaté en conditions réelles,
+    // ~200 lots publiés sur Hubiflow après que l'écran ait affiché une erreur). Le suivi ne
+    // dépend plus de cette réponse : le client interroge déjà /auto-publish-status en continu
+    // (autoPublishStatus.js, mis à jour par executerTraitement lui-même via demarrerRun/
+    // incrementerTraites/terminerRun), qui reste la seule source de vérité pour la progression
+    // et la fin du traitement.
+    executerTraitement(candidats, attente.mode, attente.rechercheId, portailIds).catch((e) => {
+        console.error('[confirmerRunEnAttente] échec en arrière-plan :', e.message);
+    });
+
+    return { success: true, enCours: true, nbCandidats: candidats.length };
 }
 
 export async function annulerRunEnAttente() {
