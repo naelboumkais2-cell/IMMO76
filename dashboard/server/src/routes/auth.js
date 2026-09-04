@@ -74,6 +74,19 @@ authRouter.get('/moi', async (req, res) => {
     res.json(utilisateur);
 });
 
+// TEMPORAIRE — diagnostic ponctuel : isoler la cause du body vide sur POST /comptes.
+authRouter.post('/diag-comptes-sans-bcrypt', exigerAdmin, async (req, res) => {
+    const { email, nom } = req.body || {};
+    try {
+        const info = await db
+            .prepare(`INSERT INTO utilisateurs (email, mot_de_passe_hash, nom) VALUES (?, ?, ?)`)
+            .run(email.trim().toLowerCase(), 'dummy-hash-diag', nom || null);
+        res.status(201).json(await db.prepare(`SELECT id, email, nom, actif, role FROM utilisateurs WHERE id = ?`).get(info.lastInsertRowid));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // Gestion des comptes — voir exigerAdmin (middleware/auth.js) : au quotidien, une session
 // utilisateur avec le rôle 'admin' suffit ; la clé X-Admin-Key reste acceptée en filet de
 // sécurité (ex: au tout premier lancement, aucun compte n'existe encore pour se connecter).
