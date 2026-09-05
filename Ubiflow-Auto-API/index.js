@@ -569,9 +569,12 @@ const FORMULATIONS_INTERDITES = [
     // Fuite de ton "notice interne" (documents/sources du pipeline) plutôt que texte commercial
     // destiné au lecteur — repéré sur plusieurs lots réels, formulations variées. Liste à enrichir
     // au fil des cas repérés, comme la liste des mots interdits l'a déjà été deux fois cette session.
-    ['fuite de ton "documents/sources internes"', /documents? (partenaires?|fournis)\b/i],
+    // "fiches partenaires" repéré en conditions réelles (lot 2, Mulhouse) : même fuite de fond
+    // que "documents partenaires" déjà couvert, mais avec un synonyme ("fiches") non listé —
+    // généralisé à documents/fiches plutôt que d'ajouter un motif isolé de plus.
+    ['fuite de ton "documents/sources internes"', /\b(documents?|fiches?) (partenaires?|fournis)\b/i],
     ['fuite de ton "documents/sources internes"', /disponibles? pour r[ée]f[ée]rence/i],
-    ['fuite de ton "documents/sources internes"', /plan et documents/i],
+    ['fuite de ton "documents/sources internes"', /plan et (documents?|fiches?)/i],
 ];
 
 // Filet de sécurité structurel — pas dans le prompt initial, ajouté après avoir constaté que
@@ -712,7 +715,7 @@ function alternativesPourCorrection(hits, lot) {
     }
     if (hits.some((h) => h.includes('fuite de ton "documents/sources internes"'))) {
         lignes.push(
-            '- Pour toute mention de "documents", "plan", "sources" ou "disponible(s) pour référence" — supprime entièrement la phrase ou reformule en pur langage commercial destiné au lecteur, sans jamais évoquer l\'existence de documents/dossiers/sources internes au pipeline (ex: "avec plan et documents partenaires disponibles pour référence" devient simplement rien, ou une caractéristique réelle du bien si le contexte en fournit une).'
+            '- Pour toute mention de "documents", "fiches", "plan", "sources" ou "disponible(s) pour référence" — supprime entièrement la phrase ou reformule en pur langage commercial destiné au lecteur, sans jamais évoquer l\'existence de documents/fiches/dossiers/sources internes au pipeline (ex: "avec plan et fiches partenaires disponibles pour référence" devient simplement rien, ou une caractéristique réelle du bien si le contexte en fournit une).'
         );
     }
     const promoteurHit = hits.find((h) => h.startsWith('nom du promoteur cité'));
