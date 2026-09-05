@@ -26,7 +26,10 @@ annoncesRouter.get('/:id/diag-retest-guard', exigerConnexion, async (req, res) =
         const data = await r.json();
         // Images délibérément omises de la réponse (base64, plusieurs Mo/lot) — inutiles pour ce
         // diagnostic, qui ne porte que sur le texte et l'alerte de conformité.
-        res.status(r.status).json({ success: data.success, aiData: data.aiData, alerteConformite: data.alerteConformite, error: data.error });
+        res.status(r.status).json({
+            success: data.success, aiData: data.aiData, alerteConformite: data.alerteConformite, error: data.error,
+            developerName: lotEnrichi.program?.developer?.name || null,
+        });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
