@@ -613,11 +613,13 @@ async function callOpenAILmnpAvecModele(textContext, base64Images, lot, model) {
         response_format: { type: 'json_object' },
     };
     if (!estGpt5) body.temperature = 0.7; // gpt-5 n'accepte que la valeur par défaut (1)
-    // Les modèles gpt-5 sont des modèles de raisonnement : une partie du budget de tokens de
-    // sortie est consommée par le raisonnement interne (non visible), pas seulement la réponse
-    // finale — 2000 suffit à peine pour gpt-4o mais peut ne laisser aucun token pour le contenu
-    // réel une fois le raisonnement déduit. Budget nettement plus large pour ce cas.
-    body[estGpt5 ? 'max_completion_tokens' : 'max_tokens'] = estGpt5 ? 8000 : 2000;
+    // gpt-5-nano est un modèle de raisonnement : par défaut ("medium"), il peut consommer tout
+    // le budget de tokens de sortie en raisonnement interne (non visible) sans jamais produire
+    // de contenu — constaté en conditions réelles (8000/8000 tokens de raisonnement, 0 texte).
+    // "minimal" réduit ce raisonnement au strict nécessaire pour une tâche de rédaction/consigne
+    // claire comme celle-ci (voir doc OpenAI GPT-5).
+    if (estGpt5) body.reasoning_effort = 'minimal';
+    body[estGpt5 ? 'max_completion_tokens' : 'max_tokens'] = estGpt5 ? 4000 : 2000;
 
     const response = await axios.post('https://api.openai.com/v1/chat/completions', body, {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
