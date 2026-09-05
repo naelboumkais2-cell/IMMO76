@@ -604,13 +604,18 @@ async function callOpenAILmnpAvecModele(textContext, base64Images, lot, model) {
         messageContent.push({ type: 'image_url', image_url: { url: img } });
     }
 
-    const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+    // Les modèles GPT-5 refusent `max_tokens` (paramètre renommé `max_completion_tokens`) —
+    // gpt-4o/gpt-4o-mini acceptent encore l'ancien nom, utilisé partout ailleurs dans ce fichier.
+    const estGpt5 = model.startsWith('gpt-5');
+    const body = {
         model,
         messages: [{ role: 'system', content: PROMPT_SYSTEME_LMNP_V2 }, { role: 'user', content: messageContent }],
         temperature: 0.7,
-        max_tokens: 2000,
         response_format: { type: 'json_object' },
-    }, {
+    };
+    body[estGpt5 ? 'max_completion_tokens' : 'max_tokens'] = 2000;
+
+    const response = await axios.post('https://api.openai.com/v1/chat/completions', body, {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
     });
 
