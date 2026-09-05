@@ -5,6 +5,35 @@ import { publierInstance, depublierInstance, synchroniserInstance } from '../ser
 
 export const annoncesRouter = Router();
 
+// TEMPORAIRE — sélection de l'échantillon pour l'essai GPT-5 nano à grande échelle : classe un
+// lot de lots LMNP par catégorie de résidence + complétude des données, sans appel Otaree/OpenAI
+// (lecture pure de raw_data déjà en base). À retirer une fois l'échantillon constitué.
+annoncesRouter.get('/diag-classifier', exigerConnexion, async (req, res) => {
+    try {
+        const ids = (req.query.ids || '').split(',').map((s) => parseInt(s, 10)).filter(Boolean);
+        if (!ids.length) return res.status(400).json({ erreur: 'ids requis' });
+        const rows = await db
+            .prepare(`SELECT id, titre, ville, raw_data FROM annonces WHERE id IN (${ids.map(() => '?').join(',')})`)
+            .all(...ids);
+        const resultat = rows.map((r) => {
+            const raw = typeof r.raw_data === 'string' ? JSON.parse(r.raw_data) : r.raw_data;
+            return {
+                id: r.id,
+                titre: r.titre,
+                ville: r.ville,
+                residenceType: raw?.program?.residenceType || null,
+                lawsKeys: raw?.lawsKeys || null,
+                hasDescription: !!raw?.description,
+                hasMonthlyRent: raw?.prices?.[0]?.monthlyRent != null,
+                hasDeveloper: !!raw?.program?.developer,
+            };
+        });
+        res.json(resultat);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
 // peut peser plusieurs Mo par annonce (jusqu'à 20 photos en base64) : avec LIMIT 200 et un
