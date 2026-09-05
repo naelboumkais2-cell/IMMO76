@@ -608,6 +608,10 @@ const MOTS_CLES_INTERTITRE_CATEGORIE = {
 const MARQUE_PROPRE = 'la centrale du lmnp';
 
 function detecterProblemesConformite(texte, lot) {
+    // Défensif : un texte manquant/mal formé (ex: le modèle omet le champ "texte" dans son JSON)
+    // ne doit jamais faire planter la vérification elle-même — traité comme "rien à détecter",
+    // laissant JSON.parse/le reste du pipeline gérer l'anomalie de fond séparément.
+    texte = texte || '';
     const hits = new Set();
     for (const [label, re] of [...FORMULATIONS_INTERDITES, ...FUITES_STRUCTURE]) {
         if (re.test(texte)) hits.add(label);
