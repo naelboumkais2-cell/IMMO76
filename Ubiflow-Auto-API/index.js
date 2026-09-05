@@ -753,35 +753,52 @@ async function extrairePlanImage(imageUrl) {
 }
 
 async function verifierDocumentsPlan(lot) {
+    // Otaree concatène souvent les mêmes documents deux fois (images du lot + du programme,
+    // voir enrichirLot) — dédupliqué par nom pour ne pas vérifier deux fois le même fichier
+    // (constaté en conditions réelles : un lot avec 1 seul vrai plan pouvait en lister 2-3
+    // occurrences identiques avant déduplication).
+    const vus = new Set();
     const documentsPlan = (lot.documents || [])
         .map((doc) => ({ name: doc.file?.name || doc.name || '', url: doc.file?.urls?.large || doc.file?.urls?.medium || doc.urls?.large || doc.urls?.medium }))
-        .filter((doc) => doc.url && /plan/i.test(doc.name))
-        .slice(0, 4); // borne le coût/latence même si un lot a beaucoup de documents "plan"
+        .filter((doc) => {
+            if (!doc.url || !/plan/i.test(doc.name)) return false;
+            const cle = doc.name.toLowerCase();
+            if (vus.has(cle)) return false;
+            vus.add(cle);
+            return true;
+        })
+        .slice(0, 4); // borne le coût/latence même si un lot a beaucoup de documents "plan" distincts
 
     if (documentsPlan.length === 0) return null;
 
-    for (const doc of documentsPlan) {
-        try {
-            const extrait = await extrairePlanImage(doc.url);
-            if (!extrait.estPlanLogement) continue; // plan de masse/sous-sol/etc. — rien à comparer, pas un doute
+    // En parallèle entre eux (pas seulement avec la génération IA du lot) : un lot avec
+    // plusieurs documents "plan" distincts ne doit pas accumuler leur latence en série.
+    const resultats = await Promise.allSettled(
+        documentsPlan.map(async (doc) => ({ doc, extrait: await extrairePlanImage(doc.url) }))
+    );
 
-            const problemes = [];
-            if (extrait.surface != null && typeof lot.surface === 'number') {
-                const ecart = Math.abs(extrait.surface - lot.surface);
-                if (ecart >= SEUIL_ECART_SURFACE_M2 && ecart / lot.surface >= SEUIL_ECART_SURFACE_PCT) {
-                    problemes.push(`surface du plan (${extrait.surface} m²) très différente de la surface Otaree (${lot.surface} m²)`);
-                }
-            }
-            if (extrait.typologie && lot.typology && extrait.typologie.toUpperCase() !== String(lot.typology).toUpperCase()) {
-                problemes.push(`typologie du plan (${extrait.typologie}) différente de la typologie Otaree (${lot.typology})`);
-            }
-            if (problemes.length > 0) {
-                return `Document "${doc.name}" possiblement erroné : ${problemes.join(', ')}.`;
-            }
-        } catch (e) {
+    for (const resultat of resultats) {
+        if (resultat.status === 'rejected') {
             // Un document illisible/inaccessible ne doit jamais faire échouer la génération —
             // juste ignoré, comme une absence d'info (voir principe "ne jamais deviner").
-            console.error(`[verifierDocumentsPlan] échec sur "${doc.name}" :`, e.message);
+            console.error('[verifierDocumentsPlan] échec sur un document :', resultat.reason?.message);
+            continue;
+        }
+        const { doc, extrait } = resultat.value;
+        if (!extrait.estPlanLogement) continue; // plan de masse/sous-sol/etc. — rien à comparer, pas un doute
+
+        const problemes = [];
+        if (extrait.surface != null && typeof lot.surface === 'number') {
+            const ecart = Math.abs(extrait.surface - lot.surface);
+            if (ecart >= SEUIL_ECART_SURFACE_M2 && ecart / lot.surface >= SEUIL_ECART_SURFACE_PCT) {
+                problemes.push(`surface du plan (${extrait.surface} m²) très différente de la surface Otaree (${lot.surface} m²)`);
+            }
+        }
+        if (extrait.typologie && lot.typology && extrait.typologie.toUpperCase() !== String(lot.typology).toUpperCase()) {
+            problemes.push(`typologie du plan (${extrait.typologie}) différente de la typologie Otaree (${lot.typology})`);
+        }
+        if (problemes.length > 0) {
+            return `Document "${doc.name}" possiblement erroné : ${problemes.join(', ')}.`;
         }
     }
     return null;
