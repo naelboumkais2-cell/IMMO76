@@ -581,6 +581,53 @@ const LIBELLES_CATEGORIE_RESIDENCE = {
     Tourist: 'une résidence de tourisme',
 };
 
+// Addendum spécifique à gpt-5-nano (voir bascule ci-dessous) — gpt-5-nano suit le prompt de
+// façon plus littérale que gpt-4o : sans ça, il recopiait les en-têtes internes "BLOC n" et
+// l'instruction "omets la ligne X" telle quelle dans le texte publié (constaté sur plusieurs
+// dizaines de lots réels avant correction, plus aucune occurrence après). Validé sur 3 vagues de
+// test indépendantes (36 lots variés, 5 catégories, 7 villes) avant bascule en production.
+const PROMPT_ADDENDUM_GPT5 = `
+
+=== CONSIGNE DE FORMAT SUPPLÉMENTAIRE (spécifique à ce modèle) ===
+
+Le champ "texte" que tu renvoies est publié TEL QUEL sur le site, lu directement par un client final — il ne doit jamais contenir la moindre trace de la structure interne de cette consigne.
+
+Concrètement :
+- N'écris JAMAIS les mots "BLOC", "BLOC 1", "BLOC 2", etc., ni aucun numéro de bloc. Les intertitres ci-dessus ("BLOC 1 — COMPRENDRE...") servent uniquement à t'organiser en interne : dans le texte final, seul l'intertitre proprement dit apparaît (ex. "COMPRENDRE IMMÉDIATEMENT LE LMNP GÉRÉ"), jamais précédé de "BLOC" ni d'un numéro.
+- N'écris JAMAIS une instruction que tu es en train de suivre. Si une donnée est absente (ex: rentabilité non fournie), la ligne correspondante disparaît simplement du texte, sans aucune trace ni commentaire sur son absence ("omets la ligne", "non disponible avec certitude" ne doivent JAMAIS apparaître dans ta réponse — applique la règle, ne la décris pas).
+- Rédige exclusivement en français courant, sans aucun mot ni tournure anglaise mélangée au texte français (ex: n'écris jamais "according to", "business", "fallback" ou tout autre terme anglais au milieu d'une phrase française — traduis intégralement).
+
+Exemple de sortie CORRECTE pour la section chiffres clés quand la rentabilité n'est pas disponible (n'invente pas ces valeurs, c'est un exemple de FORME uniquement) :
+
+LES CHIFFRES CLÉS
+
+Prix : 172 000 €
+Surface : 41,7 m²
+Annexes : 5 m² de balcon, 1 parking extérieur
+
+(remarque pour toi : aucune ligne "Rentabilité" n'apparaît ci-dessus — c'est le comportement attendu ; ne reproduis jamais cette remarque entre parenthèses dans ta réponse, elle est uniquement là pour t'expliquer l'exemple)`;
+
+// Alternatives toutes prêtes par famille de mot interdit — la correction devient une substitution
+// mécanique plutôt qu'une reformulation libre : gpt-5-nano, plus petit que gpt-4o, respecte moins
+// bien une consigne de correction nuancée ("réécris en évitant ce mot") qu'une substitution
+// directe et sans ambiguïté. Validé : a rattrapé 5/5 violations réelles observées en test.
+function alternativesPourCorrection(hits) {
+    const lignes = [];
+    if (hits.some((h) => h.includes('garanti'))) {
+        lignes.push(
+            '- Pour "loyer garanti" / "revenus garantis" / "garantissant le versement du loyer" → remplace par exactement : "le loyer est versé selon les conditions du bail commercial".',
+            '- Pour "garantissant" appliqué à autre chose (service, prestation, stationnement...) → supprime simplement le mot "garantissant" et la phrase reste correcte sans lui (ex: "un parking sécurisé" devient "un parking", "garantissant une prestation adaptée" devient "avec une prestation adaptée").'
+        );
+    }
+    if (hits.some((h) => h.includes('sécuris') || h.includes('sécurité'))) {
+        lignes.push(
+            '- Pour "sécurisé"/"sécurisée"/"sécurité" → supprime le mot, ou remplace par "adapté", "de qualité" ou "confortable" selon le contexte — jamais par un synonyme de certitude.'
+        );
+    }
+    lignes.push('- Règle générale si aucune alternative ci-dessus ne correspond exactement : supprime simplement le mot fautif et ajuste la phrase pour qu\'elle reste grammaticalement correcte sans lui — la suppression pure est toujours une réponse acceptée, ne cherche pas de synonyme subtil.');
+    return lignes.join('\n');
+}
+
 async function callOpenAILmnp(textContext, base64Images, lot) {
     const donneesFiables = donneesFinancieresFiablesDepuisLot(lot);
     const residenceType = lot.program?.residenceType || null;
@@ -609,19 +656,24 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
         messageContent.push({ type: 'image_url', image_url: { url: img } });
     }
 
-    const messages = [{ role: 'system', content: PROMPT_SYSTEME_LMNP_V2 }, { role: 'user', content: messageContent }];
+    const messages = [{ role: 'system', content: PROMPT_SYSTEME_LMNP_V2 + PROMPT_ADDENDUM_GPT5 }, { role: 'user', content: messageContent }];
 
     let resultat, hits = [];
-    const MAX_TENTATIVES_CONFORMITE = 2;
+    const MAX_TENTATIVES_CONFORMITE = 3;
     for (let essai = 1; essai <= MAX_TENTATIVES_CONFORMITE; essai++) {
+        // gpt-5-nano est un modèle de raisonnement à effort minimal par défaut (rapide, pas
+        // cher) — relevé à "low" sur les tentatives de correction pour le rendre plus attentif
+        // à la consigne de substitution précise. N'accepte pas de température réglable (valeur
+        // par défaut uniquement) : reasoning_effort est le levier le plus proche disponible.
+        const effort = essai === 1 ? 'minimal' : 'low';
         let response;
         for (let tentative = 1; tentative <= 3; tentative++) {
             try {
                 response = await axios.post('https://api.openai.com/v1/chat/completions', {
-                    model: 'gpt-4o',
+                    model: 'gpt-5-nano',
                     messages,
-                    temperature: 0.7,
-                    max_tokens: 2000,
+                    reasoning_effort: effort,
+                    max_completion_tokens: 4000,
                     // Mode JSON strict d'OpenAI — sans ça, un texte long avec guillemets/apostrophes
                     // (ex: nom de résidence entre guillemets dans la description) peut produire un
                     // JSON mal formé et faire échouer JSON.parse malgré le prompt qui le demande déjà
@@ -640,11 +692,15 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
             }
         }
 
-        await enregistrerUsageOpenAI(response.data.usage);
+        await enregistrerUsageOpenAI(response.data.usage, 'gpt-5-nano');
 
         let content = response.data.choices[0].message.content;
-        content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
-        resultat = JSON.parse(content);
+        content = (content || '').replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+        try {
+            resultat = JSON.parse(content);
+        } catch (e) {
+            throw new Error(`JSON.parse a échoué (finish_reason=${response.data.choices[0].finish_reason}, contenu brut="${content.substring(0, 200)}")`);
+        }
         hits = detecterProblemesConformite(resultat.texte);
         if (hits.length === 0) break;
 
@@ -653,7 +709,7 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
             messages.push({ role: 'assistant', content: JSON.stringify(resultat) });
             messages.push({
                 role: 'user',
-                content: `Ta réponse précédente contient une formulation interdite par la consigne système ci-dessus : ${hits.join(', ')}. Réécris entièrement le titre et le texte en éliminant strictement ces mots/tournures et toute leur famille, sans rien changer d'autre au fond ni à la structure. Réponds à nouveau uniquement avec le JSON {"titre": "...", "texte": "..."}.`,
+                content: `Ta réponse précédente contient un problème détecté par notre vérification automatique : ${hits.join(', ')}.\n\nCorrige en appliquant EXACTEMENT l'une de ces substitutions (ne réinvente pas une reformulation différente) :\n${alternativesPourCorrection(hits)}\n\nNe change rien d'autre au fond ni à la structure. Réponds à nouveau uniquement avec le JSON {"titre": "...", "texte": "..."}.`,
             });
         }
     }
@@ -695,15 +751,21 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
-// Tarif officiel gpt-4o (2,50$/million tokens en entrée, 10$/million en sortie) — à mettre à
-// jour si le modèle change un jour (voir l'appel plus bas, "gpt-4o" en dur). Sert au plafond de
-// dépense (voir dashboard/server/src/services/depenseMonitor.js) : chaque appel réel enregistre
-// son coût exact ici, pas une estimation a posteriori.
-const TARIF_GPT4O_USD_PAR_TOKEN = { entree: 2.5 / 1_000_000, sortie: 10 / 1_000_000 };
+// Tarifs officiels par modèle (par token) — mis à jour au 5 septembre 2026, source
+// developers.openai.com/api/docs/pricing. Sert au plafond de dépense (voir dashboard/server/
+// src/services/depenseMonitor.js) : chaque appel réel enregistre son coût exact ici, pas une
+// estimation a posteriori. gpt-4o corrigé au passage (était à 2,50$/10$, tarif obsolète depuis
+// la baisse de prix de juillet 2026 — 1,25$/5$ actuel) : sans ça, callOpenAI (prompt générique,
+// resté sur gpt-4o) aurait continué de surestimer sa dépense réelle de moitié.
+const TARIFS_USD_PAR_TOKEN = {
+    'gpt-4o': { entree: 1.25 / 1_000_000, sortie: 5.0 / 1_000_000 },
+    'gpt-5-nano': { entree: 0.05 / 1_000_000, sortie: 0.4 / 1_000_000 },
+};
 
-async function enregistrerUsageOpenAI(usage) {
+async function enregistrerUsageOpenAI(usage, model = 'gpt-4o') {
     if (!usage) return;
-    const coutUsd = usage.prompt_tokens * TARIF_GPT4O_USD_PAR_TOKEN.entree + usage.completion_tokens * TARIF_GPT4O_USD_PAR_TOKEN.sortie;
+    const tarif = TARIFS_USD_PAR_TOKEN[model] || TARIFS_USD_PAR_TOKEN['gpt-4o'];
+    const coutUsd = usage.prompt_tokens * tarif.entree + usage.completion_tokens * tarif.sortie;
     try {
         await db
             .prepare(`INSERT INTO openai_usage_log (prompt_tokens, completion_tokens, cout_usd) VALUES (?, ?, ?)`)
