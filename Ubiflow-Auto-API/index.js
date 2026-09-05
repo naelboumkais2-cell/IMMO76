@@ -721,6 +721,48 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
     return { titre: resultat.titre, texte: resultat.texte, alerteConformite: hits.length > 0 ? hits : null };
 }
 
+// TEMPORAIRE — exploration de faisabilité (vérification des PDF de plans) : test réel d'extraction
+// surface/typologie/pièces sur une image de plan déjà servie en JPEG par Otaree (aucune conversion
+// PDF nécessaire, confirmé par exploration). À retirer une fois l'exploration terminée.
+app.post('/api/diag-test-plan', async (req, res) => {
+    const { imageUrl, surfaceConnue, typologieConnue } = req.body || {};
+    if (!imageUrl) return res.status(400).json({ success: false, error: 'imageUrl requis' });
+    try {
+        const imgResp = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+        const b64 = Buffer.from(imgResp.data).toString('base64');
+        const dataUri = `data:image/jpeg;base64,${b64}`;
+
+        const prompt = `Voici un plan de commercialisation d'un lot immobilier. Extrais UNIQUEMENT ce qui est explicitement écrit/visible sur ce document, sans jamais deviner : la surface totale (m²), la typologie (ex: T1, T2, Studio), le nombre de pièces si indiqué. Réponds en JSON strict : {"surface": nombre ou null, "typologie": "..." ou null, "nbPieces": nombre ou null, "lisible": true/false}. "lisible":false si le document n'est pas un plan ou si le texte n'est pas exploitable.`;
+
+        const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+            model: 'gpt-5-nano',
+            messages: [
+                { role: 'user', content: [
+                    { type: 'text', text: prompt },
+                    { type: 'image_url', image_url: { url: dataUri } },
+                ] },
+            ],
+            response_format: { type: 'json_object' },
+            reasoning_effort: 'minimal',
+            max_completion_tokens: 1000,
+        }, {
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+        });
+
+        const content = response.data.choices[0].message.content;
+        const extrait = JSON.parse(content);
+        res.json({
+            success: true,
+            extrait,
+            surfaceConnue, typologieConnue,
+            ecartSurface: (surfaceConnue != null && extrait.surface != null) ? Math.abs(surfaceConnue - extrait.surface) : null,
+            usage: response.data.usage,
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.response?.data ? JSON.stringify(error.response.data).substring(0, 500) : error.message });
+    }
+});
+
 app.post('/api/generate', async (req, res) => {
     try {
         const { lot, imagesSelection } = req.body || {};
