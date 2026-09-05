@@ -13,15 +13,21 @@ annoncesRouter.get('/:id/diag-retest-guard', exigerConnexion, async (req, res) =
         const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(req.params.id);
         if (!row) return res.status(404).json({ erreur: 'Annonce introuvable.' });
         const lotBrut = typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
+        const tJwt0 = Date.now(); // TEMPORAIRE — chronométrage diagnostique (retest final anormalement lent)
         const jeton = await obtenirJwtFrais();
+        console.log(`[timing] obtenirJwtFrais : ${Date.now() - tJwt0}ms`);
+        const tEnrich0 = Date.now();
         const lotEnrichi = await enrichirLot(lotBrut, jeton);
+        console.log(`[timing] enrichirLot : ${Date.now() - tEnrich0}ms`);
         const serverUrl = process.env.UBIFLOW_AUTO_API_URL || 'http://localhost:4000';
+        const tGen0 = Date.now();
         const r = await fetch(`${serverUrl}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ lot: lotEnrichi }),
         });
         const data = await r.json();
+        console.log(`[timing] /api/generate (total) : ${Date.now() - tGen0}ms`);
         res.status(r.status).json({ success: data.success, aiData: data.aiData, alerteConformite: data.alerteConformite, error: data.error });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
