@@ -2,8 +2,31 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { exigerConnexion } from '../middleware/auth.js';
 import { publierInstance, depublierInstance, synchroniserInstance } from '../services/orchestrator.js';
+import { enrichirLot, obtenirJwtFrais } from '../integrations/otareeSearchClient.js';
 
 export const annoncesRouter = Router();
+
+// TEMPORAIRE — dernier retest du garde-fou étendu (2 nouveaux patterns "sans/aucun X mentionné").
+// Appelle le vrai chemin de production (/api/generate). À retirer une fois le retest terminé.
+annoncesRouter.get('/:id/diag-retest-guard', exigerConnexion, async (req, res) => {
+    try {
+        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(req.params.id);
+        if (!row) return res.status(404).json({ erreur: 'Annonce introuvable.' });
+        const lotBrut = typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
+        const jeton = await obtenirJwtFrais();
+        const lotEnrichi = await enrichirLot(lotBrut, jeton);
+        const serverUrl = process.env.UBIFLOW_AUTO_API_URL || 'http://localhost:4000';
+        const r = await fetch(`${serverUrl}/api/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lot: lotEnrichi }),
+        });
+        const data = await r.json();
+        res.status(r.status).json({ success: data.success, aiData: data.aiData, alerteConformite: data.alerteConformite, error: data.error });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
 
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
