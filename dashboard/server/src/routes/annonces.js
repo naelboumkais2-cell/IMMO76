@@ -2,46 +2,8 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { exigerConnexion } from '../middleware/auth.js';
 import { publierInstance, depublierInstance, synchroniserInstance } from '../services/orchestrator.js';
-import { enrichirLot, obtenirJwtFrais } from '../integrations/otareeSearchClient.js';
 
 export const annoncesRouter = Router();
-
-// TEMPORAIRE — diagnostic ponctuel : comparaison de coût/qualité entre modèles OpenAI pour la
-// génération LMNP (voir Ubiflow-Auto-API/index.js, /api/diag-compare-modeles). Réutilise le
-// raw_data déjà stocké à l'import (le même lotBrut qu'enrichirLot reçoit en production, voir
-// orchestrator.js/mapLotOtareeVersAnnonce), l'enrichit fraîchement, puis transfère à
-// Ubiflow-Auto-API qui a l'accès OPENAI_API_KEY. À retirer une fois la comparaison faite.
-annoncesRouter.get('/:id/diag-comparer-modeles', exigerConnexion, async (req, res) => {
-    try {
-        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(req.params.id);
-        if (!row) return res.status(404).json({ erreur: 'Annonce introuvable.' });
-        const lotBrut = typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
-        const jeton = await obtenirJwtFrais();
-        const lotEnrichi = await enrichirLot(lotBrut, jeton);
-        const debugLot = {
-            developer: lotEnrichi.program?.developer || null,
-            residenceType: lotEnrichi.program?.residenceType || null,
-            description: lotEnrichi.description || null,
-            programName: lotEnrichi.program?.name || null,
-            documents: (lotEnrichi.documents || []).map((doc) => doc.file?.name || doc.name || null),
-        };
-        // debugSeul=1 : n'appelle aucun modèle (pas de coût OpenAI), juste pour inspecter les
-        // données brutes du lot (vérifier une invention potentielle de l'IA sans repayer un appel).
-        if (req.query.debugSeul) return res.json({ success: true, debugLot });
-
-        const serverUrl = process.env.UBIFLOW_AUTO_API_URL || 'http://localhost:4000';
-        const r = await fetch(`${serverUrl}/api/diag-compare-modeles`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lot: lotEnrichi }),
-        });
-        const data = await r.json();
-        if (req.query.debug) data.debugLot = debugLot;
-        res.status(r.status).json(data);
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
 
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
