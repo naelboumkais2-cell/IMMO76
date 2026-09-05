@@ -5,6 +5,22 @@ import { publierInstance, depublierInstance, synchroniserInstance } from '../ser
 
 export const annoncesRouter = Router();
 
+// TEMPORAIRE — recherche d'un texte généré par sous-chaîne (ex: "CAMPUS 137"), pour retrouver
+// le lot précis évoqué sans connaître son id. Lecture seule. À retirer avec le reste.
+annoncesRouter.get('/diag-texte-recherche', exigerConnexion, async (req, res) => {
+    try {
+        const q = (req.query.q || '').trim();
+        if (!q) return res.status(400).json({ erreur: 'q requis' });
+        const rows = await db.prepare(`SELECT id, titre, donnees_ia FROM annonces WHERE donnees_ia IS NOT NULL AND donnees_ia ILIKE ? ORDER BY id DESC LIMIT 20`).all(`%${q}%`);
+        res.json(rows.map((r) => {
+            const aiData = typeof r.donnees_ia === 'string' ? JSON.parse(r.donnees_ia) : r.donnees_ia;
+            return { id: r.id, titre: r.titre, aiTitre: aiData?.titre };
+        }));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // TEMPORAIRE — investigation de défauts qualité repérés en relecture (garde-fou à étendre).
 // Lecture seule (donnees_ia + program.developer/name de raw_data), aucun appel OpenAI. À
 // retirer une fois l'investigation terminée.
