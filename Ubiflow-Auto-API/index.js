@@ -541,6 +541,22 @@ const FORMULATIONS_INTERDITES = [
     ["aucun risque d'impayé", /aucun risque d'impay[ée]/i],
     ['famille "sécuris*/sécurité"', /\bsécuris\w*|\bsécurité\b/i],
     ['famille "garanti*"', /\bgaranti\w*/i],
+    // Repérés en relisant des textes réels publiés (gpt-5-nano) : la règle demande d'omettre
+    // entièrement une ligne/donnée absente, jamais d'écrire qu'elle manque — "non communiqué"
+    // sur le loyer, "non fournie" sur la rentabilité, "non spécifié" sur un balcon... même
+    // défaut de fond que la fuite "omets la ligne" ci-dessous, mais sans le mot "omets" lui-même,
+    // donc pas détecté par ce filet-là. Constaté sur 8/36 lots d'un échantillon de test — récurrent.
+    ['donnée manquante explicitée ("non communiqué")', /\bnon communiqu[ée]e?s?\b/i],
+    ['donnée manquante explicitée ("non fourni")', /\bnon fournie?s?\b/i],
+    ['donnée manquante explicitée ("non renseigné")', /\bnon renseign[ée]e?s?\b/i],
+    ['donnée manquante explicitée ("non spécifié")', /\bnon sp[ée]cifi[ée]e?s?\b/i],
+    ['donnée manquante explicitée ("non précisé")', /\bnon pr[ée]cis[ée]e?s?\b/i],
+    // Fuite de ton "notice interne" (documents/sources du pipeline) plutôt que texte commercial
+    // destiné au lecteur — repéré sur plusieurs lots réels, formulations variées. Liste à enrichir
+    // au fil des cas repérés, comme la liste des mots interdits l'a déjà été deux fois cette session.
+    ['fuite de ton "documents/sources internes"', /documents? (partenaires?|fournis)\b/i],
+    ['fuite de ton "documents/sources internes"', /disponibles? pour r[ée]f[ée]rence/i],
+    ['fuite de ton "documents/sources internes"', /plan et documents/i],
 ];
 
 // Filet de sécurité structurel — pas dans le prompt initial, ajouté après avoir constaté que
@@ -553,15 +569,6 @@ const FUITES_STRUCTURE = [
     ['instruction "omets la ligne" recopiée', /omets?\s+(la\s+ligne|simplement)/i],
     ['consigne de rentabilité recopiée', /non disponible avec certitude\s*[—-]\s*(omets?|omise)/i],
 ];
-
-function detecterProblemesConformite(texte) {
-    const hits = [];
-    for (const [label, re] of [...FORMULATIONS_INTERDITES, ...FUITES_STRUCTURE]) {
-        const m = texte.match(re);
-        if (m) hits.push(label);
-    }
-    return hits;
-}
 
 // Traduit le residenceType brut d'Otaree (anglais : "Student", "Business"...) en un libellé de
 // catégorie complet et grammaticalement correct, plutôt que de transmettre la valeur brute au
@@ -580,6 +587,61 @@ const LIBELLES_CATEGORIE_RESIDENCE = {
     Tourism: 'une résidence de tourisme',
     Tourist: 'une résidence de tourisme',
 };
+
+// Mots-clés attendus dans l'intertitre "POURQUOI INVESTIR DANS [TYPE DE RÉSIDENCE] ?" (bloc 3)
+// pour chaque catégorie — sert à détecter un intertitre resté générique ("CETTE CATÉGORIE" au
+// lieu de nommer réellement le type), sans dépendre d'une correspondance mot-à-mot avec
+// LIBELLES_CATEGORIE_RESIDENCE (dont "résidence" seul serait trop générique pour être un
+// signal fiable — toutes les catégories contiennent ce mot).
+const MOTS_CLES_INTERTITRE_CATEGORIE = {
+    Student: ['étudiant'],
+    Business: ['affaires'],
+    Senior: ['senior'],
+    EHPAD: ['ehpad'],
+    Tourism: ['tourisme', 'touristique'],
+    Tourist: ['tourisme', 'touristique'],
+};
+
+// Notre propre marque, présente dans l'appel à l'action standard de chaque annonce ("...chat 7j/7
+// de La Centrale du LMNP") — jamais un vrai promoteur à signaler, même si elle coïncide (constaté
+// sur 2 lots réels) avec la valeur developer.name renvoyée par Otaree pour ce lot précis.
+const MARQUE_PROPRE = 'la centrale du lmnp';
+
+function detecterProblemesConformite(texte, lot) {
+    const hits = new Set();
+    for (const [label, re] of [...FORMULATIONS_INTERDITES, ...FUITES_STRUCTURE]) {
+        if (re.test(texte)) hits.add(label);
+    }
+
+    // Nom du promoteur cité en clair — fait déjà connu en code (lot.program.developer.name),
+    // jamais à laisser dépendre de la discipline du modèle à ne pas le mentionner. Repéré en
+    // conditions réelles sur un lot (Groupe Duval) où le prompt V2 l'interdit pourtant
+    // explicitement.
+    const nomPromoteur = lot?.program?.developer?.name?.trim();
+    if (nomPromoteur && !nomPromoteur.toLowerCase().includes(MARQUE_PROPRE)) {
+        const echappe = nomPromoteur.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (new RegExp(echappe, 'i').test(texte)) {
+            hits.add(`nom du promoteur cité ("${nomPromoteur}")`);
+        }
+    }
+
+    // Intertitre du bloc 3 resté générique ("POURQUOI INVESTIR DANS CETTE CATÉGORIE ?" au lieu
+    // de nommer réellement le type de résidence) — le format de sortie exige le type nommé.
+    const residenceType = lot?.program?.residenceType;
+    const motsClesAttendus = residenceType ? MOTS_CLES_INTERTITRE_CATEGORIE[residenceType] : null;
+    if (motsClesAttendus) {
+        const matchIntertitre = texte.match(/POURQUOI INVESTIR DANS\s+([^?\n]+)\?/i);
+        if (matchIntertitre) {
+            const intertitreLower = matchIntertitre[1].toLowerCase();
+            const contientCategorie = motsClesAttendus.some((mot) => intertitreLower.includes(mot));
+            if (!contientCategorie) {
+                hits.add(`intertitre du bloc 3 générique ("${matchIntertitre[0].trim()}") au lieu de nommer la catégorie réelle`);
+            }
+        }
+    }
+
+    return Array.from(hits);
+}
 
 // Addendum spécifique à gpt-5-nano (voir bascule ci-dessous) — gpt-5-nano suit le prompt de
 // façon plus littérale que gpt-4o : sans ça, il recopiait les en-têtes internes "BLOC n" et
@@ -611,7 +673,7 @@ Annexes : 5 m² de balcon, 1 parking extérieur
 // mécanique plutôt qu'une reformulation libre : gpt-5-nano, plus petit que gpt-4o, respecte moins
 // bien une consigne de correction nuancée ("réécris en évitant ce mot") qu'une substitution
 // directe et sans ambiguïté. Validé : a rattrapé 5/5 violations réelles observées en test.
-function alternativesPourCorrection(hits) {
+function alternativesPourCorrection(hits, lot) {
     const lignes = [];
     if (hits.some((h) => h.includes('garanti'))) {
         lignes.push(
@@ -622,6 +684,31 @@ function alternativesPourCorrection(hits) {
     if (hits.some((h) => h.includes('sécuris') || h.includes('sécurité'))) {
         lignes.push(
             '- Pour "sécurisé"/"sécurisée"/"sécurité" → supprime le mot, ou remplace par "adapté", "de qualité" ou "confortable" selon le contexte — jamais par un synonyme de certitude.'
+        );
+    }
+    if (hits.some((h) => h.includes('donnée manquante explicitée'))) {
+        lignes.push(
+            '- Pour "non communiqué"/"non fourni"/"non renseigné"/"non spécifié"/"non précisé" appliqué à une donnée absente (loyer, rentabilité, annexe, balcon...) → supprime ENTIÈREMENT la ligne ou la mention concernée, ne la remplace par aucun texte, aucune formule d\'absence. L\'information disparaît simplement du texte comme si elle n\'avait jamais été envisagée.'
+        );
+    }
+    if (hits.some((h) => h.includes('fuite de ton "documents/sources internes"'))) {
+        lignes.push(
+            '- Pour toute mention de "documents", "plan", "sources" ou "disponible(s) pour référence" — supprime entièrement la phrase ou reformule en pur langage commercial destiné au lecteur, sans jamais évoquer l\'existence de documents/dossiers/sources internes au pipeline (ex: "avec plan et documents partenaires disponibles pour référence" devient simplement rien, ou une caractéristique réelle du bien si le contexte en fournit une).'
+        );
+    }
+    const promoteurHit = hits.find((h) => h.startsWith('nom du promoteur cité'));
+    if (promoteurHit) {
+        const nomPromoteur = lot?.program?.developer?.name;
+        lignes.push(
+            `- Le nom "${nomPromoteur}" est celui du PROMOTEUR (jamais l'exploitant), il est interdit de le citer. Remplace chaque occurrence par une formulation générique : "un exploitant professionnel", "un gestionnaire professionnel", ou "la résidence" selon le contexte — jamais de nom propre d'entreprise.`
+        );
+    }
+    if (hits.some((h) => h.includes('intertitre du bloc 3 générique'))) {
+        const libelle = lot?.program?.residenceType ? LIBELLES_CATEGORIE_RESIDENCE[lot.program.residenceType] : null;
+        lignes.push(
+            libelle
+                ? `- L'intertitre du bloc 3 doit nommer explicitement la catégorie : remplace-le par exactement "POURQUOI INVESTIR DANS ${libelle.replace(/^une?\s+/i, '').toUpperCase()} ?" (ou une variante grammaticale naturelle qui contient bien ce nom de catégorie), jamais une formule vague comme "CETTE CATÉGORIE" ou "CE TYPE DE RÉSIDENCE".`
+                : '- L\'intertitre du bloc 3 doit nommer explicitement le type de résidence identifié, jamais une formule vague comme "CETTE CATÉGORIE".'
         );
     }
     lignes.push('- Règle générale si aucune alternative ci-dessus ne correspond exactement : supprime simplement le mot fautif et ajuste la phrase pour qu\'elle reste grammaticalement correcte sans lui — la suppression pure est toujours une réponse acceptée, ne cherche pas de synonyme subtil.');
@@ -701,7 +788,7 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
         } catch (e) {
             throw new Error(`JSON.parse a échoué (finish_reason=${response.data.choices[0].finish_reason}, contenu brut="${content.substring(0, 200)}")`);
         }
-        hits = detecterProblemesConformite(resultat.texte);
+        hits = detecterProblemesConformite(resultat.texte, lot);
         if (hits.length === 0) break;
 
         if (essai < MAX_TENTATIVES_CONFORMITE) {
@@ -709,7 +796,7 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
             messages.push({ role: 'assistant', content: JSON.stringify(resultat) });
             messages.push({
                 role: 'user',
-                content: `Ta réponse précédente contient un problème détecté par notre vérification automatique : ${hits.join(', ')}.\n\nCorrige en appliquant EXACTEMENT l'une de ces substitutions (ne réinvente pas une reformulation différente) :\n${alternativesPourCorrection(hits)}\n\nNe change rien d'autre au fond ni à la structure. Réponds à nouveau uniquement avec le JSON {"titre": "...", "texte": "..."}.`,
+                content: `Ta réponse précédente contient un problème détecté par notre vérification automatique : ${hits.join(', ')}.\n\nCorrige en appliquant EXACTEMENT l'une de ces substitutions (ne réinvente pas une reformulation différente) :\n${alternativesPourCorrection(hits, lot)}\n\nNe change rien d'autre au fond ni à la structure. Réponds à nouveau uniquement avec le JSON {"titre": "...", "texte": "..."}.`,
             });
         }
     }
