@@ -721,6 +721,85 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
     return { titre: resultat.titre, texte: resultat.texte, alerteConformite: hits.length > 0 ? hits : null };
 }
 
+// Garde-fou "document ne correspond pas au lot" (ex: plan d'un autre appartement) — PUREMENT
+// INFORMATIF, contrairement aux garde-fous ci-dessus : ne bloque jamais la publication, ne
+// modifie jamais rien silencieusement. Signale juste un doute pour vérification humaine (voir
+// orchestrator.js, alerte_document). Un lot a souvent plusieurs documents nommés "plan" (plan de
+// vente, plan de masse, plan sous-sol...) — un seul est le vrai plan du logement, d'où la
+// vérification de tous ceux dont le nom contient "plan", pas un seul (constaté en explorant des
+// lots réels). Coût mesuré en conditions réelles : ~$0,00007/document, gpt-5-nano.
+const SEUIL_ECART_SURFACE_M2 = 3;
+const SEUIL_ECART_SURFACE_PCT = 0.20;
+
+async function extrairePlanImage(imageUrl) {
+    const imgResp = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
+    const b64 = Buffer.from(imgResp.data).toString('base64');
+    const dataUri = `data:image/jpeg;base64,${b64}`;
+
+    const prompt = `Voici un document associé à un lot immobilier (peut-être un plan, peut-être autre chose). Extrais UNIQUEMENT ce qui est explicitement écrit/visible sur ce document, sans jamais deviner : la surface totale du logement en m² si indiquée, la typologie (ex: T1, T2, Studio) si indiquée. Réponds en JSON strict : {"surface": nombre ou null, "typologie": "..." ou null, "estPlanLogement": true/false}. "estPlanLogement":true UNIQUEMENT si ce document est bien le plan d'un logement individuel (pas un plan de masse, pas un plan de sous-sol/parking, pas une fiche gestionnaire).`;
+
+    const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+        model: 'gpt-5-nano',
+        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: dataUri } }] }],
+        response_format: { type: 'json_object' },
+        reasoning_effort: 'minimal',
+        max_completion_tokens: 1000,
+    }, {
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+    });
+
+    await enregistrerUsageOpenAI(response.data.usage, 'gpt-5-nano');
+    return JSON.parse(response.data.choices[0].message.content);
+}
+
+async function verifierDocumentsPlan(lot) {
+    const documentsPlan = (lot.documents || [])
+        .map((doc) => ({ name: doc.file?.name || doc.name || '', url: doc.file?.urls?.large || doc.file?.urls?.medium || doc.urls?.large || doc.urls?.medium }))
+        .filter((doc) => doc.url && /plan/i.test(doc.name))
+        .slice(0, 4); // borne le coût/latence même si un lot a beaucoup de documents "plan"
+
+    if (documentsPlan.length === 0) return null;
+
+    for (const doc of documentsPlan) {
+        try {
+            const extrait = await extrairePlanImage(doc.url);
+            if (!extrait.estPlanLogement) continue; // plan de masse/sous-sol/etc. — rien à comparer, pas un doute
+
+            const problemes = [];
+            if (extrait.surface != null && typeof lot.surface === 'number') {
+                const ecart = Math.abs(extrait.surface - lot.surface);
+                if (ecart >= SEUIL_ECART_SURFACE_M2 && ecart / lot.surface >= SEUIL_ECART_SURFACE_PCT) {
+                    problemes.push(`surface du plan (${extrait.surface} m²) très différente de la surface Otaree (${lot.surface} m²)`);
+                }
+            }
+            if (extrait.typologie && lot.typology && extrait.typologie.toUpperCase() !== String(lot.typology).toUpperCase()) {
+                problemes.push(`typologie du plan (${extrait.typologie}) différente de la typologie Otaree (${lot.typology})`);
+            }
+            if (problemes.length > 0) {
+                return `Document "${doc.name}" possiblement erroné : ${problemes.join(', ')}.`;
+            }
+        } catch (e) {
+            // Un document illisible/inaccessible ne doit jamais faire échouer la génération —
+            // juste ignoré, comme une absence d'info (voir principe "ne jamais deviner").
+            console.error(`[verifierDocumentsPlan] échec sur "${doc.name}" :`, e.message);
+        }
+    }
+    return null;
+}
+
+app.post('/api/verifier-plans', async (req, res) => {
+    const { lot } = req.body || {};
+    if (!lot || typeof lot !== 'object') return res.status(400).json({ success: false, error: 'lot requis' });
+    try {
+        const alerte = await verifierDocumentsPlan(lot);
+        res.json({ success: true, alerte });
+    } catch (error) {
+        // Ne doit jamais bloquer le run — un échec ici équivaut à "rien à signaler".
+        console.error('[api/verifier-plans] erreur :', error.message);
+        res.json({ success: true, alerte: null });
+    }
+});
+
 app.post('/api/generate', async (req, res) => {
     try {
         const { lot, imagesSelection } = req.body || {};

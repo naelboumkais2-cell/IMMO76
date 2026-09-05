@@ -22,3 +22,23 @@ export async function genererDonneesIA(lotEnrichi, imagesSelection = null) {
         alerteConformite: data.alerteConformite || null,
     };
 }
+
+// Garde-fou "document ne correspond pas au lot" (voir Ubiflow-Auto-API/index.js,
+// verifierDocumentsPlan) — PUREMENT INFORMATIF : ne throw jamais, un échec équivaut à "rien à
+// signaler" plutôt qu'à un blocage. Appelé en parallèle de genererDonneesIA (voir orchestrator.js,
+// executerTraitement), jamais après : sur un lot, les deux appels sont indépendants, les lancer en
+// série ajouterait de la latence sans raison.
+export async function verifierPlansLot(lotEnrichi) {
+    try {
+        const res = await fetch(`${SERVER_URL}/api/verifier-plans`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lot: lotEnrichi }),
+        });
+        const data = await res.json().catch(() => ({}));
+        return data.alerte || null;
+    } catch (e) {
+        console.error('[verifierPlansLot] échec (ignoré, purement informatif) :', e.message);
+        return null;
+    }
+}

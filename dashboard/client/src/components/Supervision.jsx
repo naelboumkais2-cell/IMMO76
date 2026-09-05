@@ -224,7 +224,18 @@ export function Supervision({ actif }) {
                             <tbody>
                                 {annoncesPaginated.map((a) => (
                                     <tr key={a.id}>
-                                        <td style={{ fontWeight: 500 }}>{a.titre}</td>
+                                        <td style={{ fontWeight: 500 }}>
+                                            {a.titre}
+                                            {a.alerte_document && (
+                                                <span
+                                                    className="badge badge-en_attente"
+                                                    style={{ marginLeft: 8, cursor: 'help' }}
+                                                    title={a.alerte_document}
+                                                >
+                                                    <IconAlert width={12} height={12} /> document à vérifier
+                                                </span>
+                                            )}
+                                        </td>
                                         <td className="cell-muted">{a.ville}</td>
                                         <td className="cell-muted">{a.prix ? `${a.prix.toLocaleString('fr-FR')} €` : '—'}</td>
                                         <td className="cell-muted">{a.scrapee_le}</td>

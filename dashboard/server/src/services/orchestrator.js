@@ -2,7 +2,7 @@ import { db } from '../db.js';
 import * as scraperEngine from '../integrations/scraperEngine.js';
 import * as hubiflowClient from '../integrations/hubiflowRouter.js';
 import { enrichirLot, obtenirJwtFrais, rechercherLotsOtaree, parseFiltresOtareeDepuisUrl } from '../integrations/otareeSearchClient.js';
-import { genererDonneesIA } from '../integrations/aiGenerationClient.js';
+import { genererDonneesIA, verifierPlansLot } from '../integrations/aiGenerationClient.js';
 import { getMode as getAutoPublishMode, MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 import {
     demarrerRun,
@@ -373,7 +373,17 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
             const resultats = await Promise.allSettled(
                 groupe.map(async ({ lotBrut, imagesSelection }) => {
                     const lotEnrichi = await enrichirLot(lotBrut, jetonPartage);
-                    return genererDonneesIA(lotEnrichi, imagesSelection);
+                    // Vérification des documents "plan" en parallèle de la génération IA, pas en
+                    // série après — les deux appels sont indépendants (aucun n'a besoin du
+                    // résultat de l'autre), les lancer l'un après l'autre ajouterait de la
+                    // latence sans raison sur un run de plusieurs dizaines de lots. Purement
+                    // informatif : verifierPlansLot ne throw jamais, un échec équivaut à "rien à
+                    // signaler", ne bloque jamais la génération ni la publication.
+                    const [donneesIA, alerteDocument] = await Promise.all([
+                        genererDonneesIA(lotEnrichi, imagesSelection),
+                        verifierPlansLot(lotEnrichi),
+                    ]);
+                    return { ...donneesIA, alerteDocument };
                 })
             );
 
@@ -393,10 +403,22 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
                 }
 
                 try {
-                    const { aiData, images, alerteConformite } = resultat.value;
-                    await db.prepare(`UPDATE annonces SET donnees_ia = ?, images = ? WHERE id = ?`)
-                        .run(JSON.stringify(aiData), JSON.stringify(images), annonce.id);
+                    const { aiData, images, alerteConformite, alerteDocument } = resultat.value;
+                    await db.prepare(`UPDATE annonces SET donnees_ia = ?, images = ?, alerte_document = ? WHERE id = ?`)
+                        .run(JSON.stringify(aiData), JSON.stringify(images), alerteDocument || null, annonce.id);
                     await log('auto_publish', { annonceId: annonce.id, succes: true, message: `Données IA générées automatiquement (mode ${mode})` });
+
+                    // Garde-fou "document ne correspond pas au lot" (voir verifierDocumentsPlan,
+                    // Ubiflow-Auto-API) — PUREMENT INFORMATIF, à la différence du garde-fou
+                    // conformité juste en dessous : ne bloque jamais la publication, juste un
+                    // signalement loggé + stocké (alerte_document) pour affichage dans Supervision.
+                    if (alerteDocument) {
+                        await log('auto_publish', {
+                            annonceId: annonce.id,
+                            succes: true,
+                            message: `Signalement document à vérifier : ${alerteDocument} (publication non bloquée).`,
+                        });
+                    }
 
                     // Garde-fou formulations interdites / fuites de structure (voir
                     // detecterProblemesConformite, Ubiflow-Auto-API) : le texte a déjà survécu à

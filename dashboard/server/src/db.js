@@ -242,6 +242,14 @@ export async function initDb() {
     await db.exec(`ALTER TABLE annonces ADD COLUMN reference_generee TEXT`);
   }
 
+  // Migration : signalement "document possiblement erroné" (voir services/orchestrator.js,
+  // verifierPlansLot) — ex: plan PDF d'un autre appartement associé au lot par erreur sur
+  // Otaree. NULL = rien à signaler. Purement informatif, contrairement aux autres garde-fous :
+  // ne bloque jamais la publication, juste affiché dans Supervision pour vérification manuelle.
+  if (!colonnesAnnonces.includes('alerte_document')) {
+    await db.exec(`ALTER TABLE annonces ADD COLUMN alerte_document TEXT`);
+  }
+
   // Seed default portails if empty
   const nbPortailsResult = await pool.query(`SELECT COUNT(*) AS n FROM portails`);
   const nbPortails = parseInt(nbPortailsResult.rows[0].n, 10);

@@ -11,7 +11,7 @@ export const annoncesRouter = Router();
 // rafraîchissement automatique toutes les 5s pendant que l'onglet est ouvert, un `SELECT *` ici
 // pouvait retransmettre plusieurs centaines de Mo par minute — identifié comme responsable
 // d'un dépassement réel du quota de transfert Neon.
-const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test';
+const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test, alerte_document';
 
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
