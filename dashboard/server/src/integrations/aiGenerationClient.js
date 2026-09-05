@@ -14,5 +14,11 @@ export async function genererDonneesIA(lotEnrichi, imagesSelection = null) {
     if (!res.ok || !data.success) {
         throw new Error(data.error || `Erreur HTTP ${res.status} lors de la génération IA`);
     }
-    return { aiData: data.aiData, images: data.images, villeConnue: data.villeConnue, codePostalConnu: data.codePostalConnu };
+    return {
+        aiData: data.aiData,
+        images: data.images,
+        villeConnue: data.villeConnue,
+        codePostalConnu: data.codePostalConnu,
+        alerteConformite: data.alerteConformite || null,
+    };
 }

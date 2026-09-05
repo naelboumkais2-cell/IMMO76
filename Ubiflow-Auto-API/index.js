@@ -523,6 +523,46 @@ Réponds UNIQUEMENT avec un objet JSON strictement conforme à cette structure, 
 
 Ne retourne rien d'autre : pas ton analyse, pas les informations écartées, pas tes raisonnements, pas de commentaire sur la qualité du dossier.`;
 
+// Garde-fou post-génération : le prompt interdit déjà explicitement ces formulations (voir
+// "FISCALITÉ ET SÉCURITÉ — INTERDICTIONS STRICTES" ci-dessus), mais l'instruction seule ne
+// suffit pas à 100% avec une température à 0,7 (constaté en conditions réelles sur 5/8 lots
+// d'un échantillon de test) — cette vérification code détecte les mêmes formulations après coup,
+// pour rattraper les cas où le prompt seul échoue. Même logique de prudence que le garde-fou
+// déjà en place sur la rentabilité aberrante (donneesFinancieresFiablesDepuisLot) : ne jamais
+// laisser passer une donnée/formulation non fiable sans un filet de sécurité côté code.
+const FORMULATIONS_INTERDITES = [
+    ['zéro impôt', /zéro imp[ôo]t/i],
+    ["exonération d'impôt garantie", /exon[ée]ration d'imp[ôo]t garantie/i],
+    ['revenus totalement défiscalisés', /revenus? totalement défiscalisés?/i],
+    ["loyers nets d'impôts", /loyers? nets? d'imp[ôo]ts?/i],
+    ['aucun impôt pendant X années', /aucun imp[ôo]t pendant/i],
+    ['investissement/placement sans risque', /(investissement|placement) sans risque/i],
+    ['aucune vacance locative', /aucune vacance locative/i],
+    ["aucun risque d'impayé", /aucun risque d'impay[ée]/i],
+    ['famille "sécuris*/sécurité"', /\bsécuris\w*|\bsécurité\b/i],
+    ['famille "garanti*"', /\bgaranti\w*/i],
+];
+
+// Filet de sécurité structurel — pas dans le prompt initial, ajouté après avoir constaté que
+// gpt-5-nano recopie littéralement des éléments de la consigne (en-têtes "BLOC n", ou
+// l'instruction "omets la ligne X" elle-même) au lieu de les appliquer. Vérifié pour tous les
+// modèles, gpt-4o compris : filet peu coûteux, jamais déclenché en production jusqu'ici, mais
+// utile si ce type de fuite apparaissait un jour.
+const FUITES_STRUCTURE = [
+    ['en-tête "BLOC n" recopié', /\bBLOC\s*\d/i],
+    ['instruction "omets la ligne" recopiée', /omets?\s+(la\s+ligne|simplement)/i],
+    ['consigne de rentabilité recopiée', /non disponible avec certitude\s*[—-]\s*(omets?|omise)/i],
+];
+
+function detecterProblemesConformite(texte) {
+    const hits = [];
+    for (const [label, re] of [...FORMULATIONS_INTERDITES, ...FUITES_STRUCTURE]) {
+        const m = texte.match(re);
+        if (m) hits.push(label);
+    }
+    return hits;
+}
+
 async function callOpenAILmnp(textContext, base64Images, lot) {
     const donneesFiables = donneesFinancieresFiablesDepuisLot(lot);
     const residenceType = lot.program?.residenceType || null;
@@ -544,39 +584,183 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
         messageContent.push({ type: 'image_url', image_url: { url: img } });
     }
 
-    let response;
-    for (let tentative = 1; tentative <= 3; tentative++) {
-        try {
-            response = await axios.post('https://api.openai.com/v1/chat/completions', {
-                model: 'gpt-4o',
-                messages: [{ role: 'system', content: PROMPT_SYSTEME_LMNP_V2 }, { role: 'user', content: messageContent }],
-                temperature: 0.7,
-                max_tokens: 2000,
-                // Mode JSON strict d'OpenAI — sans ça, un texte long avec guillemets/apostrophes
-                // (ex: nom de résidence entre guillemets dans la description) peut produire un
-                // JSON mal formé et faire échouer JSON.parse malgré le prompt qui le demande déjà
-                // en texte. Constaté en conditions réelles (lot Le Havre) : erreur de parsing
-                // JSON alors que les 2 autres lots testés en même temps ont fonctionné.
-                response_format: { type: 'json_object' },
-            }, {
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+    const messages = [{ role: 'system', content: PROMPT_SYSTEME_LMNP_V2 }, { role: 'user', content: messageContent }];
+
+    let resultat, hits = [];
+    const MAX_TENTATIVES_CONFORMITE = 2;
+    for (let essai = 1; essai <= MAX_TENTATIVES_CONFORMITE; essai++) {
+        let response;
+        for (let tentative = 1; tentative <= 3; tentative++) {
+            try {
+                response = await axios.post('https://api.openai.com/v1/chat/completions', {
+                    model: 'gpt-4o',
+                    messages,
+                    temperature: 0.7,
+                    max_tokens: 2000,
+                    // Mode JSON strict d'OpenAI — sans ça, un texte long avec guillemets/apostrophes
+                    // (ex: nom de résidence entre guillemets dans la description) peut produire un
+                    // JSON mal formé et faire échouer JSON.parse malgré le prompt qui le demande déjà
+                    // en texte. Constaté en conditions réelles (lot Le Havre) : erreur de parsing
+                    // JSON alors que les 2 autres lots testés en même temps ont fonctionné.
+                    response_format: { type: 'json_object' },
+                }, {
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+                });
+                break;
+            } catch (e) {
+                if (e.response?.status !== 429 || tentative === 3) throw e;
+                const delaiMs = 1000 * 2 ** (tentative - 1);
+                console.log(`[callOpenAILmnp] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
+                await new Promise((r) => setTimeout(r, delaiMs));
+            }
+        }
+
+        await enregistrerUsageOpenAI(response.data.usage);
+
+        let content = response.data.choices[0].message.content;
+        content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+        resultat = JSON.parse(content);
+        hits = detecterProblemesConformite(resultat.texte);
+        if (hits.length === 0) break;
+
+        if (essai < MAX_TENTATIVES_CONFORMITE) {
+            console.log(`[callOpenAILmnp] formulation(s) interdite(s) détectée(s) (${hits.join(', ')}) — nouvelle tentative avec correction ciblée`);
+            messages.push({ role: 'assistant', content: JSON.stringify(resultat) });
+            messages.push({
+                role: 'user',
+                content: `Ta réponse précédente contient une formulation interdite par la consigne système ci-dessus : ${hits.join(', ')}. Réécris entièrement le titre et le texte en éliminant strictement ces mots/tournures et toute leur famille, sans rien changer d'autre au fond ni à la structure. Réponds à nouveau uniquement avec le JSON {"titre": "...", "texte": "..."}.`,
             });
-            break;
-        } catch (e) {
-            if (e.response?.status !== 429 || tentative === 3) throw e;
-            const delaiMs = 1000 * 2 ** (tentative - 1);
-            console.log(`[callOpenAILmnp] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
-            await new Promise((r) => setTimeout(r, delaiMs));
         }
     }
 
-    await enregistrerUsageOpenAI(response.data.usage);
-
-    let content = response.data.choices[0].message.content;
-    content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
-    const resultat = JSON.parse(content);
-    return { titre: resultat.titre, texte: resultat.texte };
+    // alerteConformite non-null : la formulation interdite est toujours là après la seconde
+    // tentative — le texte est quand même renvoyé (mieux vaut une annonce à corriger à la main
+    // qu'aucune), mais orchestrator.js bloque la publication automatique de ce lot précis tant
+    // qu'un humain n'a pas vérifié (voir executerTraitement).
+    return { titre: resultat.titre, texte: resultat.texte, alerteConformite: hits.length > 0 ? hits : null };
 }
+
+// TEMPORAIRE — chantier "gpt-5-nano peut-il remplacer gpt-4o ?" (voir comparatif précédent :
+// gain de coût réel de -95%, mais fuite systématique des en-têtes internes "BLOC n" et de la
+// consigne de rentabilité recopiée telle quelle). Complément ciblé au prompt V2, ajouté
+// UNIQUEMENT pour les modèles gpt-5 (jamais pour gpt-4o en production, qui n'a jamais montré ce
+// problème) : explicite ce qu'un modèle plus littéral a besoin qu'on lui dise noir sur blanc,
+// avec un exemple concret plutôt qu'une règle abstraite de plus.
+const PROMPT_ADDENDUM_GPT5 = `
+
+=== CONSIGNE DE FORMAT SUPPLÉMENTAIRE (spécifique à ce modèle) ===
+
+Le champ "texte" que tu renvoies est publié TEL QUEL sur le site, lu directement par un client final — il ne doit jamais contenir la moindre trace de la structure interne de cette consigne.
+
+Concrètement :
+- N'écris JAMAIS les mots "BLOC", "BLOC 1", "BLOC 2", etc., ni aucun numéro de bloc. Les intertitres ci-dessus ("BLOC 1 — COMPRENDRE...") servent uniquement à t'organiser en interne : dans le texte final, seul l'intertitre proprement dit apparaît (ex. "COMPRENDRE IMMÉDIATEMENT LE LMNP GÉRÉ"), jamais précédé de "BLOC" ni d'un numéro.
+- N'écris JAMAIS une instruction que tu es en train de suivre. Si une donnée est absente (ex: rentabilité non fournie), la ligne correspondante disparaît simplement du texte, sans aucune trace ni commentaire sur son absence ("omets la ligne", "non disponible avec certitude" ne doivent JAMAIS apparaître dans ta réponse — applique la règle, ne la décris pas).
+
+Exemple de sortie CORRECTE pour la section chiffres clés quand la rentabilité n'est pas disponible (n'invente pas ces valeurs, c'est un exemple de FORME uniquement) :
+
+LES CHIFFRES CLÉS
+
+Prix : 172 000 €
+Surface : 41,7 m²
+Annexes : 5 m² de balcon, 1 parking extérieur
+
+(remarque pour toi : aucune ligne "Rentabilité" n'apparaît ci-dessus — c'est le comportement attendu ; ne reproduis jamais cette remarque entre parenthèses dans ta réponse, elle est uniquement là pour t'expliquer l'exemple)`;
+
+// TEMPORAIRE — variante paramétrable par modèle, pour retester gpt-5-nano avec l'addendum
+// ci-dessus après l'échec du prompt V2 standard. Réutilise exactement la même détection/retry
+// que callOpenAILmnp (production, gpt-4o) — voir detecterProblemesConformite. À retirer une fois
+// la décision prise.
+async function callOpenAILmnpAvecModele(textContext, base64Images, lot, model) {
+    const donneesFiables = donneesFinancieresFiablesDepuisLot(lot);
+    const residenceType = lot.program?.residenceType || null;
+
+    let blocDonneesConnues = 'DONNÉES CONNUES AVEC CERTITUDE :\n';
+    blocDonneesConnues += residenceType ? `- Catégorie de résidence (Otaree) : ${residenceType}\n` : '- Catégorie de résidence : non fournie, déduis-la du contexte disponible sans jamais confondre senior et EHPAD.\n';
+    if (donneesFiables?.prix != null) blocDonneesConnues += `- Prix : ${donneesFiables.prix} €\n`;
+    if (donneesFiables?.loyerMensuel != null) blocDonneesConnues += `- Loyer mensuel : ${donneesFiables.loyerMensuel} € (loyer annuel = x12)\n`;
+    if (donneesFiables?.rentabilite != null) {
+        blocDonneesConnues += `- Rentabilité : ${donneesFiables.rentabilite}% (déjà calculée, méthode loyer HT x12/prix HT — utilise cette valeur telle quelle, ne recalcule jamais)\n`;
+    } else {
+        blocDonneesConnues += `- Rentabilité : non disponible avec certitude — omets la ligne "Rentabilité" dans les chiffres clés.\n`;
+    }
+
+    const messageContent = [
+        { type: 'text', text: blocDonneesConnues + '\n\nDonnées structurées complètes du lot :\n\n' + (textContext || '(Aucun texte, base-toi sur les images)') },
+    ];
+    for (const img of base64Images) {
+        messageContent.push({ type: 'image_url', image_url: { url: img } });
+    }
+
+    const estGpt5 = model.startsWith('gpt-5');
+    const systemPrompt = estGpt5 ? PROMPT_SYSTEME_LMNP_V2 + PROMPT_ADDENDUM_GPT5 : PROMPT_SYSTEME_LMNP_V2;
+    const messages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: messageContent }];
+
+    let resultat, hits = [], usageTotal = { prompt_tokens: 0, completion_tokens: 0 };
+    const MAX_TENTATIVES_CONFORMITE = 2;
+    for (let essai = 1; essai <= MAX_TENTATIVES_CONFORMITE; essai++) {
+        const body = {
+            model,
+            messages,
+            response_format: { type: 'json_object' },
+        };
+        if (!estGpt5) body.temperature = 0.7;
+        if (estGpt5) body.reasoning_effort = 'minimal';
+        body[estGpt5 ? 'max_completion_tokens' : 'max_tokens'] = estGpt5 ? 4000 : 2000;
+
+        const response = await axios.post('https://api.openai.com/v1/chat/completions', body, {
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+        });
+        usageTotal.prompt_tokens += response.data.usage.prompt_tokens;
+        usageTotal.completion_tokens += response.data.usage.completion_tokens;
+
+        let content = response.data.choices[0].message.content;
+        content = (content || '').replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+        try {
+            resultat = JSON.parse(content);
+        } catch (e) {
+            throw new Error(`JSON.parse a échoué (finish_reason=${response.data.choices[0].finish_reason}, contenu brut="${content.substring(0, 200)}")`);
+        }
+        hits = detecterProblemesConformite(resultat.texte);
+        if (hits.length === 0) break;
+
+        if (essai < MAX_TENTATIVES_CONFORMITE) {
+            messages.push({ role: 'assistant', content: JSON.stringify(resultat) });
+            messages.push({
+                role: 'user',
+                content: `Ta réponse précédente contient un problème détecté par notre vérification automatique : ${hits.join(', ')}. Réécris entièrement le titre et le texte en corrigeant strictement ce point (et toute sa famille), sans rien changer d'autre au fond ni à la structure. Réponds à nouveau uniquement avec le JSON {"titre": "...", "texte": "..."}.`,
+            });
+        }
+    }
+
+    return { titre: resultat.titre, texte: resultat.texte, usage: usageTotal, alerteConformite: hits.length > 0 ? hits : null };
+}
+
+app.post('/api/diag-compare-modeles', async (req, res) => {
+    const { lot, modeles } = req.body || {};
+    if (!lot || typeof lot !== 'object') return res.status(400).json({ success: false, error: 'lot requis' });
+    const listeModeles = Array.isArray(modeles) && modeles.length ? modeles : ['gpt-4o', 'gpt-5-nano'];
+    try {
+        const lotImageData = await downloadOtareeImages(lot);
+        const lotImages = lotImageData.map(img => img.data);
+        const contexte = buildTextContext(lot);
+        const resultats = {};
+        for (const model of listeModeles) {
+            try {
+                if (model === 'gpt-4o') {
+                    // Teste le vrai chemin de production (callOpenAILmnp), pas une copie.
+                    resultats[model] = await callOpenAILmnp(contexte, lotImages, lot);
+                } else {
+                    resultats[model] = await callOpenAILmnpAvecModele(contexte, lotImages, lot, model);
+                }
+            } catch (e) {
+                resultats[model] = { error: e.response?.data ? JSON.stringify(e.response.data).substring(0, 500) : e.message };
+            }
+        }
+        res.json({ success: true, resultats, nbImages: lotImages.length });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 app.post('/api/generate', async (req, res) => {
     try {
@@ -592,13 +776,15 @@ app.post('/api/generate', async (req, res) => {
         // champs structurés vient directement des données Otaree connues, jamais de l'IA. Tout
         // autre dispositif (Pinel, autres lois, Neuf) garde le prompt générique existant inchangé.
         let aiData;
+        let alerteConformite = null;
         if (estLotLmnp(lot)) {
-            const { titre, texte } = await callOpenAILmnp(buildTextContext(lot), lotImages, lot);
+            const { titre, texte, alerteConformite: alerte } = await callOpenAILmnp(buildTextContext(lot), lotImages, lot);
             aiData = { ...champsConnusDepuisLot(lot), titre, texte };
+            alerteConformite = alerte;
         } else {
             aiData = await callOpenAI(buildTextContext(lot), lotImages);
         }
-        res.json({ success: true, aiData, images: lotImages, villeConnue, codePostalConnu });
+        res.json({ success: true, aiData, images: lotImages, villeConnue, codePostalConnu, alerteConformite });
     } catch (error) {
         let errorMsg = error.message;
         if (error.response && error.response.data) errorMsg += ' - ' + JSON.stringify(error.response.data);

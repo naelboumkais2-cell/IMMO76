@@ -393,10 +393,26 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
                 }
 
                 try {
-                    const { aiData, images } = resultat.value;
+                    const { aiData, images, alerteConformite } = resultat.value;
                     await db.prepare(`UPDATE annonces SET donnees_ia = ?, images = ? WHERE id = ?`)
                         .run(JSON.stringify(aiData), JSON.stringify(images), annonce.id);
                     await log('auto_publish', { annonceId: annonce.id, succes: true, message: `Données IA générées automatiquement (mode ${mode})` });
+
+                    // Garde-fou formulations interdites / fuites de structure (voir
+                    // detecterProblemesConformite, Ubiflow-Auto-API) : le texte a déjà survécu à
+                    // une tentative de correction automatique côté IA et reste problématique — le
+                    // texte généré est conservé en base (relecture/correction manuelle possible),
+                    // mais la publication automatique de CE lot est annulée, pas celle du run
+                    // entier. Republish manuel depuis Supervision une fois le texte corrigé.
+                    if (alerteConformite && alerteConformite.length) {
+                        await log('auto_publish', {
+                            annonceId: annonce.id,
+                            succes: false,
+                            message: `Alerte conformité : formulation(s) interdite(s) toujours présente(s) après nouvelle tentative (${alerteConformite.join(', ')}) — publication automatique annulée pour ce lot, vérification manuelle requise (texte déjà généré, republish possible depuis Supervision après correction).`,
+                        });
+                        incrementerTraites();
+                        continue;
+                    }
 
                     let instances;
                     if (portailIds) {
