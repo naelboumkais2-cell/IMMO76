@@ -551,6 +551,12 @@ const FORMULATIONS_INTERDITES = [
     ['donnée manquante explicitée ("non renseigné")', /\bnon renseign[ée]e?s?\b/i],
     ['donnée manquante explicitée ("non spécifié")', /\bnon sp[ée]cifi[ée]e?s?\b/i],
     ['donnée manquante explicitée ("non précisé")', /\bnon pr[ée]cis[ée]e?s?\b/i],
+    // Variantes trouvées en relisant le texte final de lots corrigés par les patterns ci-dessus :
+    // le modèle contourne les formulations interdites avec un tour de phrase différent mais qui
+    // affirme toujours l'absence plutôt que d'omettre la ligne ("sans annexes mentionnées",
+    // "sans extension mentionnée") — même défaut de fond, liste à enrichir au fil de l'eau.
+    ['donnée manquante explicitée ("sans ... mentionné")', /\bsans \w+ mentionn[ée]e?s?\b/i],
+    ['donnée manquante explicitée ("aucun ... mentionné")', /\baucune? \w+ mentionn[ée]e?s?\b/i],
     // Fuite de ton "notice interne" (documents/sources du pipeline) plutôt que texte commercial
     // destiné au lecteur — repéré sur plusieurs lots réels, formulations variées. Liste à enrichir
     // au fil des cas repérés, comme la liste des mots interdits l'a déjà été deux fois cette session.
