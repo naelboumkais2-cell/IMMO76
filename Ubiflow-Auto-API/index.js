@@ -539,24 +539,33 @@ const FORMULATIONS_INTERDITES = [
     ['investissement/placement sans risque', /(investissement|placement) sans risque/i],
     ['aucune vacance locative', /aucune vacance locative/i],
     ["aucun risque d'impayé", /aucun risque d'impay[ée]/i],
-    ['famille "sécuris*/sécurité"', /\bsécuris\w*|\bsécurité\b/i],
+    // NB frontière de fin en `(?![a-zà-ÿ])` plutôt que `\b` sur tous les motifs ci-dessous qui
+    // peuvent se terminer par une voyelle accentuée nue (é/è...) : `\b` en JS se base sur `\w`,
+    // qui est purement ASCII — une lettre accentuée n'est PAS un "caractère de mot" pour `\b`.
+    // Conséquence concrète constatée : `/\bnon renseign[ée]e?s?\b/i` ne matchait JAMAIS
+    // "non renseigné" suivi d'un espace (deux caractères "non-mot" consécutifs pour `\b` = pas de
+    // frontière), alors que la variante "non renseignée"/"non renseignés" (terminée par une lettre
+    // ASCII) matchait bien — bug silencieux qui laissait passer exactement la forme masculin
+    // singulier, la plus fréquente. Repéré en confrontant `alerteConformite` (toujours null) au
+    // texte final réellement publié sur plusieurs lots (2, 136, 138, 233, 3863...).
+    ['famille "sécuris*/sécurité"', /\bsécuris\w*|\bsécurité(?![a-zà-ÿ])/i],
     ['famille "garanti*"', /\bgaranti\w*/i],
     // Repérés en relisant des textes réels publiés (gpt-5-nano) : la règle demande d'omettre
     // entièrement une ligne/donnée absente, jamais d'écrire qu'elle manque — "non communiqué"
     // sur le loyer, "non fournie" sur la rentabilité, "non spécifié" sur un balcon... même
     // défaut de fond que la fuite "omets la ligne" ci-dessous, mais sans le mot "omets" lui-même,
     // donc pas détecté par ce filet-là. Constaté sur 8/36 lots d'un échantillon de test — récurrent.
-    ['donnée manquante explicitée ("non communiqué")', /\bnon communiqu[ée]e?s?\b/i],
+    ['donnée manquante explicitée ("non communiqué")', /\bnon communiqu[ée]e?s?(?![a-zà-ÿ])/i],
     ['donnée manquante explicitée ("non fourni")', /\bnon fournie?s?\b/i],
-    ['donnée manquante explicitée ("non renseigné")', /\bnon renseign[ée]e?s?\b/i],
-    ['donnée manquante explicitée ("non spécifié")', /\bnon sp[ée]cifi[ée]e?s?\b/i],
-    ['donnée manquante explicitée ("non précisé")', /\bnon pr[ée]cis[ée]e?s?\b/i],
+    ['donnée manquante explicitée ("non renseigné")', /\bnon renseign[ée]e?s?(?![a-zà-ÿ])/i],
+    ['donnée manquante explicitée ("non spécifié")', /\bnon sp[ée]cifi[ée]e?s?(?![a-zà-ÿ])/i],
+    ['donnée manquante explicitée ("non précisé")', /\bnon pr[ée]cis[ée]e?s?(?![a-zà-ÿ])/i],
     // Variantes trouvées en relisant le texte final de lots corrigés par les patterns ci-dessus :
     // le modèle contourne les formulations interdites avec un tour de phrase différent mais qui
     // affirme toujours l'absence plutôt que d'omettre la ligne ("sans annexes mentionnées",
     // "sans extension mentionnée") — même défaut de fond, liste à enrichir au fil de l'eau.
-    ['donnée manquante explicitée ("sans ... mentionné")', /\bsans \w+ mentionn[ée]e?s?\b/i],
-    ['donnée manquante explicitée ("aucun ... mentionné")', /\baucune? \w+ mentionn[ée]e?s?\b/i],
+    ['donnée manquante explicitée ("sans ... mentionné")', /\bsans [\wà-ÿ]+ mentionn[ée]e?s?(?![a-zà-ÿ])/i],
+    ['donnée manquante explicitée ("aucun ... mentionné")', /\baucune? [\wà-ÿ]+ mentionn[ée]e?s?(?![a-zà-ÿ])/i],
     // Fuite de ton "notice interne" (documents/sources du pipeline) plutôt que texte commercial
     // destiné au lecteur — repéré sur plusieurs lots réels, formulations variées. Liste à enrichir
     // au fil des cas repérés, comme la liste des mots interdits l'a déjà été deux fois cette session.
