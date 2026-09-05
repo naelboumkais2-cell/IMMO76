@@ -578,6 +578,70 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
     return { titre: resultat.titre, texte: resultat.texte };
 }
 
+// TEMPORAIRE — comparaison ponctuelle de coût/qualité entre modèles pour le chantier de
+// réduction du coût de génération IA. Mêmes prompt/données/images que callOpenAILmnp, seul le
+// modèle change. N'appelle PAS enregistrerUsageOpenAI (tarif GPT-4o codé en dur, fausserait le
+// suivi de dépense pour des modèles moins chers) — le coût réel par modèle est calculé et
+// retourné directement dans la réponse pour ce diagnostic. À retirer une fois la comparaison faite.
+async function callOpenAILmnpAvecModele(textContext, base64Images, lot, model) {
+    const donneesFiables = donneesFinancieresFiablesDepuisLot(lot);
+    const residenceType = lot.program?.residenceType || null;
+
+    let blocDonneesConnues = 'DONNÉES CONNUES AVEC CERTITUDE :\n';
+    blocDonneesConnues += residenceType ? `- Catégorie de résidence (Otaree) : ${residenceType}\n` : '- Catégorie de résidence : non fournie, déduis-la du contexte disponible sans jamais confondre senior et EHPAD.\n';
+    if (donneesFiables?.prix != null) blocDonneesConnues += `- Prix : ${donneesFiables.prix} €\n`;
+    if (donneesFiables?.loyerMensuel != null) blocDonneesConnues += `- Loyer mensuel : ${donneesFiables.loyerMensuel} € (loyer annuel = x12)\n`;
+    if (donneesFiables?.rentabilite != null) {
+        blocDonneesConnues += `- Rentabilité : ${donneesFiables.rentabilite}% (déjà calculée, méthode loyer HT x12/prix HT — utilise cette valeur telle quelle, ne recalcule jamais)\n`;
+    } else {
+        blocDonneesConnues += `- Rentabilité : non disponible avec certitude — omets la ligne "Rentabilité" dans les chiffres clés.\n`;
+    }
+
+    const messageContent = [
+        { type: 'text', text: blocDonneesConnues + '\n\nDonnées structurées complètes du lot :\n\n' + (textContext || '(Aucun texte, base-toi sur les images)') },
+    ];
+    for (const img of base64Images) {
+        messageContent.push({ type: 'image_url', image_url: { url: img } });
+    }
+
+    const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+        model,
+        messages: [{ role: 'system', content: PROMPT_SYSTEME_LMNP_V2 }, { role: 'user', content: messageContent }],
+        temperature: 0.7,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' },
+    }, {
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+    });
+
+    let content = response.data.choices[0].message.content;
+    content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+    const resultat = JSON.parse(content);
+    return { titre: resultat.titre, texte: resultat.texte, usage: response.data.usage };
+}
+
+app.post('/api/diag-compare-modeles', async (req, res) => {
+    const { lot, modeles } = req.body || {};
+    if (!lot || typeof lot !== 'object') return res.status(400).json({ success: false, error: 'lot requis' });
+    const listeModeles = Array.isArray(modeles) && modeles.length ? modeles : ['gpt-4o', 'gpt-4o-mini', 'gpt-5-nano'];
+    try {
+        const lotImageData = await downloadOtareeImages(lot);
+        const lotImages = lotImageData.map(img => img.data);
+        const contexte = buildTextContext(lot);
+        const resultats = {};
+        for (const model of listeModeles) {
+            try {
+                resultats[model] = await callOpenAILmnpAvecModele(contexte, lotImages, lot, model);
+            } catch (e) {
+                resultats[model] = { error: e.response?.data ? JSON.stringify(e.response.data).substring(0, 500) : e.message };
+            }
+        }
+        res.json({ success: true, resultats, nbImages: lotImages.length });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/api/generate', async (req, res) => {
     try {
         const { lot, imagesSelection } = req.body || {};
