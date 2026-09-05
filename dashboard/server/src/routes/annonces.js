@@ -2,31 +2,8 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { exigerConnexion } from '../middleware/auth.js';
 import { publierInstance, depublierInstance, synchroniserInstance } from '../services/orchestrator.js';
-import { enrichirLot, obtenirJwtFrais } from '../integrations/otareeSearchClient.js';
 
 export const annoncesRouter = Router();
-
-// TEMPORAIRE — essai ciblé sur les 4 lots gpt-5-nano restants (3e tentative + alternatives
-// toutes prêtes + reasoning_effort relevé en correction). À retirer une fois l'essai terminé.
-annoncesRouter.get('/:id/diag-test-gpt5-nano', exigerConnexion, async (req, res) => {
-    try {
-        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(req.params.id);
-        if (!row) return res.status(404).json({ erreur: 'Annonce introuvable.' });
-        const lotBrut = typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
-        const jeton = await obtenirJwtFrais();
-        const lotEnrichi = await enrichirLot(lotBrut, jeton);
-        const serverUrl = process.env.UBIFLOW_AUTO_API_URL || 'http://localhost:4000';
-        const r = await fetch(`${serverUrl}/api/diag-test-gpt5-nano`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lot: lotEnrichi, modele: req.query.modele }),
-        });
-        const data = await r.json();
-        res.status(r.status).json(data);
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
 
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
