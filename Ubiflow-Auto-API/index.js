@@ -610,9 +610,9 @@ async function callOpenAILmnpAvecModele(textContext, base64Images, lot, model) {
     const body = {
         model,
         messages: [{ role: 'system', content: PROMPT_SYSTEME_LMNP_V2 }, { role: 'user', content: messageContent }],
-        temperature: 0.7,
         response_format: { type: 'json_object' },
     };
+    if (!estGpt5) body.temperature = 0.7; // gpt-5 n'accepte que la valeur par défaut (1)
     body[estGpt5 ? 'max_completion_tokens' : 'max_tokens'] = 2000;
 
     const response = await axios.post('https://api.openai.com/v1/chat/completions', body, {
