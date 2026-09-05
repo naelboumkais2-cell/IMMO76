@@ -18,6 +18,17 @@ annoncesRouter.get('/:id/diag-comparer-modeles', exigerConnexion, async (req, re
         const lotBrut = typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
         const jeton = await obtenirJwtFrais();
         const lotEnrichi = await enrichirLot(lotBrut, jeton);
+        const debugLot = {
+            developer: lotEnrichi.program?.developer || null,
+            residenceType: lotEnrichi.program?.residenceType || null,
+            description: lotEnrichi.description || null,
+            programName: lotEnrichi.program?.name || null,
+            documents: (lotEnrichi.documents || []).map((doc) => doc.file?.name || doc.name || null),
+        };
+        // debugSeul=1 : n'appelle aucun modèle (pas de coût OpenAI), juste pour inspecter les
+        // données brutes du lot (vérifier une invention potentielle de l'IA sans repayer un appel).
+        if (req.query.debugSeul) return res.json({ success: true, debugLot });
+
         const serverUrl = process.env.UBIFLOW_AUTO_API_URL || 'http://localhost:4000';
         const r = await fetch(`${serverUrl}/api/diag-compare-modeles`, {
             method: 'POST',
@@ -25,15 +36,7 @@ annoncesRouter.get('/:id/diag-comparer-modeles', exigerConnexion, async (req, re
             body: JSON.stringify({ lot: lotEnrichi }),
         });
         const data = await r.json();
-        if (req.query.debug) {
-            data.debugLot = {
-                developer: lotEnrichi.program?.developer || null,
-                residenceType: lotEnrichi.program?.residenceType || null,
-                description: lotEnrichi.description || null,
-                programName: lotEnrichi.program?.name || null,
-                documents: (lotEnrichi.documents || []).map((doc) => doc.file?.name || doc.name || null),
-            };
-        }
+        if (req.query.debug) data.debugLot = debugLot;
         res.status(r.status).json(data);
     } catch (e) {
         res.status(500).json({ erreur: e.message });
