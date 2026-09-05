@@ -19,7 +19,7 @@ annoncesRouter.get('/:id/diag-test-gpt5-nano', exigerConnexion, async (req, res)
         const r = await fetch(`${serverUrl}/api/diag-test-gpt5-nano`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lot: lotEnrichi }),
+            body: JSON.stringify({ lot: lotEnrichi, modele: req.query.modele }),
         });
         const data = await r.json();
         res.status(r.status).json(data);

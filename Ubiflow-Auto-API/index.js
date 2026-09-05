@@ -725,13 +725,17 @@ async function callOpenAILmnpGpt5Nano(textContext, base64Images, lot) {
 }
 
 app.post('/api/diag-test-gpt5-nano', async (req, res) => {
-    const { lot } = req.body || {};
+    const { lot, modele } = req.body || {};
     if (!lot || typeof lot !== 'object') return res.status(400).json({ success: false, error: 'lot requis' });
     try {
         const lotImageData = await downloadOtareeImages(lot);
         const lotImages = lotImageData.map(img => img.data);
         const contexte = buildTextContext(lot);
-        const resultat = await callOpenAILmnpGpt5Nano(contexte, lotImages, lot);
+        // modele:'gpt-4o' sert uniquement à vérifier ponctuellement si un comportement observé
+        // chez gpt-5-nano existe déjà chez le modèle de production, sans dupliquer tout un run.
+        const resultat = modele === 'gpt-4o'
+            ? await callOpenAILmnp(contexte, lotImages, lot)
+            : await callOpenAILmnpGpt5Nano(contexte, lotImages, lot);
         res.json({ success: true, resultat, nbImages: lotImages.length, residenceType: lot.program?.residenceType || null });
     } catch (error) {
         res.status(500).json({ success: false, error: error.response?.data ? JSON.stringify(error.response.data).substring(0, 500) : error.message });
