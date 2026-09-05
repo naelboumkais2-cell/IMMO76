@@ -777,13 +777,6 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
         const effort = essai === 1 ? 'minimal' : 'low';
         let response;
         for (let tentative = 1; tentative <= 3; tentative++) {
-            // TEMPORAIRE — chronométrage diagnostique (retest final anormalement lent, ~15
-            // min/lot au lieu de ~10-20s constaté lors des vagues précédentes). À retirer une
-            // fois la cause identifiée. axios n'a ici AUCUN timeout : un appel OpenAI qui traîne
-            // (ou une connexion qui stalle) peut bloquer silencieusement plusieurs minutes sans
-            // jamais déclencher la boucle de retry 429 ci-dessous, qui ne réagit qu'aux erreurs
-            // HTTP explicites, pas à la lenteur.
-            const t0 = Date.now();
             try {
                 response = await axios.post('https://api.openai.com/v1/chat/completions', {
                     model: 'gpt-5-nano',
@@ -798,12 +791,13 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
                     response_format: { type: 'json_object' },
                 }, {
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+                    // Sans timeout, un appel qui traîne (ou une connexion qui stalle) pouvait
+                    // bloquer silencieusement plusieurs minutes sans jamais déclencher la boucle
+                    // de retry 429 ci-dessous, qui ne réagit qu'aux erreurs HTTP explicites.
                     timeout: 60000,
                 });
-                console.log(`[timing] appel OpenAI essai=${essai} tentative=${tentative} : ${Date.now() - t0}ms`);
                 break;
             } catch (e) {
-                console.log(`[timing] appel OpenAI essai=${essai} tentative=${tentative} ÉCHEC après ${Date.now() - t0}ms : ${e.code || e.message}`);
                 if (e.response?.status !== 429 || tentative === 3) throw e;
                 const delaiMs = 1000 * 2 ** (tentative - 1);
                 console.log(`[callOpenAILmnp] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
@@ -941,9 +935,7 @@ app.post('/api/generate', async (req, res) => {
         const { lot, imagesSelection } = req.body || {};
         if (!lot || typeof lot !== 'object') return res.status(400).json({ success: false, error: 'lot requis' });
 
-        const tImages0 = Date.now(); // TEMPORAIRE — chronométrage diagnostique, voir callOpenAILmnp
         const lotImageData = await downloadOtareeImages(lot, imagesSelection);
-        console.log(`[timing] downloadOtareeImages (${lotImageData.length} images) : ${Date.now() - tImages0}ms`);
         const lotImages = lotImageData.map(img => img.data);
         const villeConnue = lot.program?.address?.city?.name || null;
         const codePostalConnu = lot.program?.address?.zipCode || null;
