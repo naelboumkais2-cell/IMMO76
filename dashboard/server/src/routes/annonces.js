@@ -47,19 +47,6 @@ annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     }
 });
 
-// TEMPORAIRE — vérification du badge "document à vérifier" (garde-fou plan) sur un cas simulé,
-// aucune vraie annonce publiée n'ayant naturellement présenté un décalage sur l'échantillon testé
-// (attendu, événement rare). À retirer une fois la vérification faite.
-annoncesRouter.put('/:id/diag-alerte-document', exigerConnexion, async (req, res) => {
-    try {
-        const { alerte_document } = req.body || {};
-        await db.prepare(`UPDATE annonces SET alerte_document = ? WHERE id = ?`).run(alerte_document || null, req.params.id);
-        res.json(await db.prepare(`SELECT ${COLONNES_LISTE_ANNONCES} FROM annonces WHERE id = ?`).get(req.params.id));
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 annoncesRouter.put('/:id', exigerConnexion, async (req, res) => {
     try {
         const { est_annonce_test } = req.body;
