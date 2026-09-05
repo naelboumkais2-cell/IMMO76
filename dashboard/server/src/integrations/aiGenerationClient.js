@@ -28,17 +28,31 @@ export async function genererDonneesIA(lotEnrichi, imagesSelection = null) {
 // signaler" plutôt qu'à un blocage. Appelé en parallèle de genererDonneesIA (voir orchestrator.js,
 // executerTraitement), jamais après : sur un lot, les deux appels sont indépendants, les lancer en
 // série ajouterait de la latence sans raison.
+//
+// Plafond dur à 6s (AbortController) : constaté en conditions réelles qu'un lot avec plusieurs
+// documents "plan" distincts peut prendre 15-20s (téléchargement CloudFront + appel vision par
+// document), dépassant largement la durée de genererDonneesIA et devenant, de fait, le goulot
+// d'étranglement du groupe malgré le parallélisme — contraire à l'objectif de latence quasi nulle.
+// Un timeout ici revient exactement au même principe que "document illisible → ignoré" : un
+// contrôle trop lent équivaut à "rien à signaler pour l'instant", jamais à un blocage.
+const TIMEOUT_VERIF_PLAN_MS = 6000;
+
 export async function verifierPlansLot(lotEnrichi) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_VERIF_PLAN_MS);
     try {
         const res = await fetch(`${SERVER_URL}/api/verifier-plans`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ lot: lotEnrichi }),
+            signal: controller.signal,
         });
         const data = await res.json().catch(() => ({}));
         return data.alerte || null;
     } catch (e) {
-        console.error('[verifierPlansLot] échec (ignoré, purement informatif) :', e.message);
+        console.error('[verifierPlansLot] échec ou délai dépassé (ignoré, purement informatif) :', e.message);
         return null;
+    } finally {
+        clearTimeout(timeoutId);
     }
 }
