@@ -2,8 +2,29 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { exigerConnexion } from '../middleware/auth.js';
 import { publierInstance, depublierInstance, synchroniserInstance } from '../services/orchestrator.js';
+import { enrichirLot, obtenirJwtFrais } from '../integrations/otareeSearchClient.js';
 
 export const annoncesRouter = Router();
+
+// TEMPORAIRE — exploration de faisabilité (vérification des PDF de plans). Aucun appel OpenAI,
+// juste inspection des documents réels d'un lot. À retirer une fois l'exploration terminée.
+annoncesRouter.get('/:id/diag-documents', exigerConnexion, async (req, res) => {
+    try {
+        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(req.params.id);
+        if (!row) return res.status(404).json({ erreur: 'Annonce introuvable.' });
+        const lotBrut = typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
+        const jeton = await obtenirJwtFrais();
+        const lotEnrichi = await enrichirLot(lotBrut, jeton);
+        const documents = (lotEnrichi.documents || []).map((doc) => ({
+            name: doc.file?.name || doc.name || null,
+            mimeType: doc.file?.mimeType || doc.mimeType || null,
+            url: doc.file?.urls?.large || doc.file?.urls?.medium || doc.urls?.large || doc.urls?.medium || null,
+        }));
+        res.json({ success: true, surface: lotEnrichi.surface, typologie: lotEnrichi.typology, pieces: lotEnrichi.roomsCount, documents });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
 
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
