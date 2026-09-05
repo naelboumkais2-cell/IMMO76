@@ -613,16 +613,27 @@ async function callOpenAILmnpAvecModele(textContext, base64Images, lot, model) {
         response_format: { type: 'json_object' },
     };
     if (!estGpt5) body.temperature = 0.7; // gpt-5 n'accepte que la valeur par défaut (1)
-    body[estGpt5 ? 'max_completion_tokens' : 'max_tokens'] = 2000;
+    // Les modèles gpt-5 sont des modèles de raisonnement : une partie du budget de tokens de
+    // sortie est consommée par le raisonnement interne (non visible), pas seulement la réponse
+    // finale — 2000 suffit à peine pour gpt-4o mais peut ne laisser aucun token pour le contenu
+    // réel une fois le raisonnement déduit. Budget nettement plus large pour ce cas.
+    body[estGpt5 ? 'max_completion_tokens' : 'max_tokens'] = estGpt5 ? 8000 : 2000;
 
     const response = await axios.post('https://api.openai.com/v1/chat/completions', body, {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
     });
 
     let content = response.data.choices[0].message.content;
-    content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
-    const resultat = JSON.parse(content);
-    return { titre: resultat.titre, texte: resultat.texte, usage: response.data.usage };
+    content = (content || '').replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+    try {
+        const resultat = JSON.parse(content);
+        return { titre: resultat.titre, texte: resultat.texte, usage: response.data.usage };
+    } catch (e) {
+        throw new Error(
+            `JSON.parse a échoué (finish_reason=${response.data.choices[0].finish_reason}, ` +
+            `contenu brut="${content.substring(0, 200)}") — usage=${JSON.stringify(response.data.usage)}`
+        );
+    }
 }
 
 app.post('/api/diag-compare-modeles', async (req, res) => {
