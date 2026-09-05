@@ -25,6 +25,15 @@ annoncesRouter.get('/:id/diag-comparer-modeles', exigerConnexion, async (req, re
             body: JSON.stringify({ lot: lotEnrichi }),
         });
         const data = await r.json();
+        if (req.query.debug) {
+            data.debugLot = {
+                developer: lotEnrichi.program?.developer || null,
+                residenceType: lotEnrichi.program?.residenceType || null,
+                description: lotEnrichi.description || null,
+                programName: lotEnrichi.program?.name || null,
+                documents: (lotEnrichi.documents || []).map((doc) => doc.file?.name || doc.name || null),
+            };
+        }
         res.status(r.status).json(data);
     } catch (e) {
         res.status(500).json({ erreur: e.message });
