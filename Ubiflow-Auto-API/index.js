@@ -472,6 +472,8 @@ Avant de rédiger l'annonce, analyse l'intégralité des informations disponible
 
 Pour les informations contractuelles, privilégie toujours les documents contractuels (absents ici, donc omets toute affirmation contractuelle spécifique à ce bien au-delà du fonctionnement général du LMNP géré). En cas de contradiction entre plusieurs sources, utilise la plus fiable. Si le doute subsiste, n'utilise pas l'information.
 
+N'écris JAMAIS de phrase qui commente l'absence elle-même d'une information contractuelle ou documentaire (ex: "sans référence contractuelle spécifique dans ce dossier", "on ne communique pas d'occupation personnelle prévue sans document officiel", "en l'absence d'indications sur ce point, aucune affirmation ne peut être faite") — ce type de méta-commentaire révèle le fonctionnement interne de la génération et n'a rien à faire dans une annonce commerciale. La règle reste la même que partout ailleurs : quand une information manque, tu l'omets silencieusement, tu n'expliques jamais pourquoi elle manque ni ce qui permettrait de la confirmer.
+
 === TITRE ===
 
 Titre court, attractif, concret, factuel. Doit obligatoirement comporter "LMNP géré" (tourisme/étudiant) ou "LMNP" (senior/EHPAD/affaires). Précise la catégorie quand cela améliore la compréhension (LMNP géré Tourisme, LMNP géré Étudiant, LMNP Senior, LMNP EHPAD, LMNP Affaires). Met en avant 1-2 caractéristiques réellement différenciantes du bien ou de la résidence. Ne répète pas commune/prix/surface/nombre de pièces si déjà affichés par le portail. Hiérarchie : 1) caractéristique exceptionnelle du bien/résidence, 2) emplacement attractif, 3) avantage contractuel spécifique (si documenté), 4) occupation personnelle (uniquement si explicitement documentée — jamais ici en pratique), 5) rendement si notable (>= 6,5%, et uniquement si la rentabilité fournie est fiable). Évite superlatifs non justifiés, majuscules inutiles, promesses de sécurité absolue, formulations génériques.
@@ -560,12 +562,20 @@ const FORMULATIONS_INTERDITES = [
     ['donnée manquante explicitée ("non renseigné")', /\bnon renseign[ée]e?s?(?![a-zà-ÿ])/i],
     ['donnée manquante explicitée ("non spécifié")', /\bnon sp[ée]cifi[ée]e?s?(?![a-zà-ÿ])/i],
     ['donnée manquante explicitée ("non précisé")', /\bnon pr[ée]cis[ée]e?s?(?![a-zà-ÿ])/i],
+    // "Rentabilité : non disponible avec certitude" recopié SANS le "— omets la ligne" qui suit
+    // dans la consigne interne (voir blocDonneesConnues plus bas) — la fuite "consigne de
+    // rentabilité recopiée" ci-dessous exige ce suffixe et ne matche donc pas cette forme
+    // tronquée, très fréquente en conditions réelles (27/58 lots LMNP d'une recherche Bordeaux).
+    ['donnée manquante explicitée ("non disponible")', /\bnon disponibles?(?![a-zà-ÿ])/i],
     // Variantes trouvées en relisant le texte final de lots corrigés par les patterns ci-dessus :
     // le modèle contourne les formulations interdites avec un tour de phrase différent mais qui
     // affirme toujours l'absence plutôt que d'omettre la ligne ("sans annexes mentionnées",
     // "sans extension mentionnée") — même défaut de fond, liste à enrichir au fil de l'eau.
     ['donnée manquante explicitée ("sans ... mentionné")', /\bsans [\wà-ÿ]+ mentionn[ée]e?s?(?![a-zà-ÿ])/i],
     ['donnée manquante explicitée ("aucun ... mentionné")', /\baucune? [\wà-ÿ]+ mentionn[ée]e?s?(?![a-zà-ÿ])/i],
+    // "parking non attribué" repéré sur un lot réel (recherche Bordeaux) — même famille que les
+    // variantes ci-dessus, qualificatif différent ("attribué" plutôt que "communiqué/fourni/...").
+    ['donnée manquante explicitée ("non attribué")', /\bnon attribu[ée]e?s?(?![a-zà-ÿ])/i],
     // Fuite de ton "notice interne" (documents/sources du pipeline) plutôt que texte commercial
     // destiné au lecteur — repéré sur plusieurs lots réels, formulations variées. Liste à enrichir
     // au fil des cas repérés, comme la liste des mots interdits l'a déjà été deux fois cette session.
@@ -575,6 +585,12 @@ const FORMULATIONS_INTERDITES = [
     ['fuite de ton "documents/sources internes"', /\b(documents?|fiches?) (partenaires?|fournis)\b/i],
     ['fuite de ton "documents/sources internes"', /disponibles? pour r[ée]f[ée]rence/i],
     ['fuite de ton "documents/sources internes"', /plan et (documents?|fiches?)/i],
+    // Mention entre parenthèses évoquant un plan/document/dossier/fiche interne — repéré sous 2
+    // formulations différentes sur 2 lots réels distincts ("(plan disponible)", "(à confirmer par
+    // les documents officiels)") : le point commun est structurel (parenthèse + mot-clé), pas la
+    // formulation exacte, contrairement à "sans référence contractuelle spécifique" (traité côté
+    // prompt, voir PROMPT_SYSTEME_LMNP_V2) qui est trop variable pour un motif fiable.
+    ['fuite de ton "documents/sources internes" (parenthèse)', /\([^)]*\b(plan|documents?|dossier|fiches?)\b[^)]*\)/i],
 ];
 
 // Filet de sécurité structurel — pas dans le prompt initial, ajouté après avoir constaté que
@@ -710,7 +726,7 @@ function alternativesPourCorrection(hits, lot) {
     }
     if (hits.some((h) => h.includes('donnée manquante explicitée'))) {
         lignes.push(
-            '- Pour "non communiqué"/"non fourni"/"non renseigné"/"non spécifié"/"non précisé" appliqué à une donnée absente (loyer, rentabilité, annexe, balcon...) → supprime ENTIÈREMENT la ligne ou la mention concernée, ne la remplace par aucun texte, aucune formule d\'absence. L\'information disparaît simplement du texte comme si elle n\'avait jamais été envisagée.'
+            '- Pour "non communiqué"/"non fourni"/"non renseigné"/"non spécifié"/"non précisé"/"non disponible" appliqué à une donnée absente (loyer, rentabilité, annexe, balcon...) → supprime ENTIÈREMENT la ligne ou la mention concernée, ne la remplace par aucun texte, aucune formule d\'absence. L\'information disparaît simplement du texte comme si elle n\'avait jamais été envisagée.'
         );
     }
     if (hits.some((h) => h.includes('fuite de ton "documents/sources internes"'))) {
@@ -950,7 +966,9 @@ app.post('/api/generate', async (req, res) => {
             aiData = { ...champsConnusDepuisLot(lot), titre, texte };
             alerteConformite = alerte;
         } else {
-            aiData = await callOpenAI(buildTextContext(lot), lotImages);
+            const { alerteConformite: alerte, ...donnees } = await callOpenAI(buildTextContext(lot), lotImages, lot);
+            aiData = donnees;
+            alerteConformite = alerte;
         }
         res.json({ success: true, aiData, images: lotImages, villeConnue, codePostalConnu, alerteConformite });
     } catch (error) {
@@ -986,8 +1004,11 @@ async function enregistrerUsageOpenAI(usage, model = 'gpt-4o') {
     }
 }
 
-async function callOpenAI(textContext, base64Images) {
+async function callOpenAI(textContext, base64Images, lot) {
     const systemPrompt = `Agis comme un expert immobilier de la loi Pinel et LMNP, rédacteur pour une agence haut de gamme. Tu dois lire ATTENTIVEMENT toutes les informations fournies (textes, documents extraits de PDF, ou plans en image) et en extraire un MAXIMUM de détails concrets et vérifiables pour rédiger une annonce précise, complète et jamais générique.
+
+Ne cite JAMAIS le nom du promoteur (champ "developer" des données Otaree, ou tout nom de programme immobilier qui lui est associé) dans le texte de l'annonce, même s'il est connu et exact — utilise une formulation générique ("un promoteur reconnu", "ce programme immobilier neuf"...) si tu as besoin d'évoquer le développeur du bien. N'utilise jamais non plus les mots "sécurisé", "sécurisée", "sécuriser", "sécurité", "garanti", "garantie", "garantissant" ou "garantit" pour qualifier l'investissement, le placement, les revenus locatifs ou la rentabilité — ces mots restent acceptables uniquement pour un sens sans rapport avec l'investissement (ex: digicode, garantie décennale du bâtiment).
+
 Renvoie UNIQUEMENT un objet JSON strictement conforme à la structure suivante, sans aucun markdown ni texte autour :
 {
   "titre": "...",
@@ -1017,41 +1038,75 @@ Renvoie UNIQUEMENT un objet JSON strictement conforme à la structure suivante, 
   "proche_commerces": "..."
 }`;
 
-    let messageContent = [{ "type": "text", "text": "Voici les données extraites :\n\n" + (textContext || "(Aucun texte, base-toi sur les images)") }];
+    // NB : base64Images n'est volontairement pas rattaché à messageContent ici — comportement
+    // préexistant inchangé (déjà le cas avant cette extension), pas dans le périmètre de cette
+    // modification. Signalé séparément : le prompt mentionne pourtant "documents extraits de PDF,
+    // ou plans en image" alors qu'aucune image n'est jamais envoyée au modèle sur ce chemin.
+    const messageContent = [{ "type": "text", "text": "Voici les données extraites :\n\n" + (textContext || "(Aucun texte, base-toi sur les images)") }];
 
-    // Filet de sécurité ajouté avec la génération IA en parallèle sur plusieurs lots (voir
-    // orchestrator.js, CONCURRENCE_ENRICHISSEMENT_IA) : aucune gestion de 429 n'existait avant
-    // (même en séquentiel), donc un dépassement de palier faisait simplement échouer le lot.
-    // Nouvelle tentative avec délai croissant, seulement sur 429 — toute autre erreur remonte
-    // immédiatement, inchangé.
-    let response;
-    for (let tentative = 1; tentative <= 3; tentative++) {
+    const messages = [{ role: "system", content: systemPrompt }, { role: "user", content: messageContent }];
+
+    // Même garde-fou que callOpenAILmnp (voir detecterProblemesConformite) — jusqu'ici absent de
+    // ce chemin générique (Pinel, nue-propriété, autres dispositifs), alors que le prompt système
+    // ci-dessus interdit désormais explicitement les mêmes formulations que le V2. Constaté en
+    // conditions réelles (recherche Bordeaux) : 44/52 lots génériques publiés citaient le
+    // promoteur ou une formulation interdite, sans aucun filet pour les rattraper.
+    let resultat, hits = [];
+    const MAX_TENTATIVES_CONFORMITE = 3;
+    for (let essai = 1; essai <= MAX_TENTATIVES_CONFORMITE; essai++) {
+        // Filet de sécurité ajouté avec la génération IA en parallèle sur plusieurs lots (voir
+        // orchestrator.js, CONCURRENCE_ENRICHISSEMENT_IA) : aucune gestion de 429 n'existait avant
+        // (même en séquentiel), donc un dépassement de palier faisait simplement échouer le lot.
+        // Nouvelle tentative avec délai croissant, seulement sur 429 — toute autre erreur remonte
+        // immédiatement, inchangé.
+        let response;
+        for (let tentative = 1; tentative <= 3; tentative++) {
+            try {
+                response = await axios.post("https://api.openai.com/v1/chat/completions", {
+                    model: "gpt-4o",
+                    messages,
+                    temperature: 0.7,
+                    max_tokens: 2000,
+                    response_format: { type: 'json_object' },
+                }, {
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+                    },
+                    timeout: 60000,
+                });
+                break;
+            } catch (e) {
+                if (e.response?.status !== 429 || tentative === 3) throw e;
+                const delaiMs = 1000 * 2 ** (tentative - 1);
+                console.log(`[callOpenAI] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
+                await new Promise((r) => setTimeout(r, delaiMs));
+            }
+        }
+
+        await enregistrerUsageOpenAI(response.data.usage);
+
+        let content = response.data.choices[0].message.content;
+        content = (content || '').replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
         try {
-            response = await axios.post("https://api.openai.com/v1/chat/completions", {
-                model: "gpt-4o",
-                messages: [{ role: "system", content: systemPrompt }, { role: "user", content: messageContent }],
-                temperature: 0.7,
-                max_tokens: 2000
-            }, {
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
-                }
-            });
-            break;
+            resultat = JSON.parse(content);
         } catch (e) {
-            if (e.response?.status !== 429 || tentative === 3) throw e;
-            const delaiMs = 1000 * 2 ** (tentative - 1);
-            console.log(`[callOpenAI] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
-            await new Promise((r) => setTimeout(r, delaiMs));
+            throw new Error(`JSON.parse a échoué (finish_reason=${response.data.choices[0].finish_reason}, contenu brut="${content.substring(0, 200)}")`);
+        }
+        hits = detecterProblemesConformite(resultat.texte, lot);
+        if (hits.length === 0) break;
+
+        if (essai < MAX_TENTATIVES_CONFORMITE) {
+            console.log(`[callOpenAI] formulation(s) interdite(s) détectée(s) (${hits.join(', ')}) — nouvelle tentative avec correction ciblée`);
+            messages.push({ role: 'assistant', content: JSON.stringify(resultat) });
+            messages.push({
+                role: 'user',
+                content: `Ta réponse précédente contient un problème détecté par notre vérification automatique : ${hits.join(', ')}.\n\nCorrige en appliquant EXACTEMENT l'une de ces substitutions (ne réinvente pas une reformulation différente) :\n${alternativesPourCorrection(hits, lot)}\n\nNe change rien d'autre au fond ni à la structure, et ne modifie AUCUN autre champ. Réponds à nouveau avec l'objet JSON complet dans EXACTEMENT le même format qu'avant (tous les champs présents), uniquement le texte concerné corrigé.`,
+            });
         }
     }
 
-    await enregistrerUsageOpenAI(response.data.usage);
-
-    let content = response.data.choices[0].message.content;
-    content = content.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
-    return JSON.parse(content);
+    return { ...resultat, alerteConformite: hits.length > 0 ? hits : null };
 }
 
 function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, espaceLogin) {
