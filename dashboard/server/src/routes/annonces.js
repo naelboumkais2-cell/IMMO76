@@ -55,6 +55,33 @@ annoncesRouter.get('/diag-audit-generique/:rechercheId', exigerConnexion, async 
     }
 });
 
+// TEMPORAIRE — régénère le texte IA d'une annonce déjà scrapée (raw_data déjà enrichi, pas besoin
+// de repasser par enrichirLot/JWT Otaree) avec le garde-fou de conformité désormais actif sur le
+// chemin générique. Ne touche JAMAIS Hubiflow (aucun appel publish) — seule donnees_ia est mise à
+// jour en base, exactement ce qu'il faut pour vérifier la propreté du texte avant qu'un humain ne
+// décide d'activer manuellement le brouillon existant. À retirer une fois les 44 lots vérifiés.
+annoncesRouter.post('/:id/diag-regenerer', exigerConnexion, async (req, res) => {
+    try {
+        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(req.params.id);
+        if (!row) return res.status(404).json({ erreur: 'Annonce introuvable.' });
+        const lot = typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
+        const serverUrl = process.env.UBIFLOW_AUTO_API_URL || 'http://localhost:4000';
+        const r = await fetch(`${serverUrl}/api/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lot }),
+        });
+        const data = await r.json();
+        if (!r.ok || !data.success) {
+            return res.status(r.status).json({ erreur: data.error || `Erreur HTTP ${r.status}` });
+        }
+        await db.prepare(`UPDATE annonces SET donnees_ia = ? WHERE id = ?`).run(JSON.stringify(data.aiData), req.params.id);
+        res.json({ success: true, aiData: data.aiData, alerteConformite: data.alerteConformite });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
 // peut peser plusieurs Mo par annonce (jusqu'à 20 photos en base64) : avec LIMIT 200 et un
