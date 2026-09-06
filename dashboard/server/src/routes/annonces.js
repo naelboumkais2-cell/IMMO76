@@ -2,8 +2,27 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { exigerConnexion } from '../middleware/auth.js';
 import { publierInstance, depublierInstance, synchroniserInstance } from '../services/orchestrator.js';
+import { enrichirLot } from '../integrations/otareeSearchClient.js';
 
 export const annoncesRouter = Router();
+
+// TEMPORAIRE — réenrichit une annonce déjà scrapée pour tenter de récupérer ses photos (voir
+// correctif retry/log sur enrichirLot, 2026-09-06). Ne touche NI donnees_ia NI Hubiflow — met à
+// jour uniquement raw_data avec le résultat de enrichirLot, pour mesurer combien de lots
+// récupèrent effectivement des photos maintenant que le correctif est en place. À retirer une
+// fois les 104 lots vérifiés.
+annoncesRouter.post('/:id/diag-reenrichir', exigerConnexion, async (req, res) => {
+    try {
+        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(req.params.id);
+        if (!row) return res.status(404).json({ erreur: 'Annonce introuvable.' });
+        const lot = typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
+        const lotEnrichi = await enrichirLot(lot);
+        await db.prepare(`UPDATE annonces SET raw_data = ? WHERE id = ?`).run(JSON.stringify(lotEnrichi), req.params.id);
+        res.json({ success: true, nbPhotos: (lotEnrichi.images || []).length });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
 
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
