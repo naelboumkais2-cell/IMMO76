@@ -20,12 +20,21 @@
     --color-text-muted: #475569;
     --color-text-subtle: #94A3B8;
 
-    /* Accents */
-    --accent: #4F46E5;
-    --accent-hover: #4338CA;
-    --accent-soft: #EEF2FF;
-    --accent-soft-border: #C7D2FE;
-    --accent-gradient: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+    /* Accents — identité +immo (couleurs mesurées sur le fichier logo fourni par le client) */
+    --accent: #E50068;
+    --accent-hover: #BB0055;
+    --accent-soft: #FDEDF4;
+    --accent-soft-border: #F38CBB;
+    --accent-gradient: linear-gradient(135deg, #E50068 0%, #BB0055 100%);
+
+    /* Vert de marque — réservé aux éléments liés à la supervision (onglet "Superviser"), le
+       vert "succès" ci-dessous reste inchangé (déjà très proche de ce vert, pas de doublon). */
+    --brand-green: #83CB19;
+    --brand-green-dark: #517D0F;
+    --brand-green-soft: #F5FAEC;
+
+    /* Marine de marque — proche de --color-text, utilisé ponctuellement (logo, éléments sombres). */
+    --brand-navy: #1F2937;
 
     /* Semantic Colors */
     --success: #059669;
@@ -53,7 +62,7 @@
     --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.05);
     --shadow-md: 0 4px 24px rgba(15, 23, 42, 0.06);
     --shadow-lg: 0 10px 40px rgba(15, 23, 42, 0.08);
-    --shadow-float: 0 20px 40px rgba(79, 70, 229, 0.15);
+    --shadow-float: 0 20px 40px rgba(229, 0, 104, 0.15);
 
     /* Spacing */
     --space-1: 4px;
@@ -121,30 +130,13 @@ h1, h2, h3, h4, h5, h6 {
     gap: var(--space-3); 
 }
 
-.brand-mark {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    background: var(--accent-gradient);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-family: var(--font-display);
-    font-weight: 800;
-    font-size: 15px;
-    box-shadow: var(--shadow-float);
+.brand-logo {
+    height: 34px;
+    width: auto;
+    display: block;
 }
 
-.brand-name { 
-    font-family: var(--font-display); 
-    font-weight: 700; 
-    font-size: 18px; 
-    color: var(--color-text); 
-    letter-spacing: -0.02em;
-}
-
-.brand-tagline { 
+.brand-tagline {
     font-size: 13px; 
     color: var(--color-text-muted); 
     margin-left: var(--space-3); 
@@ -274,6 +266,12 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--color-text-subtle);
 }
 .nav-tab-large.active .nav-tab-subtitle { color: var(--accent); opacity: 0.75; }
+
+/* Onglet "Superviser" : accent vert de marque plutôt que le magenta, pour distinguer l'action
+   principale (Rechercher, magenta) du suivi/contrôle (Superviser, vert) — cohérent avec le
+   vert déjà associé aux statuts positifs (badge "Publiée", etc.) ailleurs dans le dashboard. */
+.nav-tab-large.nav-tab-supervision.active { color: var(--brand-green-dark); }
+.nav-tab-large.nav-tab-supervision.active .nav-tab-subtitle { color: var(--brand-green-dark); opacity: 0.75; }
 
 /* Sidebar gauche — accès discret et permanent à 3 pages secondaires (Réglages, Notifications,
    Historique), séparées des 2 actions principales (Rechercher/Superviser) qui restent en haut. */
@@ -511,14 +509,14 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);
 }
 
-.btn-primary { 
-    background: var(--accent-gradient); 
-    color: #fff; 
-    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+.btn-primary {
+    background: var(--accent-gradient);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(229, 0, 104, 0.3);
     border: none;
 }
-.btn-primary:hover:not(:disabled) { 
-    box-shadow: 0 6px 16px rgba(79, 70, 229, 0.4);
+.btn-primary:hover:not(:disabled) {
+    box-shadow: 0 6px 16px rgba(229, 0, 104, 0.4);
     transform: translateY(-1px);
 }
 .btn-primary:active:not(:disabled) {
@@ -751,6 +749,11 @@ select {
 .login-carte .field {
     text-align: left;
 }
+.login-logo {
+    height: 56px;
+    width: auto;
+    display: block;
+}
 
 /* Page d'accueil "façon Google" de Rechercher — minimaliste, une seule barre. Cliquer/taper
    dedans bascule sur la page filtres complète (voir ScraperControl.jsx, état `vue`). */
@@ -762,27 +765,11 @@ select {
     gap: var(--space-3);
     padding: 15vh var(--space-6) 20vh;
 }
-.recherche-accueil-mark {
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
-    background: var(--accent-gradient);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-family: var(--font-display);
-    font-weight: 800;
-    font-size: 22px;
-    box-shadow: var(--shadow-float);
+.recherche-accueil-logo {
+    height: 64px;
+    width: auto;
+    display: block;
     margin-bottom: var(--space-2);
-}
-.recherche-accueil-titre {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 32px;
-    color: var(--color-text);
-    letter-spacing: -0.02em;
 }
 .recherche-accueil-soustitre {
     font-size: 14px;

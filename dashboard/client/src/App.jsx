@@ -6,6 +6,7 @@ import { Supervision } from './components/Supervision.jsx';
 import { Historique } from './components/Historique.jsx';
 import { Sidebar } from './components/Sidebar.jsx';
 import { Login } from './components/Login.jsx';
+import logoPlusImmo from './assets/logo-plus-immo.png';
 
 export function App() {
     // undefined = vérification en cours (évite un flash de l'écran de connexion avant d'avoir
@@ -96,11 +97,8 @@ export function App() {
             <div className="app-body">
                 <header className="topbar">
                     <div className="brand">
-                        <div className="brand-mark">76</div>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span className="brand-name">IMMO76</span>
-                            <span className="brand-tagline">Pipeline scraping → diffusion</span>
-                        </div>
+                        <img className="brand-logo" src={logoPlusImmo} alt="+immo — La Centrale du Neuf" />
+                        <span className="brand-tagline">Pipeline scraping → diffusion</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <span className={`env-pill${modeReel ? ' env-pill-reel' : ''}`}>
@@ -143,7 +141,7 @@ export function App() {
                             </span>
                         </button>
                         <button
-                            className={`nav-tab nav-tab-large ${activeTab === 'supervision' ? 'active' : ''}`}
+                            className={`nav-tab nav-tab-large nav-tab-supervision ${activeTab === 'supervision' ? 'active' : ''}`}
                             onClick={() => setActiveTab('supervision')}
                         >
                             <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>

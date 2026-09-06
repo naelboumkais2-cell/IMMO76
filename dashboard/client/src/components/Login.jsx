@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import logoPlusImmo from '../assets/logo-plus-immo.png';
 
 // Mur de connexion — affiché à la place de toute l'app tant qu'aucune session valide n'existe
 // (voir App.jsx). Pas d'inscription libre : "S'inscrire" ci-dessous ouvre un formulaire de
@@ -12,8 +13,7 @@ export function Login({ onConnecte }) {
     return (
         <div className="login-ecran">
             <div className="login-carte">
-                <div className="recherche-accueil-mark">76</div>
-                <h1 className="recherche-accueil-titre">IMMO76</h1>
+                <img className="login-logo" src={logoPlusImmo} alt="+immo — La Centrale du Neuf" />
                 {vue === 'connexion' ? (
                     <FormulaireConnexion onConnecte={onConnecte} />
                 ) : (

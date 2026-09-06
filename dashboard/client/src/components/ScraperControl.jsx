@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { IconRadar, IconRefresh, IconAlert, IconChevronDown, IconSearch } from './icons.jsx';
 import { Select } from './Select.jsx';
 import { Overlay } from './Overlay.jsx';
+import logoPlusImmo from '../assets/logo-plus-immo.png';
 
 const VILLE_DEBOUNCE_MS = 300;
 const VILLE_MIN_CHARS = 2;
@@ -686,8 +687,7 @@ export function ScraperControl() {
             )}
 
             <div className="recherche-accueil">
-                <div className="recherche-accueil-mark">76</div>
-                <h1 className="recherche-accueil-titre">IMMO76</h1>
+                <img className="recherche-accueil-logo" src={logoPlusImmo} alt="+immo — La Centrale du Neuf" />
                 <p className="recherche-accueil-soustitre">Recherche Otaree en direct</p>
                 <label className="recherche-accueil-barre">
                     <IconSearch width={20} height={20} />
