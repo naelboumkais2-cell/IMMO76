@@ -10,6 +10,23 @@ export const annoncesRouter = Router();
 // si le texte généré contient le nom du promoteur ou une formulation interdite : raw_data (pour
 // lawsKeys/program.developer.name), donnees_ia (texte publié), et le statut réel de publication
 // par portail. Lecture seule, à retirer une fois l'audit terminé.
+// TEMPORAIRE — pour comprendre l'écart 208 trouvés / 110 candidats sur la recherche Bordeaux :
+// répartition des annonces "Bordeaux" par recherche_id et date, pour voir si des lots
+// préexistaient sous un recherche_id antérieur (donc non "nouveaux" au sens estNouvelle).
+annoncesRouter.get('/diag-repartition-ville/:ville', exigerConnexion, async (req, res) => {
+    try {
+        const rows = await db
+            .prepare(
+                `SELECT recherche_id, COUNT(*) AS nb, MIN(scrapee_le) AS premiere, MAX(scrapee_le) AS derniere
+                 FROM annonces WHERE ville ILIKE ? GROUP BY recherche_id ORDER BY premiere`
+            )
+            .all(`%${req.params.ville}%`);
+        res.json(rows);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 annoncesRouter.get('/diag-audit-generique/:rechercheId', exigerConnexion, async (req, res) => {
     try {
         const rows = await db
