@@ -163,6 +163,45 @@ async function activerAnnonceHubiflow(adId, token, espaceLogin) {
     }
 }
 
+// EXCEPTION DE SÉCURITÉ DÉLIBÉRÉE ET STRICTEMENT BORNÉE — NE JAMAIS ÉLARGIR NI COPIER CE PATTERN
+// POUR D'AUTRES CHAMPS. Contexte (2026-09-06) : un bug de rate-limit Otaree (voir enrichirLot,
+// dashboard/server/src/integrations/otareeSearchClient.js) a fait publier ~104 annonces réelles
+// sans aucune photo sur Hubiflow. Cette fonction rattrape a posteriori les seules PHOTOS de ces
+// annonces déjà réellement publiées, sans jamais toucher texte/prix/statut/quoi que ce soit
+// d'autre. Contrairement à publish()/envoyerAUbiflow (création complète d'annonce, protégée côté
+// dashboard/server par la liste blanche est_annonce_test — voir hubiflowClientReel.js), cette
+// fonction ne construit JAMAIS qu'un payload {photos: [...]} : elle est structurellement
+// incapable de modifier autre chose, quel que soit l'appelant, précisément parce qu'aucun autre
+// champ ne lui est jamais passé. Si un futur besoin nécessite d'élargir ce PATCH à d'autres
+// champs (texte, prix, statut...) sur une annonce déjà réelle, il DOIT repasser par la même
+// liste blanche que publish(), jamais par ce raccourci minimaliste.
+async function patcherPhotosHubiflow(adId, base64Images, token, espaceLogin) {
+    const adIdPropre = parseInt(adId, 10);
+    const annonceurId = parseInt(String(espaceLogin).replace(/\D/g, ''), 10);
+    try {
+        const response = await axios.patch(
+            `https://espace-client-backend.ubiflow.net/annonce/${adIdPropre}`,
+            {
+                annonceur: { id: annonceurId },
+                flux: { code: AGENCE_CONFIG.flux_code },
+                annonce: { photos: base64Images.map((b64) => ({ type: 'base64', url: b64 })) }
+            },
+            {
+                headers: {
+                    'Accept': 'application/json, text/plain, */*',
+                    'Content-Type': 'application/json;charset=UTF-8',
+                    'Authorization': `Bearer ${token}`
+                }
+            }
+        );
+        return { success: true, data: response.data };
+    } catch (error) {
+        let errorMsg = error.message;
+        if (error.response) errorMsg += ' - ' + JSON.stringify(error.response.data).substring(0, 500);
+        return { success: false, error: errorMsg };
+    }
+}
+
 async function supprimerAnnonceHubiflow(adId, token, espaceLogin) {
     const adIdPropre = parseInt(adId, 10);
     try {
@@ -191,6 +230,36 @@ app.post('/api/annonce/:id/depublier', async (req, res) => {
     
     const result = await supprimerAnnonceHubiflow(req.params.id, resolu.token, espaceLoginAttendu);
     res.status(result.success ? 200 : 502).json(result);
+});
+
+// Voir l'avertissement au-dessus de patcherPhotosHubiflow : n'accepte QUE base64Images en entrée,
+// aucun autre champ (texte/prix/statut) n'est même lisible depuis req.body ici — la restriction
+// est structurelle, pas une simple validation contournable.
+app.post('/api/annonce/:id/photos', async (req, res) => {
+    const { base64Images, espaceLoginAttendu } = req.body || {};
+    if (!espaceLoginAttendu) return res.status(400).json({ success: false, error: 'espaceLoginAttendu requis' });
+    if (!Array.isArray(base64Images) || base64Images.length === 0) {
+        return res.status(400).json({ success: false, error: 'base64Images requis (tableau non vide)' });
+    }
+    const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
+    if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
+
+    const result = await patcherPhotosHubiflow(req.params.id, base64Images, resolu.token, espaceLoginAttendu);
+    res.status(result.success ? 200 : 502).json(result);
+});
+
+// Téléchargement de photos seul, sans génération IA — utilisé pour rattraper les photos
+// d'annonces déjà publiées (voir /api/annonce/:id/photos) sans jamais toucher au texte existant,
+// contrairement à /api/generate qui régénère systématiquement titre+texte.
+app.post('/api/telecharger-photos', async (req, res) => {
+    try {
+        const { lot, imagesSelection } = req.body || {};
+        if (!lot || typeof lot !== 'object') return res.status(400).json({ success: false, error: 'lot requis' });
+        const lotImageData = await downloadOtareeImages(lot, imagesSelection);
+        res.json({ success: true, images: lotImageData.map((img) => img.data) });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 async function lireEtatAnnonceHubiflow(adId, token) {
