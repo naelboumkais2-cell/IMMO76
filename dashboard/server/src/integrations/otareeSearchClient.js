@@ -178,13 +178,52 @@ export async function rechercherLocationsOtaree(q) {
 // jeton Otaree sur tout un groupe de lots traités en parallèle (voir orchestrator.js,
 // executerTraitement) plutôt que d'en redemander un par lot — évite une rafale de
 // rafraîchissements de jeton simultanés. Si omis, comportement inchangé (jeton frais demandé ici).
+//
+// Retry avec backoff + logging explicite ajoutés après constat en conditions réelles (recherche
+// Bordeaux, 110 lots) : 104/110 lots publiés sans aucune photo, alors qu'Otaree en fournit
+// normalement — les 6 seuls succès étaient tous regroupés dans les 90 premières secondes d'un run
+// de 160s, coupure nette ensuite, jamais un seul succès isolé après. Signature d'une limite de
+// débit côté Otaree sur cet endpoint précis, pas une expiration de jeton (un jeton frais est déjà
+// redemandé à chaque groupe de 4 lots, voir orchestrator.js). Avant ce correctif, un `!res.ok`
+// silencieux ici laissait `lot.images`/`lot.documents` vides sans qu'aucune trace n'apparaisse
+// nulle part (aucun throw, aucun log) — le pipeline en aval continuait normalement en pensant que
+// le lot n'avait simplement pas de photo. Seuls documents/images/plan viennent de cet appel de
+// détail — catégorie de résidence, promoteur, prix/loyer sont déjà complets dans le résultat de
+// liste (voir commentaire au-dessus) et ne sont donc jamais affectés par cette panne précise.
+const MAX_TENTATIVES_DETAIL_OTAREE = 3;
+
+async function fetchAvecRetry(url, headers, contexte) {
+    let derniereReponse = null;
+    for (let tentative = 1; tentative <= MAX_TENTATIVES_DETAIL_OTAREE; tentative++) {
+        let res;
+        try {
+            res = await fetch(url, { method: 'GET', headers });
+        } catch (e) {
+            console.error(`[enrichirLot] erreur réseau (${contexte}) tentative ${tentative}/${MAX_TENTATIVES_DETAIL_OTAREE} : ${e.message} — ${new Date().toISOString()}`);
+            if (tentative === MAX_TENTATIVES_DETAIL_OTAREE) return null;
+            await new Promise((r) => setTimeout(r, 1000 * 2 ** (tentative - 1)));
+            continue;
+        }
+        if (res.ok) return res;
+        derniereReponse = res;
+        if (tentative === MAX_TENTATIVES_DETAIL_OTAREE) {
+            console.error(`[enrichirLot] échec définitif après ${MAX_TENTATIVES_DETAIL_OTAREE} tentatives (${contexte}) : HTTP ${res.status} — ${new Date().toISOString()}`);
+            return res;
+        }
+        console.error(`[enrichirLot] HTTP ${res.status} (${contexte}) tentative ${tentative}/${MAX_TENTATIVES_DETAIL_OTAREE} — nouvelle tentative dans ${1000 * 2 ** (tentative - 1)}ms`);
+        await new Promise((r) => setTimeout(r, 1000 * 2 ** (tentative - 1)));
+    }
+    return derniereReponse;
+}
+
 export async function enrichirLot(lot, jetonPartage = null) {
     const { jwt, credentials } = jetonPartage || (await obtenirJwtFrais());
     const headers = buildHeaders(credentials.device, credentials.instanceId, jwt);
+    const idLot = lot.id ?? lot['@id'] ?? '?';
 
     const [detailRes, progRes] = await Promise.all([
-        lot['@id'] ? fetch(`${API_BASE}${lot['@id']}`, { method: 'GET', headers }) : null,
-        lot.program && lot.program['@id'] ? fetch(`${API_BASE}${lot.program['@id']}`, { method: 'GET', headers }) : null,
+        lot['@id'] ? fetchAvecRetry(`${API_BASE}${lot['@id']}`, headers, `détail lot ${idLot}`) : null,
+        lot.program && lot.program['@id'] ? fetchAvecRetry(`${API_BASE}${lot.program['@id']}`, headers, `détail programme du lot ${idLot}`) : null,
     ]);
 
     if (detailRes && detailRes.ok) {
