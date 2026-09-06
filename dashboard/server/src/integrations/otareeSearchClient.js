@@ -191,15 +191,21 @@ export async function rechercherLocationsOtaree(q) {
 // détail — catégorie de résidence, promoteur, prix/loyer sont déjà complets dans le résultat de
 // liste (voir commentaire au-dessus) et ne sont donc jamais affectés par cette panne précise.
 const MAX_TENTATIVES_DETAIL_OTAREE = 3;
+// Aligné sur les autres appels du pipeline (ex: axios timeout 60s côté OpenAI, mais ceux-ci sont
+// de simples GET censés répondre en moins d'une seconde en temps normal) — sans ce timeout, une
+// tentative qui traîne (constaté jusqu'à 80s en conditions réelles sous rate-limit Otaree) combinée
+// aux 3 tentatives de retry pouvait faire durer un seul enrichirLot plusieurs minutes.
+const TIMEOUT_DETAIL_OTAREE_MS = 18000;
 
 async function fetchAvecRetry(url, headers, contexte) {
     let derniereReponse = null;
     for (let tentative = 1; tentative <= MAX_TENTATIVES_DETAIL_OTAREE; tentative++) {
         let res;
         try {
-            res = await fetch(url, { method: 'GET', headers });
+            res = await fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(TIMEOUT_DETAIL_OTAREE_MS) });
         } catch (e) {
-            console.error(`[enrichirLot] erreur réseau (${contexte}) tentative ${tentative}/${MAX_TENTATIVES_DETAIL_OTAREE} : ${e.message} — ${new Date().toISOString()}`);
+            const raison = e.name === 'TimeoutError' ? `timeout après ${TIMEOUT_DETAIL_OTAREE_MS}ms` : e.message;
+            console.error(`[enrichirLot] erreur réseau (${contexte}) tentative ${tentative}/${MAX_TENTATIVES_DETAIL_OTAREE} : ${raison} — ${new Date().toISOString()}`);
             if (tentative === MAX_TENTATIVES_DETAIL_OTAREE) return null;
             await new Promise((r) => setTimeout(r, 1000 * 2 ** (tentative - 1)));
             continue;
