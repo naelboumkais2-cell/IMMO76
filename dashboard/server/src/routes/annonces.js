@@ -5,6 +5,13 @@ import { publierInstance, depublierInstance, synchroniserInstance } from '../ser
 
 export const annoncesRouter = Router();
 
+// TEMPORAIRE — debug ponctuel raw_data.images (voir diag-patch-photos ci-dessous).
+annoncesRouter.get('/:id/diag-raw-images', exigerConnexion, async (req, res) => {
+    const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(req.params.id);
+    const raw = typeof row.raw_data === 'string' ? JSON.parse(row.raw_data) : row.raw_data;
+    res.json({ images: raw.images, plan: raw.plan });
+});
+
 // TEMPORAIRE — rattrape les photos manquantes d'une annonce déjà réellement publiée sur Hubiflow
 // (voir enrichirLot/rate-limit Otaree, 2026-09-06). Ne touche jamais texte/prix/statut : (1)
 // retélécharge les photos depuis raw_data (déjà réenrichi) sans passer par /api/generate, donc
