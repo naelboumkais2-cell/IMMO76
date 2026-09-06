@@ -5,6 +5,66 @@ import { publierInstance, depublierInstance, synchroniserInstance } from '../ser
 
 export const annoncesRouter = Router();
 
+// TEMPORAIRE — diagnostic des lots publiés sans photo sur la recherche Bordeaux (voir demande du
+// 2026-09-06). Renvoie, pour chaque annonce de la recherche : combien de photos Otaree a fourni
+// (raw_data.images), combien ont été stockées après téléchargement (images), la référence
+// utilisée, et le statut de publication par portail. Lecture seule.
+annoncesRouter.get('/diag-photos/:rechercheId', exigerConnexion, async (req, res) => {
+    try {
+        const rows = await db
+            .prepare(
+                `SELECT id, titre, reference, reference_generee, raw_data, images, scrapee_le
+                 FROM annonces WHERE recherche_id = ? ORDER BY id`
+            )
+            .all(req.params.rechercheId);
+        const getPortails = db.prepare(
+            `SELECT ap.statut, ap.mode, ap.ad_id_externe, ap.maj_le, p.nom AS portail_nom
+             FROM annonce_portails ap JOIN portails p ON p.id = ap.portail_id
+             WHERE ap.annonce_id = ?`
+        );
+        const result = [];
+        for (const r of rows) {
+            let nbPhotosOtaree = null;
+            try {
+                const raw = typeof r.raw_data === 'string' ? JSON.parse(r.raw_data) : r.raw_data;
+                nbPhotosOtaree = Array.isArray(raw?.images) ? raw.images.length : null;
+            } catch (e) { /* ignore */ }
+            let nbPhotosStockees = null;
+            try {
+                const imgs = typeof r.images === 'string' ? JSON.parse(r.images) : r.images;
+                nbPhotosStockees = Array.isArray(imgs) ? imgs.length : null;
+            } catch (e) { /* ignore */ }
+            result.push({
+                id: r.id,
+                titre: r.titre,
+                reference: r.reference,
+                reference_generee: r.reference_generee,
+                scrapee_le: r.scrapee_le,
+                nbPhotosOtaree,
+                nbPhotosStockees,
+                portails: await getPortails.all(r.id),
+            });
+        }
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+// TEMPORAIRE — logs_api complets liés à une annonce précise (pas seulement les 200 derniers
+// toutes annonces confondues comme /api/logs) — pour retrouver l'erreur exacte au moment du
+// traitement d'un lot précis, même si elle est sortie de la fenêtre des 200 logs les plus récents.
+annoncesRouter.get('/diag-logs/:id', exigerConnexion, async (req, res) => {
+    try {
+        const logs = await db
+            .prepare(`SELECT * FROM logs_api WHERE annonce_id = ? ORDER BY id`)
+            .all(req.params.id);
+        res.json(logs);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
 // peut peser plusieurs Mo par annonce (jusqu'à 20 photos en base64) : avec LIMIT 200 et un
