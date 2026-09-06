@@ -5,6 +5,39 @@ import { publierInstance, depublierInstance, synchroniserInstance } from '../ser
 
 export const annoncesRouter = Router();
 
+// TEMPORAIRE — audit du garde-fou manquant sur le chemin générique (Pinel/nue-propriété/etc.),
+// voir demande du 2026-09-06. Renvoie, pour une recherche donnée, tout ce qu'il faut pour juger
+// si le texte généré contient le nom du promoteur ou une formulation interdite : raw_data (pour
+// lawsKeys/program.developer.name), donnees_ia (texte publié), et le statut réel de publication
+// par portail. Lecture seule, à retirer une fois l'audit terminé.
+annoncesRouter.get('/diag-audit-generique/:rechercheId', exigerConnexion, async (req, res) => {
+    try {
+        const rows = await db
+            .prepare(
+                `SELECT id, titre, raw_data, donnees_ia FROM annonces WHERE recherche_id = ? ORDER BY id`
+            )
+            .all(req.params.rechercheId);
+        const getPortails = db.prepare(
+            `SELECT ap.statut, ap.ad_id_externe, p.nom AS portail_nom
+             FROM annonce_portails ap JOIN portails p ON p.id = ap.portail_id
+             WHERE ap.annonce_id = ?`
+        );
+        const result = [];
+        for (const r of rows) {
+            result.push({
+                id: r.id,
+                titre: r.titre,
+                raw_data: r.raw_data,
+                donnees_ia: r.donnees_ia,
+                portails: await getPortails.all(r.id),
+            });
+        }
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
 // peut peser plusieurs Mo par annonce (jusqu'à 20 photos en base64) : avec LIMIT 200 et un
