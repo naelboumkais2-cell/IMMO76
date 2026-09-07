@@ -5,6 +5,41 @@ import { publierInstance, depublierInstance, synchroniserInstance } from '../ser
 
 export const annoncesRouter = Router();
 
+// TEMPORAIRE — remise à zéro (2026-09-07), étape 2/2 : purge complète des annonces/recherches
+// après dépublication Hubiflow (étape 1, déjà faite). annonce_portails et scraper_runs sont
+// supprimés automatiquement par les contraintes ON DELETE CASCADE déjà en place — pas de requête
+// séparée nécessaire. utilisateurs/portails/regles_routage/parametres_depense ne sont jamais
+// touchés ici.
+annoncesRouter.post('/diag-nettoyage-final', exigerConnexion, async (req, res) => {
+    try {
+        const avant = {
+            annonces: (await db.prepare(`SELECT COUNT(*) AS nb FROM annonces`).get()).nb,
+            annoncePortails: (await db.prepare(`SELECT COUNT(*) AS nb FROM annonce_portails`).get()).nb,
+            recherches: (await db.prepare(`SELECT COUNT(*) AS nb FROM recherches`).get()).nb,
+            scraperRuns: (await db.prepare(`SELECT COUNT(*) AS nb FROM scraper_runs`).get()).nb,
+        };
+
+        const resAnnonces = await db.prepare(`DELETE FROM annonces`).run();
+        const resRecherches = await db.prepare(`DELETE FROM recherches`).run();
+
+        const apres = {
+            annonces: (await db.prepare(`SELECT COUNT(*) AS nb FROM annonces`).get()).nb,
+            annoncePortails: (await db.prepare(`SELECT COUNT(*) AS nb FROM annonce_portails`).get()).nb,
+            recherches: (await db.prepare(`SELECT COUNT(*) AS nb FROM recherches`).get()).nb,
+            scraperRuns: (await db.prepare(`SELECT COUNT(*) AS nb FROM scraper_runs`).get()).nb,
+        };
+
+        res.json({
+            avant,
+            apres,
+            annoncesSupprimees: resAnnonces.changes,
+            recherchesSupprimees: resRecherches.changes,
+        });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // TEMPORAIRE — inventaire complet avant remise à zéro du dashboard (2026-09-07). Lecture seule,
 // aucune écriture. Vue d'ensemble : recherches, annonces par recherche/ville, répartition des
 // statuts de publication, comptes utilisateurs et règles de routage (à garder, listés pour
