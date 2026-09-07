@@ -90,49 +90,6 @@ annoncesRouter.get('/diag-liste-ad-id-externe', exigerConnexion, async (req, res
     }
 });
 
-// TEMPORAIRE — remise à zéro (2026-09-07), étape 1/2 : comptes de test + portail de test. Liste
-// d'emails et nom de portail explicites, en dur, validés un par un avec l'utilisateur avant
-// exécution — aucune suppression par pattern générique pour ne jamais toucher un compte réel par
-// erreur. sessions (CASCADE) et connexions_log/logs_api (SET NULL) gèrent déjà proprement les
-// FK vers utilisateurs ; annonce_portails (CASCADE) gère la FK vers portails.
-annoncesRouter.post('/diag-nettoyage-comptes-test', exigerConnexion, async (req, res) => {
-    const emailsTest = [
-        'test-audit@immo76.local', 'test-proxy@immo76.local', 'test-proxy2@immo76.local',
-        'test-employe-role@immo76.local', 'test.diag.compte@plusimmo76.fr', 'test.diag.compte2@plusimmo76.fr',
-        'test.diag.compte3@plusimmo76.fr', 'test.diag.h1.1@plusimmo76.fr', 'test.diag.h1.2@plusimmo76.fr',
-        'test.diag.h1.3@plusimmo76.fr', 'test.diag.nobcrypt1@plusimmo76.fr', 'test.diag.nobcrypt2@plusimmo76.fr',
-        'test.diag.nobcrypt3@plusimmo76.fr', 'test.diag.fixe@plusimmo76.fr',
-    ];
-    const emailsAGarder = ['naelbmks@gmail.com', 'nael.boumkais2@gmail.com'];
-    try {
-        const conflit = emailsTest.filter((e) => emailsAGarder.includes(e));
-        if (conflit.length) return res.status(400).json({ erreur: `Conflit emails à garder/supprimer : ${conflit}` });
-
-        const utilisateursSupprimes = [];
-        for (const email of emailsTest) {
-            const u = await db.prepare(`DELETE FROM utilisateurs WHERE email = ? RETURNING id, email`).get(email);
-            if (u) utilisateursSupprimes.push(u);
-        }
-
-        const portailTest = await db.prepare(`SELECT id FROM portails WHERE nom = 'Test Diag Portail'`).get();
-        let portailSupprime = null;
-        if (portailTest) {
-            const regleLiee = await db.prepare(`SELECT id FROM regles_routage WHERE portail_id = ?`).get(portailTest.id);
-            const instanceLiee = await db.prepare(`SELECT id FROM annonce_portails WHERE portail_id = ? AND ad_id_externe IS NOT NULL`).get(portailTest.id);
-            if (regleLiee) return res.status(400).json({ erreur: `Une règle de routage référence encore ce portail (id ${regleLiee.id}) — annulé.` });
-            if (instanceLiee) return res.status(400).json({ erreur: `Une annonce a un ad_id_externe réel sur ce portail (instance ${instanceLiee.id}) — annulé.` });
-            portailSupprime = await db.prepare(`DELETE FROM portails WHERE id = ? RETURNING id, nom`).get(portailTest.id);
-        }
-
-        const utilisateursRestants = await db.prepare(`SELECT id, email, role FROM utilisateurs ORDER BY id`).all();
-        const portailsRestants = await db.prepare(`SELECT id, nom FROM portails ORDER BY id`).all();
-
-        res.json({ utilisateursSupprimes, portailSupprime, utilisateursRestants, portailsRestants });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
 // peut peser plusieurs Mo par annonce (jusqu'à 20 photos en base64) : avec LIMIT 200 et un
