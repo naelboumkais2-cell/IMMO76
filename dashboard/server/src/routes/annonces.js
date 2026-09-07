@@ -5,6 +5,74 @@ import { publierInstance, depublierInstance, synchroniserInstance } from '../ser
 
 export const annoncesRouter = Router();
 
+// TEMPORAIRE — inventaire complet avant remise à zéro du dashboard (2026-09-07). Lecture seule,
+// aucune écriture. Vue d'ensemble : recherches, annonces par recherche/ville, répartition des
+// statuts de publication, comptes utilisateurs et règles de routage (à garder, listés pour
+// confirmation seulement). Ne vérifie PAS l'état réel Hubiflow ici (trop coûteux en un seul appel
+// pour un volume inconnu à l'avance) — voir /diag-etat-hubiflow séparément une fois le volume connu.
+annoncesRouter.get('/diag-inventaire', exigerConnexion, async (req, res) => {
+    try {
+        const recherches = await db
+            .prepare(
+                `SELECT r.id, r.url, r.nom, r.resume, r.favori, r.cree_le, r.derniere_execution_le,
+                        r.dernieres_annonces_trouvees, r.derniere_erreur,
+                        (SELECT COUNT(*) FROM annonces a WHERE a.recherche_id = r.id) AS nb_annonces
+                 FROM recherches r ORDER BY r.id`
+            )
+            .all();
+
+        const annoncesParRechercheVille = await db
+            .prepare(
+                `SELECT recherche_id, ville, COUNT(*) AS nb, MIN(scrapee_le) AS premiere, MAX(scrapee_le) AS derniere,
+                        SUM(CASE WHEN est_annonce_test = 1 THEN 1 ELSE 0 END) AS nb_marquees_test
+                 FROM annonces GROUP BY recherche_id, ville ORDER BY recherche_id, ville`
+            )
+            .all();
+
+        const totalAnnonces = await db.prepare(`SELECT COUNT(*) AS nb FROM annonces`).get();
+
+        const statutsPortails = await db
+            .prepare(
+                `SELECT p.nom AS portail_nom, ap.statut, ap.mode, COUNT(*) AS nb,
+                        SUM(CASE WHEN ap.ad_id_externe IS NOT NULL THEN 1 ELSE 0 END) AS nb_avec_ad_id_externe
+                 FROM annonce_portails ap JOIN portails p ON p.id = ap.portail_id
+                 GROUP BY p.nom, ap.statut, ap.mode ORDER BY p.nom, ap.statut, ap.mode`
+            )
+            .all();
+
+        const totalAvecAdIdExterne = await db
+            .prepare(`SELECT COUNT(*) AS nb FROM annonce_portails WHERE ad_id_externe IS NOT NULL`)
+            .get();
+
+        const utilisateurs = await db
+            .prepare(`SELECT id, email, nom, role, cree_le FROM utilisateurs ORDER BY id`)
+            .all();
+
+        const reglesRoutage = await db
+            .prepare(
+                `SELECT rr.id, rr.type_bien, rr.dispositif, p.nom AS portail_nom
+                 FROM regles_routage rr JOIN portails p ON p.id = rr.portail_id
+                 ORDER BY rr.id`
+            )
+            .all();
+
+        const portails = await db.prepare(`SELECT id, nom, actif, mode_publication_defaut, login FROM portails ORDER BY id`).all();
+
+        res.json({
+            recherches,
+            annoncesParRechercheVille,
+            totalAnnonces: totalAnnonces.nb,
+            statutsPortails,
+            totalAvecAdIdExterne: totalAvecAdIdExterne.nb,
+            utilisateurs,
+            reglesRoutage,
+            portails,
+        });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
 // peut peser plusieurs Mo par annonce (jusqu'à 20 photos en base64) : avec LIMIT 200 et un
