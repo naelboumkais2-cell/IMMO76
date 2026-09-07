@@ -73,6 +73,23 @@ annoncesRouter.get('/diag-inventaire', exigerConnexion, async (req, res) => {
     }
 });
 
+// TEMPORAIRE — liste des (annonce_id, portail_id) déjà envoyés à Hubiflow au moins une fois, pour
+// piloter la vérification de l'état réel via /portails/:portailId/synchroniser (déjà existant).
+annoncesRouter.get('/diag-liste-ad-id-externe', exigerConnexion, async (req, res) => {
+    try {
+        const rows = await db
+            .prepare(
+                `SELECT ap.annonce_id, ap.portail_id, ap.ad_id_externe, ap.statut, a.titre, a.ville
+                 FROM annonce_portails ap JOIN annonces a ON a.id = ap.annonce_id
+                 WHERE ap.ad_id_externe IS NOT NULL ORDER BY ap.annonce_id`
+            )
+            .all();
+        res.json(rows);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // Colonnes explicites, sans `images`/`raw_data`/`donnees_ia` — Supervision (le seul appelant,
 // voir Supervision.jsx) n'affiche qu'un tableau de statuts, jamais les photos. `images` seule
 // peut peser plusieurs Mo par annonce (jusqu'à 20 photos en base64) : avec LIMIT 200 et un
