@@ -44,6 +44,9 @@ annoncesRouter.get('/diag-inventaire', exigerConnexion, async (req, res) => {
             .prepare(`SELECT COUNT(*) AS nb FROM annonce_portails WHERE ad_id_externe IS NOT NULL`)
             .get();
 
+        const totalAnnoncePortails = await db.prepare(`SELECT COUNT(*) AS nb FROM annonce_portails`).get();
+        const totalScraperRuns = await db.prepare(`SELECT COUNT(*) AS nb FROM scraper_runs`).get();
+
         const utilisateurs = await db
             .prepare(`SELECT id, email, nom, role, cree_le FROM utilisateurs ORDER BY id`)
             .all();
@@ -64,6 +67,8 @@ annoncesRouter.get('/diag-inventaire', exigerConnexion, async (req, res) => {
             totalAnnonces: totalAnnonces.nb,
             statutsPortails,
             totalAvecAdIdExterne: totalAvecAdIdExterne.nb,
+            totalAnnoncePortails: totalAnnoncePortails.nb,
+            totalScraperRuns: totalScraperRuns.nb,
             utilisateurs,
             reglesRoutage,
             portails,
