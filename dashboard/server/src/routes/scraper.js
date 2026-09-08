@@ -25,9 +25,52 @@ import {
     rechercherLocationsOtaree,
     construireUrlRechercheOtaree,
     compterLotsOtaree,
+    diagVerifierLot,
 } from '../integrations/otareeSearchClient.js';
 
 export const scraperRouter = Router();
+
+// TEMPORAIRE — exploration faisabilité "signalement lot disparu d'Otaree" (2026-09-08). Lecture
+// seule côté Otaree (aucune écriture en base). Lance une petite recherche réelle (sans importer),
+// renvoie les champs de statut bruts des 3 premiers lots, plus un test de vérification directe
+// (GET détail) sur le premier lot réel ET sur un atId fabriqué pour observer le comportement en
+// cas de lot inexistant. À retirer une fois l'exploration terminée.
+scraperRouter.post('/diag-verif-disparition', exigerConnexion, async (req, res) => {
+    try {
+        const { filters } = req.body || {};
+        const { lots } = await rechercherLotsOtaree(filters || { where: [{ key: 'city_29781', label: 'Rouen', value: 'city_29781' }] });
+        const echantillon = lots.slice(0, 3).map((l) => ({
+            id: l.id,
+            atId: l['@id'],
+            status: l.status,
+            internalStatus: l.internalStatus,
+            feedStatus: l.feedStatus,
+            published: l.published,
+            statusUncertain: l.statusUncertain,
+        }));
+
+        let verifLotReel = null;
+        if (lots[0]?.['@id']) {
+            const t0 = Date.now();
+            const r = await diagVerifierLot(lots[0]['@id']);
+            verifLotReel = { atId: lots[0]['@id'], dureeMs: Date.now() - t0, httpStatus: r.httpStatus, ok: r.ok, extraitBody: { id: r.body?.id, status: r.body?.status, internalStatus: r.body?.internalStatus, feedStatus: r.body?.feedStatus, published: r.body?.published } };
+        }
+
+        const atIdFabrique = '/estate/properties/999999999';
+        const t1 = Date.now();
+        const verifLotInexistant = await diagVerifierLot(atIdFabrique);
+        const dureeInexistant = Date.now() - t1;
+
+        res.json({
+            nbLotsTrouves: lots.length,
+            echantillon,
+            verifLotReel,
+            verifLotInexistant: { atId: atIdFabrique, dureeMs: dureeInexistant, httpStatus: verifLotInexistant.httpStatus, ok: verifLotInexistant.ok, body: verifLotInexistant.body },
+        });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
 
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
