@@ -39,33 +39,41 @@ scraperRouter.post('/diag-verif-disparition', exigerConnexion, async (req, res) 
     try {
         const { filters } = req.body || {};
         const { lots } = await rechercherLotsOtaree(filters || { where: [{ key: 'city_29781', label: 'Rouen', value: 'city_29781' }] });
-        const echantillon = lots.slice(0, 3).map((l) => ({
-            id: l.id,
-            atId: l['@id'],
-            status: l.status,
-            internalStatus: l.internalStatus,
-            feedStatus: l.feedStatus,
-            published: l.published,
-            statusUncertain: l.statusUncertain,
-        }));
 
-        let verifLotReel = null;
-        if (lots[0]?.['@id']) {
-            const t0 = Date.now();
-            const r = await diagVerifierLot(lots[0]['@id']);
-            verifLotReel = { atId: lots[0]['@id'], dureeMs: Date.now() - t0, httpStatus: r.httpStatus, ok: r.ok, extraitBody: { id: r.body?.id, status: r.body?.status, internalStatus: r.body?.internalStatus, feedStatus: r.body?.feedStatus, published: r.body?.published } };
+        const statusCounts = {};
+        for (const l of lots) {
+            const key = `status=${l.status},feed=${l.feedStatus}`;
+            statusCounts[key] = (statusCounts[key] || 0) + 1;
         }
 
-        const atIdFabrique = '/estate/properties/999999999';
+        const parStatus = {};
+        for (const l of lots) {
+            const key = `${l.status}_${l.feedStatus}`;
+            if (!parStatus[key]) parStatus[key] = l;
+        }
+
+        const verifsParStatus = {};
+        for (const [key, l] of Object.entries(parStatus)) {
+            const t0 = Date.now();
+            const r = await diagVerifierLot(l['@id']);
+            verifsParStatus[key] = {
+                atId: l['@id'], statusRecherche: l.status, feedStatusRecherche: l.feedStatus,
+                dureeMs: Date.now() - t0, httpStatus: r.httpStatus, ok: r.ok,
+                extraitBody: r.ok ? { id: r.body?.id, status: r.body?.status, internalStatus: r.body?.internalStatus, feedStatus: r.body?.feedStatus, published: r.body?.published } : r.body,
+            };
+        }
+
+        // Path correct observé (/properties/{id}, pas /estate/properties/{id}) mais id fabriqué —
+        // pour voir la vraie signature d'un lot inexistant, distincte d'un simple 404 de routage.
+        const atIdFabrique = `/properties/${lots[0]?.id || 'x'}fabrique000`;
         const t1 = Date.now();
         const verifLotInexistant = await diagVerifierLot(atIdFabrique);
-        const dureeInexistant = Date.now() - t1;
 
         res.json({
             nbLotsTrouves: lots.length,
-            echantillon,
-            verifLotReel,
-            verifLotInexistant: { atId: atIdFabrique, dureeMs: dureeInexistant, httpStatus: verifLotInexistant.httpStatus, ok: verifLotInexistant.ok, body: verifLotInexistant.body },
+            repartitionStatus: statusCounts,
+            verifsParStatus,
+            verifLotInexistant: { atId: atIdFabrique, dureeMs: Date.now() - t1, httpStatus: verifLotInexistant.httpStatus, ok: verifLotInexistant.ok, body: verifLotInexistant.body },
         });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
