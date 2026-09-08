@@ -25,60 +25,9 @@ import {
     rechercherLocationsOtaree,
     construireUrlRechercheOtaree,
     compterLotsOtaree,
-    diagVerifierLot,
 } from '../integrations/otareeSearchClient.js';
 
 export const scraperRouter = Router();
-
-// TEMPORAIRE — exploration faisabilité "signalement lot disparu d'Otaree" (2026-09-08). Lecture
-// seule côté Otaree (aucune écriture en base). Lance une petite recherche réelle (sans importer),
-// renvoie les champs de statut bruts des 3 premiers lots, plus un test de vérification directe
-// (GET détail) sur le premier lot réel ET sur un atId fabriqué pour observer le comportement en
-// cas de lot inexistant. À retirer une fois l'exploration terminée.
-scraperRouter.post('/diag-verif-disparition', exigerConnexion, async (req, res) => {
-    try {
-        const { filters } = req.body || {};
-        const { lots } = await rechercherLotsOtaree(filters || { where: [{ key: 'city_29781', label: 'Rouen', value: 'city_29781' }] });
-
-        const statusCounts = {};
-        for (const l of lots) {
-            const key = `status=${l.status},feed=${l.feedStatus}`;
-            statusCounts[key] = (statusCounts[key] || 0) + 1;
-        }
-
-        const parStatus = {};
-        for (const l of lots) {
-            const key = `${l.status}_${l.feedStatus}`;
-            if (!parStatus[key]) parStatus[key] = l;
-        }
-
-        const verifsParStatus = {};
-        for (const [key, l] of Object.entries(parStatus)) {
-            const t0 = Date.now();
-            const r = await diagVerifierLot(l['@id']);
-            verifsParStatus[key] = {
-                atId: l['@id'], statusRecherche: l.status, feedStatusRecherche: l.feedStatus,
-                dureeMs: Date.now() - t0, httpStatus: r.httpStatus, ok: r.ok,
-                extraitBody: r.ok ? { id: r.body?.id, status: r.body?.status, internalStatus: r.body?.internalStatus, feedStatus: r.body?.feedStatus, published: r.body?.published } : r.body,
-            };
-        }
-
-        // Path correct observé (/properties/{id}, pas /estate/properties/{id}) mais id fabriqué —
-        // pour voir la vraie signature d'un lot inexistant, distincte d'un simple 404 de routage.
-        const atIdFabrique = `/properties/${lots[0]?.id || 'x'}fabrique000`;
-        const t1 = Date.now();
-        const verifLotInexistant = await diagVerifierLot(atIdFabrique);
-
-        res.json({
-            nbLotsTrouves: lots.length,
-            repartitionStatus: statusCounts,
-            verifsParStatus,
-            verifLotInexistant: { atId: atIdFabrique, dureeMs: Date.now() - t1, httpStatus: verifLotInexistant.httpStatus, ok: verifLotInexistant.ok, body: verifLotInexistant.body },
-        });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
 
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {

@@ -249,23 +249,6 @@ export async function enrichirLot(lot, jetonPartage = null) {
     return lot;
 }
 
-// TEMPORAIRE — diagnostic pour explorer la faisabilité d'un signalement "lot disparu d'Otaree"
-// (voir demande du 2026-09-08). Fait un GET brut sur le détail d'un lot par son atId Otaree
-// (ex: "/estate/properties/12345") et renvoie le statut HTTP + le corps complet, sans passer par
-// enrichirLot (qui avale silencieusement les échecs). À retirer une fois l'exploration terminée.
-export async function diagVerifierLot(atId) {
-    const { jwt, credentials } = await obtenirJwtFrais();
-    const headers = buildHeaders(credentials.device, credentials.instanceId, jwt);
-    const res = await fetch(`${API_BASE}${atId}`, { method: 'GET', headers });
-    let body = null;
-    try {
-        body = await res.json();
-    } catch (e) {
-        body = { erreurParsing: e.message };
-    }
-    return { httpStatus: res.status, ok: res.ok, body };
-}
-
 // URL synthétique stable pour représenter une recherche server-side dans la table
 // `recherches` (pas de vraie page de résultats puisqu'il n'y a pas de navigateur) — mêmes
 // filtres -> même URL -> même recherche regroupée, peu importe l'ordre des clés reçues.
