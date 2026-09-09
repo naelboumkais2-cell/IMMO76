@@ -27,6 +27,8 @@ import {
     compterLotsOtaree,
 } from '../integrations/otareeSearchClient.js';
 
+// TEMPORAIRE — diagnostic recherche nationale + prix min, à retirer après investigation.
+
 export const scraperRouter = Router();
 
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
@@ -279,6 +281,27 @@ scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
 scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
+});
+
+// TEMPORAIRE — appelle rechercherLotsOtaree directement (pagination complète), sans import
+// en base ni auto-publication, pour inspecter la forme réelle des résultats (prix, tronque).
+scraperRouter.post('/diag-filtres', exigerConnexion, async (req, res) => {
+    try {
+        const { filters } = req.body || {};
+        const t0 = Date.now();
+        const { lots, tronque } = await rechercherLotsOtaree(filters || {});
+        const prix = lots.map((l) => l.price ?? l.sellPrice ?? null).filter((p) => p != null);
+        res.json({
+            nb: lots.length,
+            tronque,
+            dureeMs: Date.now() - t0,
+            prixMin: prix.length ? Math.min(...prix) : null,
+            prixMax: prix.length ? Math.max(...prix) : null,
+            echantillon: lots.slice(0, 3).map((l) => ({ id: l.id, price: l.price, city: l.city, ville: l.address?.city })),
+        });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
 });
 
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
