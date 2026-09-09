@@ -24,6 +24,7 @@ import {
     rechercherLotsOtaree,
     rechercherLocationsOtaree,
     construireUrlRechercheOtaree,
+    construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
 } from '../integrations/otareeSearchClient.js';
@@ -200,6 +201,65 @@ scraperRouter.post('/otaree-search', exigerConnexion, async (req, res) => {
             );
             const autoPublish = await autoGenererEtPublier(annonces, result.rechercheId);
             terminerRecherche({ ...result, tronque, autoPublish });
+        } catch (e) {
+            echouerRecherche(e.message);
+        }
+    });
+});
+
+// Recherche "France entière" (pas de ville) : découpe en régions (repli département par
+// département si une région dépasse le plafond de pagination MAX_PAGES, voir
+// rechercherZoneAvecRepli/zonesFrance.js) plutôt qu'un seul appel Otaree avec `where` vide —
+// une recherche nationale directe dépasse largement ce plafond et tourne assez longtemps pour
+// risquer une expiration de jeton en route (voir le rafraîchissement mid-pagination dans
+// otareeSearchClient.js). Même infrastructure de suivi asynchrone que /otaree-search (un seul
+// run à la fois, partagé — voir rechercheStatus.js) : chaque région est importée en base dès
+// qu'elle est prête, pas seulement à la toute fin, pour ne pas perdre le travail déjà fait si
+// une région ultérieure échoue.
+scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) => {
+    const { filtresBase, nom, resume } = req.body || {};
+    if (getEtatRecherche().enCours) {
+        return res.status(409).json({ erreur: 'Une recherche est déjà en cours — attends sa fin avant d\'en lancer une autre.' });
+    }
+
+    demarrerRecherche(nom?.trim() || 'France entière');
+    res.json({ enCours: true });
+
+    const utilisateurId = utilisateurActuelId();
+    executerAvecUtilisateur(utilisateurId, async () => {
+        try {
+            const url = construireUrlRechercheNationale();
+            let totalTrouves = 0;
+            let totalImportes = 0;
+            let nbNouvellesTotal = 0;
+            let rechercheId = null;
+            let toutesAnnoncesTraitees = [];
+
+            for (const region of REGIONS_FRANCE) {
+                const { lots } = await rechercherZoneAvecRepli(region.nom, region.departements, filtresBase || {});
+                totalTrouves += lots.length;
+                mettreAJourProgression(totalTrouves, totalImportes);
+
+                const result = await importerLotsOtaree(
+                    url, lots, nom?.trim() || 'France entière', resume?.trim() || null,
+                    (fait) => mettreAJourProgression(totalTrouves, totalImportes + fait)
+                );
+                totalImportes += lots.length;
+                nbNouvellesTotal += result.nbNouvelles;
+                rechercheId = result.rechercheId;
+                toutesAnnoncesTraitees = toutesAnnoncesTraitees.concat(result.annonces);
+                mettreAJourProgression(totalTrouves, totalImportes);
+            }
+
+            // importerLotsOtaree écrase `dernieres_annonces_trouvees` à chaque appel avec le
+            // compte de la SEULE région qu'il vient de traiter — corrigé ici une fois, avec le
+            // vrai total, pour que la fiche recherche affiche un nombre cohérent.
+            if (rechercheId) {
+                await db.prepare(`UPDATE recherches SET dernieres_annonces_trouvees = ? WHERE id = ?`).run(totalTrouves, rechercheId);
+            }
+
+            const autoPublish = await autoGenererEtPublier(toutesAnnoncesTraitees, rechercheId);
+            terminerRecherche({ rechercheId, nbLots: totalTrouves, nbNouvelles: nbNouvellesTotal, tronque: false, autoPublish });
         } catch (e) {
             echouerRecherche(e.message);
         }

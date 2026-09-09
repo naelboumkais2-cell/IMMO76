@@ -318,6 +318,18 @@ export function construireUrlRechercheOtaree(filters) {
     return `${SEARCH_PAGE_REFERER}?filters=${encodeURIComponent(stringifyTrie(filters))}`;
 }
 
+// URL synthétique stable pour la recherche "France entière" (voir rechercherZoneAvecRepli /
+// zonesFrance.js) — toujours la même valeur, pour que les lancements successifs se regroupent
+// dans la même ligne `recherches` (comme une recherche normale re-scrapée). Limite connue : le
+// rescraping programmé des favoris (rescraperRechercheFavorite, orchestrator.js) ne reconnaît
+// pas encore ce format — parseFiltresOtareeDepuisUrl renverra null dessus et l'appelant
+// retombera sur l'ancien moteur de scraping HTML, qui échouera proprement (erreur consignée,
+// pas de crash) plutôt que de relancer la recherche nationale. À corriger séparément si le
+// rescraping automatique d'un favori national est nécessaire.
+export function construireUrlRechercheNationale() {
+    return `${SEARCH_PAGE_REFERER}?filters=national`;
+}
+
 // Inverse de construireUrlRechercheOtaree — reconnaît une URL de recherche Otaree (par son
 // préfixe stable) et en extrait les filtres d'origine, pour pouvoir relancer la même recherche
 // (rescraping programmé des favorites, voir index.js) sans dépendre de l'ancien moteur mock. Une

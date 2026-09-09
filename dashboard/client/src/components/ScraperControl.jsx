@@ -380,9 +380,11 @@ export function ScraperControl() {
     }, [rechercheImportStatus]);
 
     // Partagé entre le comptage rapide et la vraie recherche — même filtres, une seule source.
-    function construireFiltres() {
-        const where = [{ label: villeSelectionnee.name, key: villeSelectionnee.code, value: villeSelectionnee.code }];
-        const filters = { where };
+    // `ville` par défaut = celle sélectionnée dans le formulaire ; passer explicitement `null`
+    // (recherche nationale, voir onLancerRechercheNationale) omet le filtre géographique.
+    function construireFiltres(ville = villeSelectionnee) {
+        const filters = {};
+        if (ville) filters.where = [{ label: ville.name, key: ville.code, value: ville.code }];
         if (minPrice.trim()) filters.minPrice = minPrice.trim();
         if (maxPrice.trim()) filters.maxPrice = maxPrice.trim();
         if (typologie.length) filters.typology = typologie;
@@ -474,6 +476,27 @@ export function ScraperControl() {
             // un gros volume). Le polling démarré ci-dessous (voir pollingImportActif) prend le
             // relais pour suivre la progression et traiter le résultat une fois terminé.
             await api.rechercherOtaree(filters, nomRecherche.trim(), resume);
+            setPollingImportActif(true);
+        } catch (err) {
+            setErreurOtaree(err.message);
+            setRechercheOtareeEnCours(false);
+        }
+    }
+
+    // Recherche "France entière" : découpe en régions (repli département par département si une
+    // région dépasse le plafond de pagination), voir rechercherZoneAvecRepli côté serveur — même
+    // mécanisme de suivi asynchrone que la recherche normale (pas de ville à choisir ici).
+    async function onLancerRechercheNationale() {
+        setErreurOtaree(null);
+        setResultatOtaree(null);
+        setComptageOtaree(null);
+
+        const filters = construireFiltres(null);
+        const resume = construireResumeFiltres({ villeSelectionnee: null, minPrice, maxPrice, typologie, nature, statut, loi, promoteur });
+
+        setRechercheOtareeEnCours(true);
+        try {
+            await api.rechercherOtareeNationale(filters, nomRecherche.trim(), resume || 'France entière');
             setPollingImportActif(true);
         } catch (err) {
             setErreurOtaree(err.message);
@@ -791,6 +814,17 @@ export function ScraperControl() {
                             <button type="submit" className="btn btn-primary" disabled={rechercheOtareeEnCours} style={{ borderRadius: 'var(--radius-md)', padding: '12px 24px', margin: '4px' }}>
                                 <IconRefresh style={rechercheOtareeEnCours ? { animation: 'spin 0.8s linear infinite' } : undefined} />
                                 {rechercheOtareeEnCours ? 'Recherche…' : 'Rechercher'}
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                disabled={rechercheOtareeEnCours}
+                                onClick={onLancerRechercheNationale}
+                                style={{ margin: '4px' }}
+                                title="Ignore le champ Ville — parcourt toutes les régions (~45min-1h). Les autres filtres (prix, typologie...) restent appliqués."
+                            >
+                                <IconRefresh style={rechercheOtareeEnCours ? { animation: 'spin 0.8s linear infinite' } : undefined} />
+                                {rechercheOtareeEnCours ? 'Recherche…' : 'France entière'}
                             </button>
                             {autoPublishStatus?.enCours && (
                                 <button
