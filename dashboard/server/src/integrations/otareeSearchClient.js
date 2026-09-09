@@ -59,14 +59,30 @@ async function paginerRecherche(jwt, credentials, filters) {
     let currentPage = 1;
     let loopCount = 0;
     let next = null;
+    let jetonActuel = jwt;
 
     while (currentUrl && loopCount < MAX_PAGES) {
         loopCount++;
-        const res = await fetch(currentUrl, {
+        let res = await fetch(currentUrl, {
             method: 'POST',
-            headers: buildHeaders(credentials.device, credentials.instanceId, jwt),
+            headers: buildHeaders(credentials.device, credentials.instanceId, jetonActuel),
             body: JSON.stringify({ filters, page: currentPage, partial: true }),
         });
+        if (res.status === 401) {
+            // Le JWT a une durée de vie courte et n'est demandé qu'une fois au début de la
+            // pagination : sur une recherche large (ex. nationale, potentiellement des dizaines
+            // de pages sur plusieurs minutes), il peut expirer en cours de route — constaté en
+            // conditions réelles sur une recherche sans filtre de ville (HTTP 401 "Expired JWT
+            // Token" après ~5 min). Séquentiel ici (pas de rafale concurrente comme dans
+            // orchestrator.js), donc un simple rafraîchissement + re-tentative de la même page
+            // suffit, sans mécanisme de retry plus élaboré.
+            jetonActuel = await refreshJwt(credentials);
+            res = await fetch(currentUrl, {
+                method: 'POST',
+                headers: buildHeaders(credentials.device, credentials.instanceId, jetonActuel),
+                body: JSON.stringify({ filters, page: currentPage, partial: true }),
+            });
+        }
         if (!res.ok) {
             const body = await res.json().catch(() => ({}));
             throw new Error(`Recherche Otaree refusée (HTTP ${res.status}) : ${body.message || 'raison inconnue'}`);
