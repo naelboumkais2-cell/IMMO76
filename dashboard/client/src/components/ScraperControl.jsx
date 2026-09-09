@@ -124,8 +124,9 @@ function labelsPour(options, valeurs) {
 
 // Résumé lisible construit à partir des mêmes filtres affichés dans le formulaire — affiché à la
 // place de l'URL encodée (illisible) pour les recherches sans nom personnalisé.
-function construireResumeFiltres({ villeSelectionnee, maxPrice, typologie, nature, statut, loi, promoteur }) {
+function construireResumeFiltres({ villeSelectionnee, minPrice, maxPrice, typologie, nature, statut, loi, promoteur }) {
     const parts = [];
+    if (minPrice.trim()) parts.push(`Prix min ${Number(minPrice.trim()).toLocaleString('fr-FR')}€`);
     if (maxPrice.trim()) parts.push(`Prix max ${Number(maxPrice.trim()).toLocaleString('fr-FR')}€`);
     if (villeSelectionnee) parts.push(villeSelectionnee.name);
     if (typologie.length) parts.push(typologie.join('/'));
@@ -160,6 +161,7 @@ export function ScraperControl() {
     const [villeSelectionnee, setVilleSelectionnee] = useState(null);
     const [suggestionsOuvertes, setSuggestionsOuvertes] = useState(false);
     const [chargementSuggestions, setChargementSuggestions] = useState(false);
+    const [minPrice, setMinPrice] = useState('');
     const [maxPrice, setMaxPrice] = useState('');
     const [typologie, setTypologie] = useState([]);
     const [nature, setNature] = useState([]);
@@ -381,6 +383,7 @@ export function ScraperControl() {
     function construireFiltres() {
         const where = [{ label: villeSelectionnee.name, key: villeSelectionnee.code, value: villeSelectionnee.code }];
         const filters = { where };
+        if (minPrice.trim()) filters.minPrice = minPrice.trim();
         if (maxPrice.trim()) filters.maxPrice = maxPrice.trim();
         if (typologie.length) filters.typology = typologie;
         if (nature.length) filters.nature = nature;
@@ -462,7 +465,7 @@ export function ScraperControl() {
         }
 
         const filters = construireFiltres();
-        const resume = construireResumeFiltres({ villeSelectionnee, maxPrice, typologie, nature, statut, loi, promoteur });
+        const resume = construireResumeFiltres({ villeSelectionnee, minPrice, maxPrice, typologie, nature, statut, loi, promoteur });
 
         setRechercheOtareeEnCours(true);
         try {
@@ -735,6 +738,16 @@ export function ScraperControl() {
                                             ))}
                                     </ul>
                                 )}
+                            </label>
+                            <label className="field" style={{ width: 120 }}>
+                                <span className="field-label">Prix min (€)</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="0"
+                                    value={minPrice}
+                                    onChange={(e) => setMinPrice(e.target.value)}
+                                />
                             </label>
                             <label className="field" style={{ width: 120 }}>
                                 <span className="field-label">Prix max (€)</span>
