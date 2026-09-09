@@ -299,6 +299,24 @@ scraperRouter.post('/diag-zone', exigerConnexion, async (req, res) => {
     }
 });
 
+// TEMPORAIRE — teste un seul département isolément (timing réel), pour comprendre pourquoi le
+// repli région -> départements complet (8 départements enchaînés en une seule requête HTTP) a
+// échoué en 502 après ~14 min sur Île-de-France.
+scraperRouter.post('/diag-dept', exigerConnexion, async (req, res) => {
+    try {
+        const { nomDept } = req.body || {};
+        const locs = await rechercherLocationsOtaree(nomDept);
+        const dept = locs.find((l) => l.type === 'department' && l.name.toLowerCase() === nomDept.toLowerCase());
+        if (!dept) return res.status(400).json({ erreur: `Département introuvable : ${nomDept}` });
+
+        const t0 = Date.now();
+        const { lots, tronque } = await rechercherLotsOtaree({ where: [{ label: dept.name, key: dept.code, value: dept.code }] });
+        res.json({ nom: dept.name, nb: lots.length, tronque, dureeMs: Date.now() - t0 });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
