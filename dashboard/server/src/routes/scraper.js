@@ -29,6 +29,7 @@ import {
     rechercherZoneAvecRepli,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
+import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
@@ -233,7 +234,24 @@ scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) 
             let totalImportes = 0;
             let nbNouvellesTotal = 0;
             let rechercheId = null;
-            let toutesAnnoncesTraitees = [];
+            // Ne garde en mémoire que les nouvelles annonces, plafonnées à MAX_PAR_RUN (400) —
+            // au-delà, executerTraitement (orchestrator.js) les ignorerait de toute façon
+            // (`candidats.slice(0, MAX_PAR_RUN)`), donc les retenir toutes ne servirait à rien.
+            // Avant ce plafond, accumuler le JSON brut de chaque lot pour la France entière avant
+            // le seul appel à autoGenererEtPublier en fin de boucle a fait planter le process en
+            // "JavaScript heap out of memory" (constaté en conditions réelles, run réel du
+            // 2026-09-09 — voir FATAL ERROR / Aborted dans les logs Render). Tous les lots
+            // continuent d'être importés en base normalement (import ci-dessous, indépendant de
+            // ce plafond) ; seul ce qui reste en mémoire JS pour la décision d'auto-publication
+            // est borné.
+            //
+            // Limite connue : ce pré-filtre par `estNouvelle` correspond au critère du mode
+            // AUTO_PUBLISH par défaut ('on') — voir autoGenererEtPublier, orchestrator.js. En
+            // mode 'test' (critère réel : est_annonce_test), une annonce déjà connue mais
+            // marquée test serait exclue ici alors qu'autoGenererEtPublier l'aurait normalement
+            // retenue. Sans impact pratique tant qu'AUTO_PUBLISH reste 'on' en production ; à
+            // généraliser si le mode 'test' doit un jour servir sur une recherche nationale.
+            let candidatsAccumules = [];
 
             for (const region of REGIONS_FRANCE) {
                 const { lots } = await rechercherZoneAvecRepli(region.nom, region.departements, filtresBase || {});
@@ -247,7 +265,10 @@ scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) 
                 totalImportes += lots.length;
                 nbNouvellesTotal += result.nbNouvelles;
                 rechercheId = result.rechercheId;
-                toutesAnnoncesTraitees = toutesAnnoncesTraitees.concat(result.annonces);
+                if (candidatsAccumules.length < MAX_PAR_RUN) {
+                    const nouvelles = result.annonces.filter((a) => a.estNouvelle);
+                    candidatsAccumules = candidatsAccumules.concat(nouvelles.slice(0, MAX_PAR_RUN - candidatsAccumules.length));
+                }
                 mettreAJourProgression(totalTrouves, totalImportes);
             }
 
@@ -258,7 +279,7 @@ scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) 
                 await db.prepare(`UPDATE recherches SET dernieres_annonces_trouvees = ? WHERE id = ?`).run(totalTrouves, rechercheId);
             }
 
-            const autoPublish = await autoGenererEtPublier(toutesAnnoncesTraitees, rechercheId);
+            const autoPublish = await autoGenererEtPublier(candidatsAccumules, rechercheId);
             terminerRecherche({ rechercheId, nbLots: totalTrouves, nbNouvelles: nbNouvellesTotal, tronque: false, autoPublish });
         } catch (e) {
             echouerRecherche(e.message);
