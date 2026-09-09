@@ -281,19 +281,6 @@ scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     res.json({ success: true });
 });
 
-// TEMPORAIRE — reteste le correctif de rafraîchissement JWT en pagination sur une vraie
-// recherche longue sans filtre de ville, à retirer après vérification.
-scraperRouter.post('/diag-filtres', exigerConnexion, async (req, res) => {
-    try {
-        const { filters } = req.body || {};
-        const t0 = Date.now();
-        const { lots, tronque } = await rechercherLotsOtaree(filters || {});
-        res.json({ nb: lots.length, tronque, dureeMs: Date.now() - t0 });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
