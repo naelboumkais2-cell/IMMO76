@@ -137,6 +137,52 @@ export async function rechercherLotsOtaree(filters) {
     return paginerRecherche(jwt, credentials, filters);
 }
 
+// Résout un nom de région/département en code Otaree (`region_X`/`department_X`) via
+// l'autocomplétion (locations.json) — pas de liste d'ids codée en dur : les ids Otaree ne
+// correspondent pas aux codes INSEE (constaté : Val-de-Marne = department_95, Hauts-de-Seine =
+// department_93, alors que leurs codes INSEE réels sont 94/92), donc résoudre par nom exact à
+// chaque appel évite de coder par erreur une zone géographique différente de celle voulue.
+async function resoudreZone(nom, typeAttendu) {
+    const resultats = await rechercherLocationsOtaree(nom);
+    const trouve = resultats.find((r) => r.type === typeAttendu && r.name.toLowerCase() === nom.toLowerCase());
+    if (!trouve) {
+        throw new Error(`Zone Otaree introuvable : "${nom}" (type attendu : ${typeAttendu})`);
+    }
+    return trouve;
+}
+
+function whereDe(zone) {
+    return [{ label: zone.name, key: zone.code, value: zone.code }];
+}
+
+// Recherche nationale "France entière" au sens propre du terme (filters.where vide/absent) :
+// dépasse largement le plafond de pagination MAX_PAGES (~3000 lots) et peut faire tourner la
+// recherche assez longtemps pour risquer une expiration de jeton en route (voir le
+// rafraîchissement mid-pagination plus haut). Découpage en zones (voir zonesFrance.js) : chaque
+// région est interrogée séparément ; si une région dépasse elle-même le plafond (`tronque:
+// true`), repli automatique département par département à l'intérieur de cette seule région,
+// plutôt que de découper systématiquement toute la France en 96 départements (inutilement lent
+// pour les petites régions). `filtresBase` porte les filtres non géographiques (prix, typologie,
+// etc.) — le `where` de zone est ajouté/remplacé à chaque appel.
+export async function rechercherZoneAvecRepli(nomRegion, departementsRegion, filtresBase = {}) {
+    const region = await resoudreZone(nomRegion, 'region');
+    const { lots, tronque } = await rechercherLotsOtaree({ ...filtresBase, where: whereDe(region) });
+
+    if (!tronque) {
+        return { lots, zones: [{ nom: nomRegion, type: 'region', nb: lots.length, tronque: false }] };
+    }
+
+    const tousLots = [];
+    const zones = [];
+    for (const nomDept of departementsRegion) {
+        const dept = await resoudreZone(nomDept, 'department');
+        const resultat = await rechercherLotsOtaree({ ...filtresBase, where: whereDe(dept) });
+        tousLots.push(...resultat.lots);
+        zones.push({ nom: nomDept, type: 'department', nb: resultat.lots.length, tronque: resultat.tronque });
+    }
+    return { lots: tousLots, zones };
+}
+
 // Comptage rapide (avant de lancer une vraie recherche) : une seule page, pas de pagination
 // complète — Otaree n'expose aucun total exact (pas de hydra:totalItems dans la réponse), donc
 // un vrai compte pour une recherche large obligerait à tout paginer (potentiellement plusieurs

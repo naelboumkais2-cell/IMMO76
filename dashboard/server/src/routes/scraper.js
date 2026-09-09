@@ -25,7 +25,9 @@ import {
     rechercherLocationsOtaree,
     construireUrlRechercheOtaree,
     compterLotsOtaree,
+    rechercherZoneAvecRepli,
 } from '../integrations/otareeSearchClient.js';
+import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 
 export const scraperRouter = Router();
 
@@ -279,6 +281,22 @@ scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
 scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
+});
+
+// TEMPORAIRE — teste le repli région -> départements sur une grande région connue pour dépasser
+// le plafond de pagination, avant de valider le mécanisme sur une vraie recherche France entière.
+scraperRouter.post('/diag-zone', exigerConnexion, async (req, res) => {
+    try {
+        const { nomRegion } = req.body || {};
+        const region = REGIONS_FRANCE.find((r) => r.nom === nomRegion);
+        if (!region) return res.status(400).json({ erreur: `Région inconnue : ${nomRegion}` });
+
+        const t0 = Date.now();
+        const { lots, zones } = await rechercherZoneAvecRepli(region.nom, region.departements, {});
+        res.json({ nb: lots.length, zones, dureeMs: Date.now() - t0 });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
 });
 
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
