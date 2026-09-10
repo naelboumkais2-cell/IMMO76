@@ -28,7 +28,6 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
-    enrichirLot,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -411,27 +410,6 @@ scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
 scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
-});
-
-// TEMPORAIRE — cherche un vrai lot avec un DPE renseigné (energyClass non-null) sur quelques
-// villes, pour vérifier le mapping dpe_etiquette_conso/soumis_dpe sur un cas réel.
-scraperRouter.post('/diag-lots-dpe', exigerConnexion, async (req, res) => {
-    try {
-        const { villeCode, villeLabel, nb } = req.body || {};
-        const where = [{ label: villeLabel || 'Rouen', key: villeCode || 'city_29781', value: villeCode || 'city_29781' }];
-        const { lots } = await rechercherLotsOtaree({ where });
-        const echantillon = lots.slice(0, nb || 15);
-        const enrichis = await Promise.all(echantillon.map((l) => enrichirLot(structuredClone(l))));
-        res.json(enrichis
-            .filter((l) => l.energyClass)
-            .map((l) => ({
-                id: l.id, number: l.number, energyClass: l.energyClass,
-                prix: l.prices?.[0]?.price, ville: l.program?.address?.city?.name,
-                codePostal: l.program?.address?.zipCode,
-            })));
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
 });
 
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
