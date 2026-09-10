@@ -19,7 +19,7 @@ import {
     getEtatRecherche,
 } from '../services/rechercheStatus.js';
 import { executerAvecUtilisateur, utilisateurActuelId } from '../services/requestContext.js';
-import { sauvegarderRefreshToken, getOtareeTokenState } from '../integrations/otareeTokenStore.js';
+import { sauvegarderRefreshToken, getOtareeTokenState, getOtareeCredentials } from '../integrations/otareeTokenStore.js';
 import {
     rechercherLotsOtaree,
     rechercherLocationsOtaree,
@@ -367,6 +367,36 @@ scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
 scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
+});
+
+// TEMPORAIRE — inspecte le corps COMPLET de la réponse /security/refresh-token (pas juste
+// data.token comme refreshJwt) pour comprendre pourquoi le run France entière a fini par
+// échouer avec "Session Otaree expirée" après ~5h et ~22 rafraîchissements — hypothèse à
+// vérifier : rotation du refresh_token (un nouveau émis à chaque appel, l'ancien invalidé),
+// qu'on jetterait silencieusement aujourd'hui puisque seul data.token est lu.
+scraperRouter.post('/diag-refresh-body', exigerConnexion, async (req, res) => {
+    try {
+        const credentials = await getOtareeCredentials();
+        if (!credentials) return res.status(400).json({ erreur: 'Aucun accès Otaree connu' });
+
+        const resAvant = await getOtareeTokenState();
+        const r = await fetch('https://api.link-app.immo/security/refresh-token', {
+            method: 'POST',
+            headers: {
+                Origin: 'https://plusimmo76.link-app.immo',
+                Referer: 'https://plusimmo76.link-app.immo/',
+                'Content-Type': 'application/json',
+                ...(credentials.device ? { 'X-Device': credentials.device } : {}),
+                ...(credentials.instanceId ? { 'X-Instance-Id': credentials.instanceId } : {}),
+            },
+            body: JSON.stringify({ device: credentials.device, refresh_token: credentials.refreshToken }),
+        });
+        const headers = Object.fromEntries(r.headers.entries());
+        const body = await r.json().catch(() => null);
+        res.json({ httpStatus: r.status, headers, body, etatTokenAvantAppel: resAvant });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
 });
 
 // TEMPORAIRE — teste le repli région -> départements sur une grande région connue pour dépasser
