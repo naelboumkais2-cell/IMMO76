@@ -445,14 +445,18 @@ function piecesDepuisTypologie(typology) {
 }
 
 // Sépare "numéro de voie" et "adresse" (nom de voie) depuis le texte libre program.address.name
-// d'Otaree — validé sur 35 adresses réelles (Rouen/Marseille, 2026-09-10) : 100% de résultats
-// sûrs avec cette méthode (jamais de texte perdu ni inventé, au pire un numéro laissé vide).
-// Deux étapes : (1) retire un éventuel suffixe ", <code postal> <ville>" redondant — Otaree
-// duplique parfois le code postal/ville dans l'adresse elle-même, alors qu'on les connaît déjà
-// séparément (codePostal/ville du lot) ; (2) extrait un numéro en tête (avec bis/ter/quater
-// optionnel) si présent — sinon numéro reste null et la totalité du texte va dans "voie", jamais
-// tronqué (cas des adresses à deux noms de voie type "90 avenue X et rue Y" : les deux noms
-// restent dans "voie", plus long qu'une adresse habituelle mais aucune perte d'information).
+// d'Otaree — validé sur 35 adresses réelles (Rouen/Marseille, 2026-09-10). Deux étapes : (1)
+// retire un éventuel suffixe ", <code postal> <ville>" redondant — Otaree duplique parfois le
+// code postal/ville dans l'adresse elle-même, alors qu'on les connaît déjà séparément
+// (codePostal/ville du lot) ; (2) extrait un numéro en tête (avec bis/ter/quater optionnel) si
+// présent — sinon numéro reste null et le texte va dans "voie" (voir plus bas pour le cas " et ").
+//
+// Un " et " entre deux noms de voie (ex: "90 avenue du Mont Riboudet et Rue du Pré de la
+// Bataille") a d'abord semblé un simple cas verbeux sans perte d'info à garder tel quel — vérifié
+// en conditions réelles (2026-09-10, ce même exemple) que c'est FAUX : "rue du Pré de la
+// Bataille" n'était qu'une rue adjacente servant de repère, pas une vraie double façade. Dans ce
+// cas, seule la première voie (la vraie adresse) est gardée — tout ce qui suit " et " est
+// considéré comme un simple repère de proximité, pas une partie fiable de l'adresse.
 function extraireNumeroVoie(nomAdresse, codePostal, ville) {
     if (!nomAdresse) return { numero: null, voie: null };
     let texte = String(nomAdresse).trim();
@@ -461,6 +465,7 @@ function extraireNumeroVoie(nomAdresse, codePostal, ville) {
         texte = texte.replace(suffixe, '').trim();
     }
     texte = texte.replace(/\s*,\s*$/, '').trim();
+    texte = texte.replace(/\s+\bet\b.*$/i, '').trim();
     const m = texte.match(/^(\d+\s?(?:bis|ter|quater)?)\s*,?\s+(.+)$/i);
     if (m) return { numero: m[1].trim(), voie: m[2].trim() };
     return { numero: null, voie: texte };
