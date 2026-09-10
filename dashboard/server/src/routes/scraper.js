@@ -412,23 +412,6 @@ scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     res.json({ success: true });
 });
 
-// TEMPORAIRE — injecte une progression_nationale synthétique pour tester la logique de reprise
-// (saut des régions listées, reprise des compteurs cumulés) sans attendre des heures qu'une
-// vraie région se termine (Auvergne-Rhône-Alpes, 12 départements, s'est avérée très longue en
-// conditions réelles). Ne fait aucun appel Otaree — pure écriture DB.
-scraperRouter.post('/diag-set-progression', exigerConnexion, async (req, res) => {
-    try {
-        const { rechercheId, filtresBase, regionsTerminees, totalTrouves, totalImportes, nbNouvellesTotal } = req.body || {};
-        await db.prepare(`UPDATE recherches SET progression_nationale = ? WHERE id = ?`).run(
-            JSON.stringify({ filtresFingerprint: empreinteFiltres(filtresBase || {}), regionsTerminees, totalTrouves, totalImportes, nbNouvellesTotal }),
-            rechercheId
-        );
-        res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
