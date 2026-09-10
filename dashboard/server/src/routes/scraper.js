@@ -28,7 +28,6 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
-    enrichirLot,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -411,23 +410,6 @@ scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
 scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
-});
-
-// TEMPORAIRE — renvoie le JSON brut COMPLET d'un vrai lot (détail + programme fusionnés, comme
-// enrichirLot le fait avant génération) pour inventorier quels champs Hubiflow ont déjà un
-// équivalent Otaree inexploité. Aucun mapping, juste un dump brut à inspecter.
-scraperRouter.post('/diag-lot-brut', exigerConnexion, async (req, res) => {
-    try {
-        const { villeCode, villeLabel } = req.body || {};
-        const where = [{ label: villeLabel || 'Rouen', key: villeCode || 'city_29781', value: villeCode || 'city_29781' }];
-        const { lots } = await rechercherLotsOtaree({ where });
-        if (!lots.length) return res.status(404).json({ erreur: 'Aucun lot trouvé pour cette ville' });
-
-        const lotEnrichi = await enrichirLot(structuredClone(lots[0]));
-        res.json(lotEnrichi);
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
 });
 
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
