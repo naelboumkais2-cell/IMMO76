@@ -28,7 +28,6 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
-    enrichirLot,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -411,32 +410,6 @@ scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
 scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
-});
-
-// TEMPORAIRE — échantillonne plusieurs vrais lots enrichis d'une ville pour trouver des
-// exemples avec garage/terrasse/les deux, afin de tester le nouveau mapping de champs Hubiflow
-// (champsConnusDepuisLot dans Ubiflow-Auto-API) avant de committer.
-scraperRouter.post('/diag-lots-annexes', exigerConnexion, async (req, res) => {
-    try {
-        const { villeCode, villeLabel, nb } = req.body || {};
-        const where = [{ label: villeLabel || 'Rouen', key: villeCode || 'city_29781', value: villeCode || 'city_29781' }];
-        const { lots } = await rechercherLotsOtaree({ where });
-        const echantillon = lots.slice(0, nb || 8);
-        const enrichis = await Promise.all(echantillon.map((l) => enrichirLot(structuredClone(l))));
-        res.json(enrichis.map((l) => ({
-            id: l.id,
-            number: l.number,
-            floor: l.floor,
-            landSurface: l.landSurface,
-            annexes: (l.annexes || []).map((a) => ({ type: a.type, name: a.name, surface: a.surface })),
-            annexesSurfaces: l.annexesSurfaces || [],
-            latitude: l.program?.address?.latitude,
-            longitude: l.program?.address?.longitude,
-            energyClass: l.energyClass,
-        })));
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
 });
 
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
