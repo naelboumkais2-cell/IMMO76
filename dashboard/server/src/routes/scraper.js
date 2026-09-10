@@ -20,7 +20,7 @@ import {
     getEtatRecherche,
 } from '../services/rechercheStatus.js';
 import { executerAvecUtilisateur, utilisateurActuelId } from '../services/requestContext.js';
-import { sauvegarderRefreshToken, getOtareeTokenState, getOtareeCredentials } from '../integrations/otareeTokenStore.js';
+import { sauvegarderRefreshToken, getOtareeTokenState } from '../integrations/otareeTokenStore.js';
 import {
     rechercherLotsOtaree,
     rechercherLocationsOtaree,
@@ -412,68 +412,18 @@ scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     res.json({ success: true });
 });
 
-// TEMPORAIRE — inspecte le corps COMPLET de la réponse /security/refresh-token (pas juste
-// data.token comme refreshJwt) pour comprendre pourquoi le run France entière a fini par
-// échouer avec "Session Otaree expirée" après ~5h et ~22 rafraîchissements — hypothèse à
-// vérifier : rotation du refresh_token (un nouveau émis à chaque appel, l'ancien invalidé),
-// qu'on jetterait silencieusement aujourd'hui puisque seul data.token est lu.
-scraperRouter.post('/diag-refresh-body', exigerConnexion, async (req, res) => {
+// TEMPORAIRE — injecte une progression_nationale synthétique pour tester la logique de reprise
+// (saut des régions listées, reprise des compteurs cumulés) sans attendre des heures qu'une
+// vraie région se termine (Auvergne-Rhône-Alpes, 12 départements, s'est avérée très longue en
+// conditions réelles). Ne fait aucun appel Otaree — pure écriture DB.
+scraperRouter.post('/diag-set-progression', exigerConnexion, async (req, res) => {
     try {
-        const credentials = await getOtareeCredentials();
-        if (!credentials) return res.status(400).json({ erreur: 'Aucun accès Otaree connu' });
-
-        const resAvant = await getOtareeTokenState();
-        const r = await fetch('https://api.link-app.immo/security/refresh-token', {
-            method: 'POST',
-            headers: {
-                Origin: 'https://plusimmo76.link-app.immo',
-                Referer: 'https://plusimmo76.link-app.immo/',
-                'Content-Type': 'application/json',
-                ...(credentials.device ? { 'X-Device': credentials.device } : {}),
-                ...(credentials.instanceId ? { 'X-Instance-Id': credentials.instanceId } : {}),
-            },
-            body: JSON.stringify({ device: credentials.device, refresh_token: credentials.refreshToken }),
-        });
-        const headers = Object.fromEntries(r.headers.entries());
-        const body = await r.json().catch(() => null);
-        res.json({ httpStatus: r.status, headers, body, etatTokenAvantAppel: resAvant });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-// TEMPORAIRE — teste le repli région -> départements sur une grande région connue pour dépasser
-// le plafond de pagination, avant de valider le mécanisme sur une vraie recherche France entière.
-scraperRouter.post('/diag-zone', exigerConnexion, async (req, res) => {
-    try {
-        const { nomRegion } = req.body || {};
-        const region = REGIONS_FRANCE.find((r) => r.nom === nomRegion);
-        if (!region) return res.status(400).json({ erreur: `Région inconnue : ${nomRegion}` });
-
-        const t0 = Date.now();
-        let nb = 0;
-        const { zones } = await rechercherZoneAvecRepli(region.nom, region.departements, {}, async (lots) => {
-            nb += lots.length;
-        });
-        res.json({ nb, zones, dureeMs: Date.now() - t0 });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-// TEMPORAIRE — teste un seul département isolément (timing réel), pour comprendre pourquoi le
-// repli région -> départements complet (8 départements enchaînés en une seule requête HTTP) a
-// échoué en 502 après ~14 min sur Île-de-France.
-scraperRouter.post('/diag-dept', exigerConnexion, async (req, res) => {
-    try {
-        const { nomDept } = req.body || {};
-        const locs = await rechercherLocationsOtaree(nomDept);
-        const dept = locs.find((l) => l.type === 'department' && l.name.toLowerCase() === nomDept.toLowerCase());
-        if (!dept) return res.status(400).json({ erreur: `Département introuvable : ${nomDept}` });
-
-        const t0 = Date.now();
-        const { lots, tronque } = await rechercherLotsOtaree({ where: [{ label: dept.name, key: dept.code, value: dept.code }] });
-        res.json({ nom: dept.name, nb: lots.length, tronque, dureeMs: Date.now() - t0 });
+        const { rechercheId, filtresBase, regionsTerminees, totalTrouves, totalImportes, nbNouvellesTotal } = req.body || {};
+        await db.prepare(`UPDATE recherches SET progression_nationale = ? WHERE id = ?`).run(
+            JSON.stringify({ filtresFingerprint: empreinteFiltres(filtresBase || {}), regionsTerminees, totalTrouves, totalImportes, nbNouvellesTotal }),
+            rechercheId
+        );
+        res.json({ success: true });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
