@@ -457,20 +457,47 @@ function champsConnusDepuisLot(lot) {
 
     if (typeof lot.floor === 'number') champs.etage = String(lot.floor);
 
+    // BALCON, TERRASSE et LOGGIA étaient auparavant fusionnés sous un seul champ "balcon" —
+    // séparés depuis l'inventaire des champs Hubiflow exploitables (2026-09-10) : ce sont trois
+    // annexes distinctes côté Otaree (LOGGIA découvert par échantillonnage réel, pas dans la
+    // liste initiale), donc trois champs distincts côté Hubiflow, jamais confondus entre eux.
     if (Array.isArray(lot.annexesSurfaces)) {
-        const balcons = lot.annexesSurfaces.filter((a) => a.type === 'BALCON' || a.type === 'TERRASSE');
+        const balcons = lot.annexesSurfaces.filter((a) => a.type === 'BALCON');
+        champs.balcon = balcons.length > 0;
         if (balcons.length > 0) {
-            champs.balcon = true;
             champs.nb_balcons = String(balcons.length);
             if (typeof balcons[0].surface === 'number') champs.surface_balcon = String(balcons[0].surface);
-        } else if (Array.isArray(lot.annexes)) {
-            champs.balcon = false;
         }
+
+        const terrasses = lot.annexesSurfaces.filter((a) => a.type === 'TERRASSE');
+        champs.terrasse = terrasses.length > 0;
+        if (terrasses.length > 0) {
+            champs.nb_terrasses = String(terrasses.length);
+            if (typeof terrasses[0].surface === 'number') champs.surface_terrasse = String(terrasses[0].surface);
+        }
+
+        champs.loggia = lot.annexesSurfaces.some((a) => a.type === 'LOGGIA');
     }
 
     if (typeof lot.parkingCount === 'number') {
         champs.parking = lot.parkingCount > 0;
         champs.nb_parkings = String(lot.parkingCount);
+    }
+
+    // Garage/box/cave : uniquement sur correspondance EXACTE du type d'annexe Otaree (aucune
+    // déduction) — décidé après l'inventaire des champs Hubiflow (2026-09-10). `lot.annexes[].type`
+    // liste les annexes chiffrées du lot (garage et cave confirmés sur des lots réels, y compris
+    // un lot avec les deux à la fois ; box non encore observé sur un lot réel mais même logique
+    // exacte, restera `false` tant qu'aucun lot BOX ne se présente). CELLIER et LOCAL, vus sur
+    // d'autres lots réels, sont volontairement ignorés (pas de champ Hubiflow correspondant
+    // confirmé) — ne pas les confondre avec CAVE.
+    if (Array.isArray(lot.annexes)) {
+        const garages = lot.annexes.filter((a) => a.type === 'GARAGE');
+        champs.garage = garages.length > 0;
+        if (garages.length > 0) champs.nb_garages = String(garages.length);
+
+        champs.box = lot.annexes.some((a) => a.type === 'BOX');
+        champs.cave = lot.annexes.some((a) => a.type === 'CAVE');
     }
 
     if (Array.isArray(lot.exposures) && lot.exposures.length > 0) {
@@ -483,6 +510,18 @@ function champsConnusDepuisLot(lot) {
     if (typeof lot.energyClass === 'string' && lot.energyClass) {
         champs.dpe_conso = lot.energyClass;
     }
+
+    // Surface du terrain : uniquement si réellement > 0 (0 est la valeur par défaut pour un
+    // appartement sans terrain propre — l'omettre plutôt que d'afficher "0 m²" sur l'annonce).
+    if (typeof lot.landSurface === 'number' && lot.landSurface > 0) {
+        champs.surface_terrain = String(lot.landSurface);
+    }
+
+    // Latitude/longitude du programme (Otaree ne les fournit qu'au niveau du programme, pas du
+    // lot individuel — mêmes coordonnées pour tous les lots d'un même programme).
+    const adresse = lot.program?.address;
+    if (adresse?.latitude) champs.latitude = String(adresse.latitude);
+    if (adresse?.longitude) champs.longitude = String(adresse.longitude);
 
     return champs;
 }
@@ -1235,12 +1274,41 @@ function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, esp
         if (num(aiData.surface_balcon) !== null) annonce.surface_balcon = num(aiData.surface_balcon);
     }
 
+    const hasTerrasse = bool(aiData.terrasse);
+    if (hasTerrasse !== null) {
+        annonce.terrasse = hasTerrasse;
+        if (num(aiData.nb_terrasses) !== null) annonce.nb_terrasses = num(aiData.nb_terrasses);
+        if (num(aiData.surface_terrasse) !== null) annonce.surface_terrasse = num(aiData.surface_terrasse);
+    }
+
+    // Nom de champ non vérifié directement dans le formulaire Hubiflow (pas d'accès à son
+    // interface depuis ici) — suit la même convention que balcon/terrasse/garage (mot français
+    // simple), à confirmer en pratique sur la première annonce réelle avec loggia.
+    if (bool(aiData.loggia) !== null) annonce.loggia = bool(aiData.loggia);
+
     const hasParking = bool(aiData.parking);
     if (hasParking !== null) {
         annonce.possede_parking = hasParking;
         annonce.avec_stationnement = hasParking;
         if (num(aiData.nb_parkings) !== null) annonce.nb_parkings = num(aiData.nb_parkings);
     }
+
+    const hasGarage = bool(aiData.garage);
+    if (hasGarage !== null) {
+        annonce.garage = hasGarage;
+        if (num(aiData.nb_garages) !== null) annonce.nb_garages = num(aiData.nb_garages);
+    }
+    if (bool(aiData.box) !== null) annonce.box = bool(aiData.box);
+    if (bool(aiData.cave) !== null) annonce.cave = bool(aiData.cave);
+
+    if (num(aiData.surface_terrain) !== null) annonce.surface_terrain = num(aiData.surface_terrain);
+
+    // Étage extrait depuis Otaree (champsConnusDepuisLot) mais jamais consommé ici jusqu'ici —
+    // corrigé après l'inventaire des champs Hubiflow (2026-09-10).
+    if (num(aiData.etage) !== null) annonce.etage = num(aiData.etage);
+
+    if (aiData.latitude && !isNaN(parseFloat(aiData.latitude))) annonce.latitude = parseFloat(aiData.latitude);
+    if (aiData.longitude && !isNaN(parseFloat(aiData.longitude))) annonce.longitude = parseFloat(aiData.longitude);
 
     if (aiData.exposition && typeof aiData.exposition === 'string' && aiData.exposition.toLowerCase() !== 'null') {
         annonce.exposition = aiData.exposition.toLowerCase().trim();
