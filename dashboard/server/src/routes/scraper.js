@@ -28,6 +28,7 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
+    enrichirLot,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -410,6 +411,27 @@ scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
 scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
+});
+
+// TEMPORAIRE — échantillonne des adresses réelles (program.address.name) sur plusieurs villes
+// pour visualiser ce que donnerait un découpage numéro/voie/complément avant de décider si on
+// le tente ou si on laisse vide (adresse en texte libre côté Otaree, champs séparés côté Hubiflow).
+scraperRouter.post('/diag-adresses', exigerConnexion, async (req, res) => {
+    try {
+        const { villeCode, villeLabel, nb } = req.body || {};
+        const where = [{ label: villeLabel || 'Rouen', key: villeCode || 'city_29781', value: villeCode || 'city_29781' }];
+        const { lots } = await rechercherLotsOtaree({ where });
+        const echantillon = lots.slice(0, nb || 20);
+        const enrichis = await Promise.all(echantillon.map((l) => enrichirLot(structuredClone(l))));
+        const adresses = new Map();
+        for (const l of enrichis) {
+            const a = l.program?.address;
+            if (a?.name) adresses.set(a.name, { zipCode: a.zipCode, ville: a.city?.name });
+        }
+        res.json([...adresses.entries()].map(([name, info]) => ({ name, ...info })));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
 });
 
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
