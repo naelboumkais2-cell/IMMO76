@@ -250,6 +250,17 @@ export async function initDb() {
     await db.exec(`ALTER TABLE annonces ADD COLUMN alerte_document TEXT`);
   }
 
+  // Migration : reprise de la recherche "France entière" (voir routes/scraper.js,
+  // otaree-search-national) — JSON { filtresFingerprint, regionsTerminees, totalTrouves,
+  // totalImportes, nbNouvellesTotal }, NULL le reste du temps. Un run de plusieurs heures peut
+  // être interrompu par n'importe quoi (jeton Otaree, crash, redéploiement...) ; sans ce suivi,
+  // relancer repartirait de zéro et re-parcourrait des heures de régions déjà importées. NULL en
+  // fonctionnement normal (recherche par ville classique, ou run national terminé avec succès).
+  const colonnesRecherches = (await db.prepare(`SELECT column_name FROM information_schema.columns WHERE table_name = 'recherches'`).all()).map((c) => c.column_name);
+  if (!colonnesRecherches.includes('progression_nationale')) {
+    await db.exec(`ALTER TABLE recherches ADD COLUMN progression_nationale TEXT`);
+  }
+
   // Seed default portails if empty
   const nbPortailsResult = await pool.query(`SELECT COUNT(*) AS n FROM portails`);
   const nbPortails = parseInt(nbPortailsResult.rows[0].n, 10);

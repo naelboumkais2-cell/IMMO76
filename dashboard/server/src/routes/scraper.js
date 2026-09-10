@@ -8,6 +8,7 @@ import {
     confirmerRunEnAttente,
     annulerRunEnAttente,
     detailLotEnAttente,
+    upsertRecherche,
 } from '../services/orchestrator.js';
 import { getEtatAutoPublish, demanderAnnulation } from '../services/autoPublishStatus.js';
 import { verifierDoublonsHubiflow } from '../services/doublonsChecker.js';
@@ -208,6 +209,13 @@ scraperRouter.post('/otaree-search', exigerConnexion, async (req, res) => {
     });
 });
 
+// Empreinte stable des filtres non géographiques — sert à décider si une progression
+// enregistrée correspond bien à LA MÊME recherche nationale qu'on relance (des filtres
+// différents = un run différent, on ne doit jamais reprendre le progrès de l'un pour l'autre).
+function empreinteFiltres(filtresBase) {
+    return JSON.stringify(filtresBase || {});
+}
+
 // Recherche "France entière" (pas de ville) : découpe en régions (repli département par
 // département si une région dépasse le plafond de pagination MAX_PAGES, voir
 // rechercherZoneAvecRepli/zonesFrance.js) plutôt qu'un seul appel Otaree avec `where` vide —
@@ -217,23 +225,44 @@ scraperRouter.post('/otaree-search', exigerConnexion, async (req, res) => {
 // run à la fois, partagé — voir rechercheStatus.js) : chaque région est importée en base dès
 // qu'elle est prête, pas seulement à la toute fin, pour ne pas perdre le travail déjà fait si
 // une région ultérieure échoue.
+//
+// Reprise (voir migration `progression_nationale`, db.js) : un run complet peut prendre
+// plusieurs heures (~5h constaté en conditions réelles) — assez longtemps pour être interrompu
+// par à peu près n'importe quoi (jeton Otaree expiré, crash mémoire, redéploiement Render...).
+// Si une progression compatible (mêmes filtres) existe déjà pour cette recherche, les régions
+// déjà terminées sont sautées et les compteurs repartent du cumul précédent, plutôt que de
+// re-parcourir des heures de régions déjà importées à chaque relance.
 scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) => {
     const { filtresBase, nom, resume } = req.body || {};
     if (getEtatRecherche().enCours) {
         return res.status(409).json({ erreur: 'Une recherche est déjà en cours — attends sa fin avant d\'en lancer une autre.' });
     }
 
+    const url = construireUrlRechercheNationale();
+    const rechercheExistante = await upsertRecherche(url, nom?.trim() || 'France entière', resume?.trim() || null);
+    const empreinte = empreinteFiltres(filtresBase);
+    let progression = null;
+    try {
+        progression = rechercheExistante.progression_nationale ? JSON.parse(rechercheExistante.progression_nationale) : null;
+    } catch {
+        progression = null;
+    }
+    const reprise = !!(progression && progression.filtresFingerprint === empreinte && progression.regionsTerminees?.length);
+    const regionsDejaTerminees = new Set(reprise ? progression.regionsTerminees : []);
+
     demarrerRecherche(nom?.trim() || 'France entière');
-    res.json({ enCours: true });
+    res.json({ enCours: true, reprise, regionsDejaTerminees: [...regionsDejaTerminees] });
 
     const utilisateurId = utilisateurActuelId();
     executerAvecUtilisateur(utilisateurId, async () => {
         try {
-            const url = construireUrlRechercheNationale();
-            let totalTrouves = 0;
-            let totalImportes = 0;
-            let nbNouvellesTotal = 0;
-            let rechercheId = null;
+            let totalTrouves = reprise ? progression.totalTrouves || 0 : 0;
+            let totalImportes = reprise ? progression.totalImportes || 0 : 0;
+            let nbNouvellesTotal = reprise ? progression.nbNouvellesTotal || 0 : 0;
+            const rechercheId = rechercheExistante.id;
+            const regionsTerminees = [...regionsDejaTerminees];
+            mettreAJourProgression(totalTrouves, totalImportes);
+
             // Ne garde en mémoire que les nouvelles annonces, plafonnées à MAX_PAR_RUN (400) —
             // au-delà, executerTraitement (orchestrator.js) les ignorerait de toute façon
             // (`candidats.slice(0, MAX_PAR_RUN)`), donc les retenir toutes ne servirait à rien.
@@ -245,15 +274,23 @@ scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) 
             // ce plafond) ; seul ce qui reste en mémoire JS pour la décision d'auto-publication
             // est borné.
             //
-            // Limite connue : ce pré-filtre par `estNouvelle` correspond au critère du mode
-            // AUTO_PUBLISH par défaut ('on') — voir autoGenererEtPublier, orchestrator.js. En
-            // mode 'test' (critère réel : est_annonce_test), une annonce déjà connue mais
-            // marquée test serait exclue ici alors qu'autoGenererEtPublier l'aurait normalement
-            // retenue. Sans impact pratique tant qu'AUTO_PUBLISH reste 'on' en production ; à
-            // généraliser si le mode 'test' doit un jour servir sur une recherche nationale.
+            // Limite connue (inchangée par la reprise) : ce pré-filtre par `estNouvelle`
+            // correspond au critère du mode AUTO_PUBLISH par défaut ('on') — voir
+            // autoGenererEtPublier, orchestrator.js. En mode 'test' (critère réel :
+            // est_annonce_test), une annonce déjà connue mais marquée test serait exclue ici
+            // alors qu'autoGenererEtPublier l'aurait normalement retenue.
+            //
+            // Limite connue de la reprise elle-même : candidatsAccumules ne contient que les
+            // nouvelles annonces des régions traitées PENDANT CETTE tentative — celles des
+            // régions déjà terminées lors d'une tentative précédente (interrompue) sont bien
+            // importées en base (jamais perdues), mais ne sont pas reconsidérées ici pour
+            // l'auto-publication de ce run repris (republish manuel possible depuis
+            // Supervision si besoin, même filet de sécurité que le dépassement de MAX_PAR_RUN).
             let candidatsAccumules = [];
 
             for (const region of REGIONS_FRANCE) {
+                if (regionsDejaTerminees.has(region.nom)) continue;
+
                 // Import à l'intérieur même du callback (voir rechercherZoneAvecRepli) : chaque
                 // sous-zone (région entière, ou un seul département en cas de repli) est importée
                 // et peut partir au ramasse-miettes avant que la suivante ne soit demandée à
@@ -268,21 +305,27 @@ scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) 
                     );
                     totalImportes += lots.length;
                     nbNouvellesTotal += result.nbNouvelles;
-                    rechercheId = result.rechercheId;
                     if (candidatsAccumules.length < MAX_PAR_RUN) {
                         const nouvelles = result.annonces.filter((a) => a.estNouvelle);
                         candidatsAccumules = candidatsAccumules.concat(nouvelles.slice(0, MAX_PAR_RUN - candidatsAccumules.length));
                     }
                     mettreAJourProgression(totalTrouves, totalImportes);
                 });
+
+                // Persisté après CHAQUE région (pas seulement à la fin) : c'est le point de
+                // reprise réel en cas d'interruption — région par région, jamais au milieu d'une.
+                regionsTerminees.push(region.nom);
+                await db.prepare(`UPDATE recherches SET progression_nationale = ? WHERE id = ?`).run(
+                    JSON.stringify({ filtresFingerprint: empreinte, regionsTerminees, totalTrouves, totalImportes, nbNouvellesTotal }),
+                    rechercheId
+                );
             }
 
-            // importerLotsOtaree écrase `dernieres_annonces_trouvees` à chaque appel avec le
-            // compte de la SEULE région qu'il vient de traiter — corrigé ici une fois, avec le
-            // vrai total, pour que la fiche recherche affiche un nombre cohérent.
-            if (rechercheId) {
-                await db.prepare(`UPDATE recherches SET dernieres_annonces_trouvees = ? WHERE id = ?`).run(totalTrouves, rechercheId);
-            }
+            // Toutes les régions traitées avec succès : plus rien à reprendre, et
+            // dernieres_annonces_trouvees reflète enfin le vrai total (importerLotsOtaree
+            // l'écrase à chaque appel avec le compte de la SEULE région qu'il vient de traiter).
+            await db.prepare(`UPDATE recherches SET dernieres_annonces_trouvees = ?, progression_nationale = NULL WHERE id = ?`)
+                .run(totalTrouves, rechercheId);
 
             const autoPublish = await autoGenererEtPublier(candidatsAccumules, rechercheId);
             terminerRecherche({ rechercheId, nbLots: totalTrouves, nbNouvelles: nbNouvellesTotal, tronque: false, autoPublish });

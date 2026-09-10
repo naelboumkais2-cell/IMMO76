@@ -156,7 +156,7 @@ export async function synchroniserInstance(annonceId, portailId) {
     return result;
 }
 
-async function upsertRecherche(url, nom, resume) {
+export async function upsertRecherche(url, nom, resume) {
     await db.prepare(`INSERT INTO recherches (url, nom, resume) VALUES (?, ?, ?) ON CONFLICT(url) DO NOTHING`).run(url, nom || null, resume || null);
     if (nom) {
         await db.prepare(`UPDATE recherches SET nom = ? WHERE url = ?`).run(nom, url);
