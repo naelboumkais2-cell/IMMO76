@@ -164,23 +164,33 @@ function whereDe(zone) {
 // plutôt que de découper systématiquement toute la France en 96 départements (inutilement lent
 // pour les petites régions). `filtresBase` porte les filtres non géographiques (prix, typologie,
 // etc.) — le `where` de zone est ajouté/remplacé à chaque appel.
-export async function rechercherZoneAvecRepli(nomRegion, departementsRegion, filtresBase = {}) {
+//
+// `onZoneLots(lots, zoneInfo)` est appelé pour CHAQUE sous-zone dès que ses lots sont prêts,
+// plutôt que de renvoyer un seul tableau combiné à la fin — nécessaire après un plantage réel en
+// "JavaScript heap out of memory" (Render, 2026-09-10) : une région dont plusieurs départements
+// dépassent chacun le plafond (ex. Auvergne-Rhône-Alpes : Rhône, Isère, Savoie...) pouvait
+// accumuler 10 000+ lots bruts en mémoire avant que l'appelant n'ait la moindre chance d'en
+// importer/libérer un seul. Avec le callback, l'appelant importe et laisse chaque sous-zone
+// partir au ramasse-miettes avant de passer à la suivante — jamais plus qu'une seule zone
+// (~3000 lots max) en mémoire à la fois, comme la recherche nationale brute (sans découpage)
+// qui n'avait jamais posé ce problème.
+export async function rechercherZoneAvecRepli(nomRegion, departementsRegion, filtresBase = {}, onZoneLots = async () => {}) {
     const region = await resoudreZone(nomRegion, 'region');
     const { lots, tronque } = await rechercherLotsOtaree({ ...filtresBase, where: whereDe(region) });
 
     if (!tronque) {
-        return { lots, zones: [{ nom: nomRegion, type: 'region', nb: lots.length, tronque: false }] };
+        await onZoneLots(lots, { nom: nomRegion, type: 'region', nb: lots.length, tronque: false });
+        return { zones: [{ nom: nomRegion, type: 'region', nb: lots.length, tronque: false }] };
     }
 
-    const tousLots = [];
     const zones = [];
     for (const nomDept of departementsRegion) {
         const dept = await resoudreZone(nomDept, 'department');
         const resultat = await rechercherLotsOtaree({ ...filtresBase, where: whereDe(dept) });
-        tousLots.push(...resultat.lots);
+        await onZoneLots(resultat.lots, { nom: nomDept, type: 'department', nb: resultat.lots.length, tronque: resultat.tronque });
         zones.push({ nom: nomDept, type: 'department', nb: resultat.lots.length, tronque: resultat.tronque });
     }
-    return { lots: tousLots, zones };
+    return { zones };
 }
 
 // Comptage rapide (avant de lancer une vraie recherche) : une seule page, pas de pagination

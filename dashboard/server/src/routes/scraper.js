@@ -254,22 +254,27 @@ scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) 
             let candidatsAccumules = [];
 
             for (const region of REGIONS_FRANCE) {
-                const { lots } = await rechercherZoneAvecRepli(region.nom, region.departements, filtresBase || {});
-                totalTrouves += lots.length;
-                mettreAJourProgression(totalTrouves, totalImportes);
+                // Import à l'intérieur même du callback (voir rechercherZoneAvecRepli) : chaque
+                // sous-zone (région entière, ou un seul département en cas de repli) est importée
+                // et peut partir au ramasse-miettes avant que la suivante ne soit demandée à
+                // Otaree — jamais plus d'une seule sous-zone (~3000 lots max) en mémoire à la fois.
+                await rechercherZoneAvecRepli(region.nom, region.departements, filtresBase || {}, async (lots) => {
+                    totalTrouves += lots.length;
+                    mettreAJourProgression(totalTrouves, totalImportes);
 
-                const result = await importerLotsOtaree(
-                    url, lots, nom?.trim() || 'France entière', resume?.trim() || null,
-                    (fait) => mettreAJourProgression(totalTrouves, totalImportes + fait)
-                );
-                totalImportes += lots.length;
-                nbNouvellesTotal += result.nbNouvelles;
-                rechercheId = result.rechercheId;
-                if (candidatsAccumules.length < MAX_PAR_RUN) {
-                    const nouvelles = result.annonces.filter((a) => a.estNouvelle);
-                    candidatsAccumules = candidatsAccumules.concat(nouvelles.slice(0, MAX_PAR_RUN - candidatsAccumules.length));
-                }
-                mettreAJourProgression(totalTrouves, totalImportes);
+                    const result = await importerLotsOtaree(
+                        url, lots, nom?.trim() || 'France entière', resume?.trim() || null,
+                        (fait) => mettreAJourProgression(totalTrouves, totalImportes + fait)
+                    );
+                    totalImportes += lots.length;
+                    nbNouvellesTotal += result.nbNouvelles;
+                    rechercheId = result.rechercheId;
+                    if (candidatsAccumules.length < MAX_PAR_RUN) {
+                        const nouvelles = result.annonces.filter((a) => a.estNouvelle);
+                        candidatsAccumules = candidatsAccumules.concat(nouvelles.slice(0, MAX_PAR_RUN - candidatsAccumules.length));
+                    }
+                    mettreAJourProgression(totalTrouves, totalImportes);
+                });
             }
 
             // importerLotsOtaree écrase `dernieres_annonces_trouvees` à chaque appel avec le
@@ -373,8 +378,11 @@ scraperRouter.post('/diag-zone', exigerConnexion, async (req, res) => {
         if (!region) return res.status(400).json({ erreur: `Région inconnue : ${nomRegion}` });
 
         const t0 = Date.now();
-        const { lots, zones } = await rechercherZoneAvecRepli(region.nom, region.departements, {});
-        res.json({ nb: lots.length, zones, dureeMs: Date.now() - t0 });
+        let nb = 0;
+        const { zones } = await rechercherZoneAvecRepli(region.nom, region.departements, {}, async (lots) => {
+            nb += lots.length;
+        });
+        res.json({ nb, zones, dureeMs: Date.now() - t0 });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
