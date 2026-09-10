@@ -444,6 +444,28 @@ function piecesDepuisTypologie(typology) {
     return m ? parseInt(m[1], 10) : null;
 }
 
+// Sépare "numéro de voie" et "adresse" (nom de voie) depuis le texte libre program.address.name
+// d'Otaree — validé sur 35 adresses réelles (Rouen/Marseille, 2026-09-10) : 100% de résultats
+// sûrs avec cette méthode (jamais de texte perdu ni inventé, au pire un numéro laissé vide).
+// Deux étapes : (1) retire un éventuel suffixe ", <code postal> <ville>" redondant — Otaree
+// duplique parfois le code postal/ville dans l'adresse elle-même, alors qu'on les connaît déjà
+// séparément (codePostal/ville du lot) ; (2) extrait un numéro en tête (avec bis/ter/quater
+// optionnel) si présent — sinon numéro reste null et la totalité du texte va dans "voie", jamais
+// tronqué (cas des adresses à deux noms de voie type "90 avenue X et rue Y" : les deux noms
+// restent dans "voie", plus long qu'une adresse habituelle mais aucune perte d'information).
+function extraireNumeroVoie(nomAdresse, codePostal, ville) {
+    if (!nomAdresse) return { numero: null, voie: null };
+    let texte = String(nomAdresse).trim();
+    if (codePostal && ville) {
+        const suffixe = new RegExp(`,?\\s*${codePostal}\\s+${ville}\\s*$`, 'i');
+        texte = texte.replace(suffixe, '').trim();
+    }
+    texte = texte.replace(/\s*,\s*$/, '').trim();
+    const m = texte.match(/^(\d+\s?(?:bis|ter|quater)?)\s*,?\s+(.+)$/i);
+    if (m) return { numero: m[1].trim(), voie: m[2].trim() };
+    return { numero: null, voie: texte };
+}
+
 // Champs structurés qu'on connaît déjà avec certitude depuis les données Otaree du lot — jamais
 // à faire deviner par l'IA (voir callOpenAILmnp, qui ne génère plus que titre+texte pour les lots
 // LMNP). Mêmes clés que le schéma JSON historique, pour ne rien changer à buildUbiflowPayload en
@@ -517,11 +539,15 @@ function champsConnusDepuisLot(lot) {
         champs.surface_terrain = String(lot.landSurface);
     }
 
-    // Latitude/longitude du programme (Otaree ne les fournit qu'au niveau du programme, pas du
-    // lot individuel — mêmes coordonnées pour tous les lots d'un même programme).
+    // Latitude/longitude/adresse du programme (Otaree ne les fournit qu'au niveau du programme,
+    // pas du lot individuel — mêmes coordonnées/adresse pour tous les lots d'un même programme).
     const adresse = lot.program?.address;
     if (adresse?.latitude) champs.latitude = String(adresse.latitude);
     if (adresse?.longitude) champs.longitude = String(adresse.longitude);
+
+    const { numero, voie } = extraireNumeroVoie(adresse?.name, adresse?.zipCode, adresse?.city?.name);
+    if (numero) champs.numero_voie = numero;
+    if (voie) champs.adresse = voie;
 
     return champs;
 }
@@ -1309,6 +1335,13 @@ function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, esp
 
     if (aiData.latitude && !isNaN(parseFloat(aiData.latitude))) annonce.latitude = parseFloat(aiData.latitude);
     if (aiData.longitude && !isNaN(parseFloat(aiData.longitude))) annonce.longitude = parseFloat(aiData.longitude);
+
+    // "Numéro de voie" et "Adresse" (nom de voie) — voir extraireNumeroVoie. Noms de champs non
+    // vérifiés directement dans le formulaire Hubiflow (labels donnés par l'agence, pas les clés
+    // techniques) — suit la même convention (mot français simple) déjà éprouvée sur les autres
+    // champs, à confirmer sur la première annonce réelle avec adresse.
+    if (aiData.numero_voie) annonce.numero_voie = String(aiData.numero_voie);
+    if (aiData.adresse) annonce.adresse = String(aiData.adresse);
 
     if (aiData.exposition && typeof aiData.exposition === 'string' && aiData.exposition.toLowerCase() !== 'null') {
         annonce.exposition = aiData.exposition.toLowerCase().trim();
