@@ -3,7 +3,7 @@
 // demande. Reproduit la logique de pagination/headers déjà éprouvée dans
 // extension-chrome/Otaree/inject.js (fetch + suivi de hydra:view['hydra:next']), portée en
 // Node — même comportement, pas de réinvention.
-import { getOtareeCredentials } from './otareeTokenStore.js';
+import { getOtareeCredentials, sauvegarderRefreshToken } from './otareeTokenStore.js';
 
 const API_BASE = 'https://api.link-app.immo';
 const ORIGIN = 'https://plusimmo76.link-app.immo';
@@ -40,6 +40,23 @@ async function refreshJwt(credentials) {
         throw new Error(`refresh_token rejeté par Otaree (HTTP ${res.status}) : ${body.message || 'raison inconnue'}`);
     }
     const data = await res.json();
+
+    // Rotation confirmée en conditions réelles (2026-09-10) : chaque rafraîchissement renvoie un
+    // NOUVEAU refresh_token — l'ancien code ne lisait que data.token (le JWT court terme) et
+    // jetait silencieusement celui-ci, donc chaque appel suivant réutilisait un refresh_token de
+    // plus en plus périmé. Sur un run de quelques minutes ça ne se voyait jamais ; sur un run de
+    // plusieurs heures avec 20+ rafraîchissements (recherche nationale), ça a fini par être
+    // rejeté par Otaree ("Session Otaree expirée"). En le persistant à chaque appel, le prochain
+    // obtenirJwtFrais() (ici ou ailleurs, ex. l'extension Chrome) repart toujours du dernier
+    // refresh_token réellement valide plutôt que du tout premier capturé.
+    if (data.refresh_token && data.refresh_token !== credentials.refreshToken) {
+        await sauvegarderRefreshToken(data.refresh_token, data.device || credentials.device, credentials.instanceId);
+        // Mutation en place (credentials passé par référence) : si ce même objet sert à un 2e
+        // rafraîchissement plus tard dans le même appel (ex. paginerRecherche sur une région très
+        // longue), il repart déjà du token à jour sans attendre une relecture depuis la base.
+        credentials.refreshToken = data.refresh_token;
+    }
+
     return data.token;
 }
 
