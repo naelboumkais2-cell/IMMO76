@@ -812,6 +812,37 @@ function detecterProblemesConformite(texte, lot) {
         }
     }
 
+    // Cohérence texte/annexe réelle — repéré en conditions réelles (2026-09-11, lot Lyon
+    // garage+cave) : le texte affirmait "une terrasse de 14,1 m²" alors que la seule annexe
+    // réelle du lot (lot.annexesSurfaces) est un BALCON de cette surface — même donnée, mauvais
+    // mot. Partagé entre les deux chemins de génération (LMNP et générique), tous deux passent
+    // par cette fonction. Ignore les mentions négatives ("sans balcon", "pas de terrasse") pour
+    // éviter un faux positif sur une phrase qui nie correctement une annexe absente.
+    const annexesSurfacesReelles = lot?.annexesSurfaces || [];
+    const aBalconReel = annexesSurfacesReelles.some((a) => a.type === 'BALCON');
+    const aTerrasseReelle = annexesSurfacesReelles.some((a) => a.type === 'TERRASSE');
+    const aLoggiaReelle = annexesSurfacesReelles.some((a) => a.type === 'LOGGIA');
+
+    function mentionPositive(mot) {
+        const re = new RegExp(`\\b${mot}s?\\b`, 'gi');
+        let m;
+        while ((m = re.exec(texte))) {
+            const avant = texte.slice(Math.max(0, m.index - 20), m.index).toLowerCase();
+            if (!/(sans|pas de|aucune?)\s*$/.test(avant)) return true;
+        }
+        return false;
+    }
+
+    if (mentionPositive('terrasse') && !aTerrasseReelle) {
+        hits.add(`texte mentionne "terrasse" sans annexe réelle de ce type (réel : ${aBalconReel ? 'balcon' : aLoggiaReelle ? 'loggia' : 'aucune'})`);
+    }
+    if (mentionPositive('balcon') && !aBalconReel) {
+        hits.add(`texte mentionne "balcon" sans annexe réelle de ce type (réel : ${aTerrasseReelle ? 'terrasse' : aLoggiaReelle ? 'loggia' : 'aucune'})`);
+    }
+    if (mentionPositive('loggia') && !aLoggiaReelle) {
+        hits.add(`texte mentionne "loggia" sans annexe réelle de ce type (réel : ${aBalconReel ? 'balcon' : aTerrasseReelle ? 'terrasse' : 'aucune'})`);
+    }
+
     // Intertitre du bloc 3 resté générique ("POURQUOI INVESTIR DANS CETTE CATÉGORIE ?" au lieu
     // de nommer réellement le type de résidence) — le format de sortie exige le type nommé.
     const residenceType = lot?.program?.residenceType;
@@ -886,6 +917,13 @@ function alternativesPourCorrection(hits, lot) {
     if (hits.some((h) => h.includes('fuite de ton "documents/sources internes"'))) {
         lignes.push(
             '- Pour toute mention de "documents", "fiches", "plan", "sources" ou "disponible(s) pour référence" — supprime entièrement la phrase ou reformule en pur langage commercial destiné au lecteur, sans jamais évoquer l\'existence de documents/fiches/dossiers/sources internes au pipeline (ex: "avec plan et fiches partenaires disponibles pour référence" devient simplement rien, ou une caractéristique réelle du bien si le contexte en fournit une).'
+        );
+    }
+    if (hits.some((h) => h.includes('sans annexe réelle de ce type'))) {
+        const annexesReelles = lot?.annexesSurfaces || [];
+        const typesReels = annexesReelles.map((a) => a.type.toLowerCase()).join(', ') || 'aucune';
+        lignes.push(
+            `- Le texte mentionne un type d'annexe extérieure (balcon/terrasse/loggia) qui ne correspond pas à la réalité de ce lot. Annexe(s) réelle(s) de ce lot : ${typesReels}. Remplace chaque mention incorrecte par le bon terme si une annexe réelle existe (ex: "terrasse" → "balcon" si c'est un balcon), ou supprime la mention entièrement si le lot n'a aucune annexe de ce type — ne mélange jamais les deux mots.`
         );
     }
     const promoteurHit = hits.find((h) => h.startsWith('nom du promoteur cité'));
