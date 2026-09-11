@@ -463,6 +463,18 @@ scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
     res.json(getEtatAutoPublish());
 });
 
+// Visibilité sur le run nocturne de synchronisation des disparitions (voir syncDisparitions.js,
+// index.js) — permet de confirmer qu'il s'est bien déclenché tout seul sans avoir à fouiller les
+// logs Render.
+scraperRouter.get('/sync-disparitions-etat', exigerConnexion, async (req, res) => {
+    try {
+        const row = await db.prepare(`SELECT derniere_execution_le FROM sync_disparition_etat WHERE id = 1`).get();
+        res.json(row);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
