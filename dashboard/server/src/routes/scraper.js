@@ -28,9 +28,11 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
+    enrichirLot,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
+import { genererDonneesIA } from '../integrations/aiGenerationClient.js';
 
 export const scraperRouter = Router();
 
@@ -410,6 +412,29 @@ scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
 scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
+});
+
+// TEMPORAIRE — teste choisirCheminGeneration de bout en bout via le VRAI code de production
+// (genererDonneesIA, l'appel HTTP réel vers Ubiflow-Auto-API), avec des portailLogins fournis
+// manuellement pour simuler les différents cas (LMNP seul, Neuf seul, ambigu) sans avoir à
+// déclencher un run complet ni toucher la base.
+scraperRouter.post('/diag-test-chemin-generation', exigerConnexion, async (req, res) => {
+    try {
+        const { villeCode, villeLabel, portailLogins } = req.body || {};
+        const where = [{ label: villeLabel || 'Lyon', key: villeCode || 'city_27111', value: villeCode || 'city_27111' }];
+        const { lots } = await rechercherLotsOtaree({ where });
+        if (!lots.length) return res.status(404).json({ erreur: 'Aucun lot trouvé' });
+        const lotEnrichi = await enrichirLot(lots[0]);
+        const resultat = await genererDonneesIA(lotEnrichi, null, portailLogins ?? null);
+        res.json({
+            lotId: lotEnrichi.id, lawsKeys: lotEnrichi.lawsKeys,
+            portailLoginsEnvoyes: portailLogins ?? null,
+            titre: resultat.aiData?.titre,
+            debutTexte: (resultat.aiData?.texte || '').slice(0, 200),
+        });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
 });
 
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
