@@ -1380,7 +1380,11 @@ function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, esp
 
     if (aiData.dpe_conso) annonce.dpe_etiquette_conso = aiData.dpe_conso;
     if (aiData.dpe_ges) annonce.dpe_etiquette_ges = aiData.dpe_ges;
-    if (aiData.dpe_conso || aiData.dpe_ges) annonce.soumis_dpe = true;
+    // Demande client (2026-09-11) : "Soumis au DPE" doit toujours avoir une réponse, jamais
+    // laissé vide — "non" par défaut quand on ne sait pas (letter DPE absente), plutôt que
+    // d'omettre le champ. Différent de dpe_etiquette_conso/ges eux-mêmes, qui restent omis tant
+    // qu'aucune lettre n'est connue avec certitude (aucune invention sur CES champs-là).
+    annonce.soumis_dpe = !!(aiData.dpe_conso || aiData.dpe_ges);
     if (bool(aiData.proche_commerces) !== null) annonce.proche_commerces = bool(aiData.proche_commerces);
 
     return {
