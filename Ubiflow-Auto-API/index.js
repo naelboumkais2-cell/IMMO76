@@ -337,6 +337,31 @@ app.get('/api/rechercher-doublons-hubiflow', async (req, res) => {
     res.status(result.success ? 200 : 401).json(result);
 });
 
+// TEMPORAIRE — diagnostic de l'adresse tronquée constatée sur Hubiflow ("Cours Charlemagne"
+// affiché "Charlemagne") : renvoie le payload exact envoyé ET la réponse brute complète de
+// Hubiflow (pas juste le sous-ensemble adId/linkEdit), pour savoir si "Cours" est déjà absent
+// dans notre payload sortant ou si Hubiflow le tronque lui-même à la sauvegarde.
+app.post('/api/diag-publish-brut', async (req, res) => {
+    try {
+        const { aiData, villeConnue, codePostalConnu, prixConnu, espaceLoginAttendu } = req.body;
+        const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
+        if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
+
+        const payload = buildUbiflowPayload(aiData, [], { ville: villeConnue, codePostal: codePostalConnu, prix: prixConnu }, espaceLoginAttendu);
+        const response = await axios.post(
+            'https://espace-client-backend.ubiflow.net/traitement-envoi-annonce-advanced?lang=fr',
+            payload,
+            { headers: { 'Accept': 'application/json, text/plain, */*', 'Content-Type': 'application/json;charset=UTF-8', 'Authorization': `Bearer ${resolu.token}` } }
+        );
+        res.json({
+            payloadEnvoye: { adresse: payload.annonce.adresse, numero_voie: payload.annonce.numero_voie },
+            reponseHubiflowBrute: response.data,
+        });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message, details: e.response?.data });
+    }
+});
+
 app.post('/api/publish-payload', async (req, res) => {
     const { aiData, base64Images, villeConnue, codePostalConnu, prixConnu, espaceLoginAttendu, mode } = req.body;
 
