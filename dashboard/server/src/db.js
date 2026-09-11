@@ -215,10 +215,21 @@ export async function initDb() {
     declenche_le TIMESTAMP,
     CONSTRAINT un_seul_id_pause CHECK (id = 1)
   );
+
+  -- État du job de synchronisation des disparitions Otaree (voir services/syncDisparitions.js)
+  -- — une seule ligne, toujours id=1, même principe que pipeline_pause/parametres_depense.
+  -- derniere_execution_le sert uniquement à décider si le run nocturne d'aujourd'hui a déjà eu
+  -- lieu (voir index.js) : évite de relancer plusieurs fois par nuit au redémarrage du process.
+  CREATE TABLE IF NOT EXISTS sync_disparition_etat (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    derniere_execution_le TIMESTAMP,
+    CONSTRAINT un_seul_id_sync_disparition CHECK (id = 1)
+  );
   `);
 
   await db.exec(`INSERT INTO parametres_depense (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
   await db.exec(`INSERT INTO pipeline_pause (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
+  await db.exec(`INSERT INTO sync_disparition_etat (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);
 
   // Migration : qui a déclenché chaque action tracée dans logs_api (recherche lancée,
   // publication confirmée, republish, dépublication...) — nullable, les entrées déjà en base et

@@ -338,6 +338,47 @@ export async function enrichirLot(lot, jetonPartage = null) {
     return lot;
 }
 
+// Vérifie si un lot existe toujours côté Otaree via son atId (ex: "/properties/xxx", déjà
+// stocké tel quel dans annonces.raw_data['@id'] à l'import — voir mapLotOtareeVersAnnonce,
+// orchestrator.js). Distingue explicitement 3 cas plutôt que juste ok/pas-ok — 'inconnu' pour
+// toute erreur réseau/timeout/5xx : voir verifierDisparitionConfirmee, JAMAIS interprété comme
+// une disparition (contrairement à fetchAvecRetry, qui traite tout échec pareil et est pensé
+// pour enrichir des lots déjà supposés vivants, pas pour trancher s'ils le sont encore).
+export async function verifierExistenceLot(atId, timeoutMs = TIMEOUT_DETAIL_OTAREE_MS) {
+    try {
+        const { jwt, credentials } = await obtenirJwtFrais();
+        const headers = buildHeaders(credentials.device, credentials.instanceId, jwt);
+        const res = await fetch(`${API_BASE}${atId}`, { method: 'GET', headers, signal: AbortSignal.timeout(timeoutMs) });
+        if (res.status === 404) return 'absent';
+        if (res.ok) return 'existe';
+        console.error(`[verifierExistenceLot] statut HTTP inattendu ${res.status} pour ${atId} — traité comme 'inconnu'.`);
+        return 'inconnu';
+    } catch (e) {
+        const raison = e.name === 'TimeoutError' ? `timeout après ${timeoutMs}ms` : e.message;
+        console.error(`[verifierExistenceLot] erreur réseau pour ${atId} : ${raison} — traité comme 'inconnu'.`);
+        return 'inconnu';
+    }
+}
+
+// Confirme une disparition par 2 vérifications espacées avant de conclure (éviter un faux
+// positif transitoire côté Otaree — indisponibilité ponctuelle, lot momentanément dépublié puis
+// republié...). Ne conclut JAMAIS à une disparition sur un seul 404, ni sur un statut 'inconnu'
+// à quelque étape que ce soit — dans le doute, on ne supprime rien, on retentera la prochaine
+// nuit (voir syncDisparitions.js).
+const DELAI_ENTRE_VERIFICATIONS_MS = 5 * 60 * 1000;
+
+export async function verifierDisparitionConfirmee(atId, delaiMs = DELAI_ENTRE_VERIFICATIONS_MS) {
+    const premiere = await verifierExistenceLot(atId);
+    if (premiere !== 'absent') return { disparitionConfirmee: false, statut: premiere };
+
+    await new Promise((r) => setTimeout(r, delaiMs));
+
+    const seconde = await verifierExistenceLot(atId);
+    if (seconde !== 'absent') return { disparitionConfirmee: false, statut: seconde };
+
+    return { disparitionConfirmee: true, statut: 'absent' };
+}
+
 // URL synthétique stable pour représenter une recherche server-side dans la table
 // `recherches` (pas de vraie page de résultats puisqu'il n'y a pas de navigateur) — mêmes
 // filtres -> même URL -> même recherche regroupée, peu importe l'ordre des clés reçues.
