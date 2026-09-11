@@ -1293,7 +1293,12 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
 //    source réel du lot (description/program.description) plutôt que d'interdire le mot lui-même
 //    — une mention légitime (si un jour Otaree fournit cette donnée) resterait acceptée.
 const RENTABILITE_CHIFFREE_RE = /(rentabilit[ée]|rendement)[^.\n]{0,25}\d/i;
-const MOTS_PROXIMITE_RE = /\b(transports?|commerces?|écoles?|proximit[ée]|proche des|desservi\w*|dessert\b|ligne de (bus|tram|m[ée]tro))\b/i;
+// NB frontière `(?<![a-zà-ÿ])`/`(?![a-zà-ÿ])` plutôt que `\b` pour "écoles"/"proximité" — même
+// bug déjà documenté ailleurs dans ce pipeline (voir FORMULATIONS_INTERDITES, "sécuris*/sécurité")
+// : `\b` se base sur `\w`, purement ASCII, donc ne détecte aucune frontière avant/après une
+// lettre accentuée. Vérifié : `\bécoles?\b`/`\bproximit[ée]\b` ne matchaient JAMAIS "à proximité"
+// ni "proche des écoles" — silencieusement, sans erreur — avant cette correction.
+const MOTS_PROXIMITE_RE = /\btransports?\b|\bcommerces?\b|(?<![a-zà-ÿ])écoles?(?![a-zà-ÿ])|(?<![a-zà-ÿ])proximit[ée](?![a-zà-ÿ])|\bproche des?\b|\bdesservi\w*|\bdessert\b|\bligne de (bus|tram|m[ée]tro)\b/i;
 
 function detecterProximiteNonSourcee(texte, lot) {
     if (!texte || !MOTS_PROXIMITE_RE.test(texte)) return false;
