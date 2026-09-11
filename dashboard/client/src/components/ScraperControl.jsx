@@ -381,7 +381,7 @@ export function ScraperControl() {
 
     // Partagé entre le comptage rapide et la vraie recherche — même filtres, une seule source.
     // `ville` par défaut = celle sélectionnée dans le formulaire ; passer explicitement `null`
-    // (recherche nationale, voir onLancerRechercheNationale) omet le filtre géographique.
+    // (recherche nationale, voir onLancerRechercheOtaree) omet le filtre géographique.
     function construireFiltres(ville = villeSelectionnee) {
         const filters = {};
         if (ville) filters.where = [{ label: ville.name, key: ville.code, value: ville.code }];
@@ -426,10 +426,6 @@ export function ScraperControl() {
     async function onCompterOtaree() {
         setErreurOtaree(null);
         setComptageOtaree(null);
-        if (!villeSelectionnee) {
-            setErreurOtaree('Choisis une ville dans les suggestions avant de compter les résultats.');
-            return;
-        }
         setComptageEnCours(true);
         try {
             const result = await api.compterOtaree(construireFiltres());
@@ -455,16 +451,15 @@ export function ScraperControl() {
         );
     }
 
+    // Ville renseignée → recherche classique (rapide, par ville). Ville vide → recherche nationale
+    // (découpe en régions avec repli département par département si une région dépasse le plafond
+    // de pagination, voir rechercherZoneAvecRepli côté serveur) — même mécanisme de suivi asynchrone
+    // dans les deux cas (voir pollingImportActif).
     async function onLancerRechercheOtaree(e) {
         e.preventDefault();
         setErreurOtaree(null);
         setResultatOtaree(null);
         setComptageOtaree(null);
-
-        if (!villeSelectionnee) {
-            setErreurOtaree('Choisis une ville dans les suggestions avant de lancer la recherche.');
-            return;
-        }
 
         const filters = construireFiltres();
         const resume = construireResumeFiltres({ villeSelectionnee, minPrice, maxPrice, typologie, nature, statut, loi, promoteur });
@@ -475,28 +470,11 @@ export function ScraperControl() {
             // côté serveur (voir rechercheStatus.js — évite le timeout de 120s du proxy Vercel sur
             // un gros volume). Le polling démarré ci-dessous (voir pollingImportActif) prend le
             // relais pour suivre la progression et traiter le résultat une fois terminé.
-            await api.rechercherOtaree(filters, nomRecherche.trim(), resume);
-            setPollingImportActif(true);
-        } catch (err) {
-            setErreurOtaree(err.message);
-            setRechercheOtareeEnCours(false);
-        }
-    }
-
-    // Recherche "France entière" : découpe en régions (repli département par département si une
-    // région dépasse le plafond de pagination), voir rechercherZoneAvecRepli côté serveur — même
-    // mécanisme de suivi asynchrone que la recherche normale (pas de ville à choisir ici).
-    async function onLancerRechercheNationale() {
-        setErreurOtaree(null);
-        setResultatOtaree(null);
-        setComptageOtaree(null);
-
-        const filters = construireFiltres(null);
-        const resume = construireResumeFiltres({ villeSelectionnee: null, minPrice, maxPrice, typologie, nature, statut, loi, promoteur });
-
-        setRechercheOtareeEnCours(true);
-        try {
-            await api.rechercherOtareeNationale(filters, nomRecherche.trim(), resume || 'France entière');
+            if (villeSelectionnee) {
+                await api.rechercherOtaree(filters, nomRecherche.trim(), resume);
+            } else {
+                await api.rechercherOtareeNationale(filters, nomRecherche.trim(), resume || 'France entière');
+            }
             setPollingImportActif(true);
         } catch (err) {
             setErreurOtaree(err.message);
@@ -761,6 +739,14 @@ export function ScraperControl() {
                                             ))}
                                     </ul>
                                 )}
+                                {!villeSelectionnee && (
+                                    <span
+                                        className="field-hint"
+                                        style={{ display: 'block', marginTop: 4, fontSize: '0.85em', color: '#b26a00' }}
+                                    >
+                                        ⚠️ Aucune ville choisie : la recherche portera sur toute la France (~45min-1h). Les autres filtres (prix, typologie...) restent appliqués.
+                                    </span>
+                                )}
                             </label>
                             <label className="field" style={{ width: 120 }}>
                                 <span className="field-label">Prix min (€)</span>
@@ -814,17 +800,6 @@ export function ScraperControl() {
                             <button type="submit" className="btn btn-primary" disabled={rechercheOtareeEnCours} style={{ borderRadius: 'var(--radius-md)', padding: '12px 24px', margin: '4px' }}>
                                 <IconRefresh style={rechercheOtareeEnCours ? { animation: 'spin 0.8s linear infinite' } : undefined} />
                                 {rechercheOtareeEnCours ? 'Recherche…' : 'Rechercher'}
-                            </button>
-                            <button
-                                type="button"
-                                className="btn btn-secondary"
-                                disabled={rechercheOtareeEnCours}
-                                onClick={onLancerRechercheNationale}
-                                style={{ margin: '4px' }}
-                                title="Ignore le champ Ville — parcourt toutes les régions (~45min-1h). Les autres filtres (prix, typologie...) restent appliqués."
-                            >
-                                <IconRefresh style={rechercheOtareeEnCours ? { animation: 'spin 0.8s linear infinite' } : undefined} />
-                                {rechercheOtareeEnCours ? 'Recherche…' : 'France entière'}
                             </button>
                             {autoPublishStatus?.enCours && (
                                 <button
