@@ -1421,12 +1421,17 @@ function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, esp
     if (aiData.latitude && !isNaN(parseFloat(aiData.latitude))) annonce.latitude = parseFloat(aiData.latitude);
     if (aiData.longitude && !isNaN(parseFloat(aiData.longitude))) annonce.longitude = parseFloat(aiData.longitude);
 
-    // "Numéro de voie" et "Adresse" (nom de voie) — voir extraireNumeroVoie. Noms de champs non
-    // vérifiés directement dans le formulaire Hubiflow (labels donnés par l'agence, pas les clés
-    // techniques) — suit la même convention (mot français simple) déjà éprouvée sur les autres
-    // champs, à confirmer sur la première annonce réelle avec adresse.
+    // "Numéro de voie" et "Adresse" (nom de voie) — voir extraireNumeroVoie. La clé technique
+    // réelle derrière le champ affiché "Adresse" est `nom_voie`, pas `adresse` — constaté en
+    // conditions réelles (2026-09-11, lot Lyon "Cours Charlemagne") : envoyer via `adresse`
+    // déclenche un ré-analyseur d'adresse côté Hubiflow qui reconnaît "Cours" comme un type de
+    // voie et le sépare dans un champ `type_voie` interne, invisible sur ce formulaire — seul
+    // `nom_voie` ("CHARLEMAGNE" seul) reste affiché, perdant le type de voie à l'écran alors
+    // que rien n'a techniquement disparu côté API. Envoyer directement via `nom_voie` évite ce
+    // ré-analyseur et préserve le texte intégral tel quel (vérifié : "COURS CHARLEMAGNE" reste
+    // intact).
     if (aiData.numero_voie) annonce.numero_voie = String(aiData.numero_voie);
-    if (aiData.adresse) annonce.adresse = String(aiData.adresse);
+    if (aiData.adresse) annonce.nom_voie = String(aiData.adresse);
 
     if (aiData.exposition && typeof aiData.exposition === 'string' && aiData.exposition.toLowerCase() !== 'null') {
         annonce.exposition = aiData.exposition.toLowerCase().trim();
