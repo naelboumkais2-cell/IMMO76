@@ -1140,9 +1140,31 @@ app.post('/api/verifier-plans', async (req, res) => {
     }
 });
 
+// Logins des 2 portails réels (voir DEFAULT_ESPACE_LOGIN/resoudreTokenPourEspace plus haut,
+// mêmes valeurs déjà utilisées pour l'espace Hubiflow à la publication).
+const PORTAIL_LOGIN_LMNP = 'ag762215';
+const PORTAIL_LOGIN_NEUF = 'ag762216';
+
+// Choisit le chemin de génération selon le PORTAIL DE DESTINATION réel (déjà résolu côté
+// dashboard/server, voir resolvePortailsPourAnnonce), plutôt que de redétecter le dispositif
+// fiscal ici — 2026-09-11, pour pouvoir brancher facilement un futur prompt Neuf dédié sans
+// toucher au routage. Cas non ambigu (exactement un portail transmis, reconnu) : décision
+// directe. Cas ambigu (0 ou 2+ portails transmis, ou info absente — voir
+// resolvePortailsPourAnnonce, qui bascule vers TOUS les portails actifs quand le dispositif est
+// indéterminé) : repli sur estLotLmnp(lot), exactement le comportement d'avant ce changement —
+// garantit un résultat identique dans tous les cas, y compris ambigus, pas seulement le cas
+// courant.
+function choisirCheminGeneration(lot, portailLogins) {
+    if (Array.isArray(portailLogins) && portailLogins.length === 1) {
+        if (portailLogins[0] === PORTAIL_LOGIN_LMNP) return 'lmnp';
+        if (portailLogins[0] === PORTAIL_LOGIN_NEUF) return 'neuf';
+    }
+    return estLotLmnp(lot) ? 'lmnp' : 'neuf';
+}
+
 app.post('/api/generate', async (req, res) => {
     try {
-        const { lot, imagesSelection } = req.body || {};
+        const { lot, imagesSelection, portailLogins } = req.body || {};
         if (!lot || typeof lot !== 'object') return res.status(400).json({ success: false, error: 'lot requis' });
 
         const lotImageData = await downloadOtareeImages(lot, imagesSelection);
@@ -1164,11 +1186,15 @@ app.post('/api/generate', async (req, res) => {
         // vérifié quand ce fait existe, jamais l'inverse.
         let aiData;
         let alerteConformite = null;
-        if (estLotLmnp(lot)) {
+        const chemin = choisirCheminGeneration(lot, portailLogins);
+        if (chemin === 'lmnp') {
             const { titre, texte, alerteConformite: alerte } = await callOpenAILmnp(buildTextContext(lot), lotImages, lot);
             aiData = { ...champsConnusDepuisLot(lot), titre, texte };
             alerteConformite = alerte;
         } else {
+            // 'neuf' — chemin générique existant (callOpenAI) en attendant un prompt Neuf dédié.
+            // Pour brancher ce futur prompt : ajouter un cas `chemin === 'neuf-dedie'` ici, sans
+            // toucher à choisirCheminGeneration ni au routage.
             const { alerteConformite: alerte, ...donnees } = await callOpenAI(buildTextContext(lot), lotImages, lot);
             aiData = { ...donnees, ...champsConnusDepuisLot(lot) };
             alerteConformite = alerte;

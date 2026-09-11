@@ -370,9 +370,33 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
             // évite une rafale de rafraîchissements simultanés si chaque lot en demandait un.
             const jetonPartage = await obtenirJwtFrais();
 
+            // Portails déjà résolus à l'import (annonce_portails, voir resolvePortailsPourAnnonce)
+            // — lus ici, avant la génération, pour que Ubiflow-Auto-API choisisse le prompt selon
+            // le portail de destination réel plutôt que de redétecter le dispositif fiscal lui-même
+            // (voir /api/generate, choisirCheminGeneration). Un seul aller-retour DB pour tout le
+            // groupe plutôt qu'un par lot. La résolution PAR PORTAIL pour la publication elle-même
+            // (plus bas, `instances`) reste inchangée — cette lecture-ci sert uniquement au choix
+            // du prompt, pas au routage de publication.
+            const idsGroupe = groupe.map(({ annonce }) => annonce.id);
+            const portailsParAnnonce = new Map();
+            if (idsGroupe.length) {
+                const lignes = await db
+                    .prepare(
+                        `SELECT ap.annonce_id, p.login
+                         FROM annonce_portails ap JOIN portails p ON p.id = ap.portail_id
+                         WHERE ap.annonce_id IN (${idsGroupe.map(() => '?').join(',')})`
+                    )
+                    .all(...idsGroupe);
+                for (const l of lignes) {
+                    if (!portailsParAnnonce.has(l.annonce_id)) portailsParAnnonce.set(l.annonce_id, []);
+                    portailsParAnnonce.get(l.annonce_id).push(l.login);
+                }
+            }
+
             const resultats = await Promise.allSettled(
-                groupe.map(async ({ lotBrut, imagesSelection }) => {
+                groupe.map(async ({ lotBrut, imagesSelection, annonce }) => {
                     const lotEnrichi = await enrichirLot(lotBrut, jetonPartage);
+                    const portailLogins = portailsParAnnonce.get(annonce.id) || [];
                     // Vérification des documents "plan" en parallèle de la génération IA, pas en
                     // série après — les deux appels sont indépendants (aucun n'a besoin du
                     // résultat de l'autre), les lancer l'un après l'autre ajouterait de la
@@ -380,7 +404,7 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
                     // informatif : verifierPlansLot ne throw jamais, un échec équivaut à "rien à
                     // signaler", ne bloque jamais la génération ni la publication.
                     const [donneesIA, alerteDocument] = await Promise.all([
-                        genererDonneesIA(lotEnrichi, imagesSelection),
+                        genererDonneesIA(lotEnrichi, imagesSelection, portailLogins),
                         verifierPlansLot(lotEnrichi),
                     ]);
                     return { ...donneesIA, alerteDocument };

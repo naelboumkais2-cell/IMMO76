@@ -4,11 +4,16 @@
 // une librairie importable, on réutilise donc son endpoint plutôt que de dupliquer le prompt IA.
 const SERVER_URL = process.env.UBIFLOW_AUTO_API_URL || 'http://localhost:4000';
 
-export async function genererDonneesIA(lotEnrichi, imagesSelection = null) {
+// `portailLogins` (2026-09-11) : logins des portails déjà résolus pour cette annonce
+// (annonce_portails, résolu à l'import — voir resolvePortailsPourAnnonce), pour que
+// Ubiflow-Auto-API choisisse le prompt de génération selon le portail de destination réel
+// plutôt que de redétecter le dispositif fiscal lui-même. Optionnel : si absent, ambigu (0 ou
+// 2+ portails), Ubiflow-Auto-API retombe sur son ancienne détection (estLotLmnp), inchangée.
+export async function genererDonneesIA(lotEnrichi, imagesSelection = null, portailLogins = null) {
     const res = await fetch(`${SERVER_URL}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lot: lotEnrichi, imagesSelection }),
+        body: JSON.stringify({ lot: lotEnrichi, imagesSelection, portailLogins }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.success) {
