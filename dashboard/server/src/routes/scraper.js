@@ -35,18 +35,6 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — vérifie le texte réellement généré (donnees_ia) après le correctif du choix de
-// prompt par portail confirmé (2026-09-12). À retirer une fois le test terminé.
-scraperRouter.get('/diag-donnees-ia/:id', exigerConnexion, async (req, res) => {
-    try {
-        const row = await db.prepare(`SELECT id, titre, donnees_ia FROM annonces WHERE id = ?`).get(req.params.id);
-        if (!row) return res.status(404).json({ erreur: 'introuvable' });
-        res.json({ id: row.id, titre: row.titre, donnees_ia: JSON.parse(row.donnees_ia || '{}') });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
