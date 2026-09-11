@@ -302,6 +302,27 @@ async function appliquerPortailsChoisis(annonceIds, portailsChoisis) {
             await upsert.run(annonceId, portailId, mode);
         }
     }
+
+    // Nettoie les lignes annonce_portails résolues à l'import (resolvePortailsPourAnnonce) mais
+    // écartées ici par l'utilisateur — sans ça, une ligne orpheline restait indéfiniment en
+    // 'en_attente' : source du bug de choix de prompt corrigé le 2026-09-12 (voir
+    // executerTraitement), mais aussi visible dans Supervision avec son propre bouton
+    // "republish" cliquable par erreur (republierait le texte, dorénavant généré pour le portail
+    // réellement choisi, sur ce portail écarté), et comptée à tort dans le total "en attente" du
+    // tableau de bord. Ne supprime JAMAIS une ligne déjà réellement publiée (ad_id_externe non
+    // nul) — un portail écarté après une vraie publication doit être dépublié explicitement
+    // (voir depublierInstance), jamais silencieusement désynchronisé de Hubiflow par ce nettoyage.
+    if (annonceIds.length && portailsChoisis.length) {
+        const portailIdsChoisis = portailsChoisis.map((p) => p.portailId);
+        await db
+            .prepare(
+                `DELETE FROM annonce_portails
+                 WHERE annonce_id IN (${annonceIds.map(() => '?').join(',')})
+                 AND portail_id NOT IN (${portailIdsChoisis.map(() => '?').join(',')})
+                 AND ad_id_externe IS NULL`
+            )
+            .run(...annonceIds, ...portailIdsChoisis);
+    }
 }
 
 // Nombre de lots traités en parallèle pour l'enrichissement + la génération IA (les deux seules
@@ -377,6 +398,16 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
             // groupe plutôt qu'un par lot. La résolution PAR PORTAIL pour la publication elle-même
             // (plus bas, `instances`) reste inchangée — cette lecture-ci sert uniquement au choix
             // du prompt, pas au routage de publication.
+            //
+            // Filtrée par `portailIds` quand fourni (portails réellement confirmés sur l'écran de
+            // confirmation, voir confirmerRunEnAttente) — bug réel corrigé le 2026-09-12 : sans ce
+            // filtre, une ligne annonce_portails orpheline (portail résolu à l'import, jamais
+            // supprimée quand l'utilisateur change de portail avant validation — voir
+            // appliquerPortailsChoisis) restait lue ici, rendant `portailLogins` ambigu (2 logins
+            // au lieu d'1) et faisant retomber choisirCheminGeneration sur son repli estLotLmnp
+            // plutôt que sur le portail réellement choisi. Constaté en conditions réelles : un lot
+            // LMNP routé à l'import, changé vers Neuf en confirmation, a généré un texte LMNP
+            // publié sur le portail Neuf.
             const idsGroupe = groupe.map(({ annonce }) => annonce.id);
             const portailsParAnnonce = new Map();
             if (idsGroupe.length) {
@@ -384,9 +415,10 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
                     .prepare(
                         `SELECT ap.annonce_id, p.login
                          FROM annonce_portails ap JOIN portails p ON p.id = ap.portail_id
-                         WHERE ap.annonce_id IN (${idsGroupe.map(() => '?').join(',')})`
+                         WHERE ap.annonce_id IN (${idsGroupe.map(() => '?').join(',')})
+                         ${portailIds ? `AND ap.portail_id IN (${portailIds.map(() => '?').join(',')})` : ''}`
                     )
-                    .all(...idsGroupe);
+                    .all(...idsGroupe, ...(portailIds || []));
                 for (const l of lignes) {
                     if (!portailsParAnnonce.has(l.annonce_id)) portailsParAnnonce.set(l.annonce_id, []);
                     portailsParAnnonce.get(l.annonce_id).push(l.login);
