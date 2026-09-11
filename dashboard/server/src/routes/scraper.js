@@ -34,25 +34,6 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — diagnostic pour quantifier les lots importés mais jamais proposés en candidat
-// (donnees_ia IS NULL) — voir discussion avec l'utilisateur sur MAX_PAR_RUN / reprise.
-scraperRouter.get('/diag-orphelins', exigerConnexion, async (req, res) => {
-    try {
-        const total = await db.prepare(`SELECT COUNT(*)::int AS n FROM annonces WHERE donnees_ia IS NULL`).get();
-        const parRecherche = await db.prepare(
-            `SELECT recherche_id, COUNT(*)::int AS n FROM annonces WHERE donnees_ia IS NULL GROUP BY recherche_id ORDER BY n DESC LIMIT 10`
-        ).all();
-        const echantillon = await db.prepare(
-            `SELECT a.id, a.titre, a.recherche_id, ap.statut, ap.portail_id
-             FROM annonces a LEFT JOIN annonce_portails ap ON ap.annonce_id = a.id
-             WHERE a.donnees_ia IS NULL LIMIT 5`
-        ).all();
-        res.json({ total: total.n, parRecherche, echantillon });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
