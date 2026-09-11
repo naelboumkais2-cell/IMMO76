@@ -341,14 +341,30 @@ export async function enrichirLot(lot, jetonPartage = null) {
 // Vérifie si un lot existe toujours côté Otaree via son atId (ex: "/properties/xxx", déjà
 // stocké tel quel dans annonces.raw_data['@id'] à l'import — voir mapLotOtareeVersAnnonce,
 // orchestrator.js). Distingue explicitement 3 cas plutôt que juste ok/pas-ok — 'inconnu' pour
-// toute erreur réseau/timeout/5xx : voir verifierDisparitionConfirmee, JAMAIS interprété comme
-// une disparition (contrairement à fetchAvecRetry, qui traite tout échec pareil et est pensé
-// pour enrichir des lots déjà supposés vivants, pas pour trancher s'ils le sont encore).
-export async function verifierExistenceLot(atId, timeoutMs = TIMEOUT_DETAIL_OTAREE_MS) {
+// toute erreur réseau/timeout/5xx, JAMAIS interprété comme une disparition (contrairement à
+// fetchAvecRetry, qui traite tout échec pareil et est pensé pour enrichir des lots déjà
+// supposés vivants, pas pour trancher s'ils le sont encore).
+//
+// `jetonPartage` optionnel ({jwt, credentials}, MUTABLE — voir plus bas) : mutualise un seul
+// jeton sur tout un run (potentiellement des centaines/milliers de lots, voir
+// syncDisparitions.js) au lieu d'en redemander un par appel comme le ferait obtenirJwtFrais()
+// seul — celui-ci ne cache jamais rien, un jeton par lot répéterait sur /security/refresh-token
+// le même genre de rafale rapprochée qui avait déjà causé un vrai rate-limit Otaree (incident
+// photos manquantes, voir enrichirLot). Si le jeton partagé a expiré en cours de route (401),
+// un seul rafraîchissement est tenté et le jeton est mis à jour EN PLACE dans l'objet passé, pour
+// que l'appelant suivant dans la même boucle reparte déjà du jeton frais sans le redemander.
+export async function verifierExistenceLot(atId, jetonPartage = null, timeoutMs = TIMEOUT_DETAIL_OTAREE_MS) {
     try {
-        const { jwt, credentials } = await obtenirJwtFrais();
-        const headers = buildHeaders(credentials.device, credentials.instanceId, jwt);
-        const res = await fetch(`${API_BASE}${atId}`, { method: 'GET', headers, signal: AbortSignal.timeout(timeoutMs) });
+        const jeton = jetonPartage || (await obtenirJwtFrais());
+        let headers = buildHeaders(jeton.credentials.device, jeton.credentials.instanceId, jeton.jwt);
+        let res = await fetch(`${API_BASE}${atId}`, { method: 'GET', headers, signal: AbortSignal.timeout(timeoutMs) });
+
+        if (res.status === 401 && jetonPartage) {
+            jeton.jwt = await refreshJwt(jeton.credentials);
+            headers = buildHeaders(jeton.credentials.device, jeton.credentials.instanceId, jeton.jwt);
+            res = await fetch(`${API_BASE}${atId}`, { method: 'GET', headers, signal: AbortSignal.timeout(timeoutMs) });
+        }
+
         if (res.status === 404) return 'absent';
         if (res.ok) return 'existe';
         console.error(`[verifierExistenceLot] statut HTTP inattendu ${res.status} pour ${atId} — traité comme 'inconnu'.`);
@@ -358,25 +374,6 @@ export async function verifierExistenceLot(atId, timeoutMs = TIMEOUT_DETAIL_OTAR
         console.error(`[verifierExistenceLot] erreur réseau pour ${atId} : ${raison} — traité comme 'inconnu'.`);
         return 'inconnu';
     }
-}
-
-// Confirme une disparition par 2 vérifications espacées avant de conclure (éviter un faux
-// positif transitoire côté Otaree — indisponibilité ponctuelle, lot momentanément dépublié puis
-// republié...). Ne conclut JAMAIS à une disparition sur un seul 404, ni sur un statut 'inconnu'
-// à quelque étape que ce soit — dans le doute, on ne supprime rien, on retentera la prochaine
-// nuit (voir syncDisparitions.js).
-const DELAI_ENTRE_VERIFICATIONS_MS = 5 * 60 * 1000;
-
-export async function verifierDisparitionConfirmee(atId, delaiMs = DELAI_ENTRE_VERIFICATIONS_MS, timeoutMs = undefined) {
-    const premiere = await verifierExistenceLot(atId, timeoutMs);
-    if (premiere !== 'absent') return { disparitionConfirmee: false, statut: premiere };
-
-    await new Promise((r) => setTimeout(r, delaiMs));
-
-    const seconde = await verifierExistenceLot(atId, timeoutMs);
-    if (seconde !== 'absent') return { disparitionConfirmee: false, statut: seconde };
-
-    return { disparitionConfirmee: true, statut: 'absent' };
 }
 
 // URL synthétique stable pour représenter une recherche server-side dans la table
