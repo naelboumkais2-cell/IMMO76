@@ -519,6 +519,20 @@ scraperRouter.post('/diag-purge-nettoyage', exigerConnexion, async (req, res) =>
     }
 });
 
+// TEMPORAIRE — lit les dernières lignes openai_usage_log (base partagée avec Ubiflow-Auto-API)
+// pour obtenir le coût réel du test de bascule gpt-4o sur le chemin LMNP.
+scraperRouter.get('/diag-openai-usage', exigerConnexion, async (req, res) => {
+    try {
+        const nb = Number(req.query.nb) || 10;
+        const lignes = await db.prepare(
+            `SELECT id, prompt_tokens, completion_tokens, cout_usd, cree_le FROM openai_usage_log ORDER BY id DESC LIMIT ?`
+        ).all(nb);
+        res.json(lignes);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
