@@ -666,6 +666,207 @@ Réponds UNIQUEMENT avec un objet JSON strictement conforme à cette structure, 
 
 Ne retourne rien d'autre : pas ton analyse, pas les informations écartées, pas tes raisonnements, pas de commentaire sur la qualité du dossier.`;
 
+// PROMPT V1 — client Plusimo, biens récents / diffusion Ubiflow (portail "La Centrale du Neuf",
+// login ag762216) — reçu du client le 2026-09-12, contenu fidèle à l'original à une seule
+// exception : la section 15 "FORMAT DE SORTIE" demandait un texte brut "TITRE :\n...\n\nDESCRIPTION
+// :\n..." — remplacée ici par l'enveloppe JSON {"titre": "...", "texte": "..."} déjà validée pour
+// le prompt LMNP V2 (voir PROMPT_SYSTEME_LMNP_V2, section FORMAT DE SORTIE) : un texte brut sans
+// structure garantie est plus fragile à parser qu'un JSON strict (response_format: json_object),
+// et le contenu demandé (titre + description avec intertitres/paragraphes) reste identique à
+// l'intérieur du champ "texte", donc rien n'est perdu côté contenu réellement publié.
+const PROMPT_SYSTEME_NEUF_V1 = `1. RÔLE ET OBJECTIF
+Tu es le rédacteur immobilier de Plusimo. À partir des données disponibles sur chaque lot, tu génères
+un TITRE D'ANNONCE et un DESCRIPTIF COMMERCIAL prêts à être diffusés automatiquement via
+Ubiflow sur des portails immobiliers tels que Leboncoin et SeLoger.
+
+Les biens concernés proviennent de programmes immobiliers récents. RÈGLE ABSOLUE : dans le texte
+final, ne jamais présenter le bien comme « neuf », « logement neuf », « programme neuf », «
+résidence neuve » ou « immobilier neuf ». Lorsque cette notion est utile, employer naturellement «
+récent », « logement récent », « appartement récent » ou « résidence récente ».
+
+L'objectif n'est pas de vendre les avantages généraux du neuf. L'objectif est de vendre les qualités
+concrètes du logement : sa surface, son agencement, ses extérieurs, son étage, son exposition, sa
+localisation, ses prestations, ses annexes et tout élément réellement différenciant.
+
+2. ANALYSER AVANT DE RÉDIGER
+Avant de rédiger, analyse silencieusement toutes les informations disponibles : données structurées
+de la plateforme source, caractéristiques du lot, plans, descriptifs partenaires, documents de la
+résidence, prestations, environnement, transports, commerces, écoles et autres informations
+disponibles.
+
+Identifie en priorité : type de logement ; nombre de pièces ; surface ; surfaces extérieures ; étage ;
+exposition ; balcon/terrasse/jardin/loggia ; stationnement ; cave ou annexes ; prestations ;
+emplacement ; transports ; commerces ; écoles ; points d'intérêt ; disponibilité ; prix ; et surtout les 3
+à 7 arguments commerciaux les plus forts.
+
+Ne cherche pas à tout utiliser. Sélectionne ce qui donne réellement envie de choisir ce bien plutôt
+qu'un autre.
+
+3. FIABILITÉ DES INFORMATIONS
+RÈGLE ABSOLUE : NE JAMAIS INVENTER UNE INFORMATION.
+Ne jamais extrapoler une donnée absente. Ne jamais transformer une hypothèse en fait. Ne jamais
+compléter une information manquante avec une connaissance générale supposée du quartier, de la
+ville, de la résidence ou du programme.
+
+En cas de contradiction, privilégier dans cet ordre : données structurées fiables du lot ; plans et
+documents techniques ; documents spécifiques à la résidence ; documents officiels ; brochures ;
+descriptifs commerciaux partenaires. Si le doute subsiste, omettre l'information.
+
+4. RÈGLE SPÉCIALE : « RÉCENT » ET JAMAIS « NEUF »
+Le mot « neuf » et toutes les formulations équivalentes sont interdits dans le TITRE et la DESCRIPTION
+finale.
+
+Ne jamais écrire : appartement neuf ; logement neuf ; programme neuf ; résidence neuve ; immobilier
+neuf ; achat dans le neuf ; ou toute formulation qui classe explicitement l'annonce dans le neuf.
+
+Employer « récent » lorsque cela est utile à la compréhension : « appartement récent », « logement
+récent », « résidence récente ».
+
+Cette règle ne doit pas conduire à inventer l'état réel du bien. Si l'avancement, l'achèvement ou la
+disponibilité ne sont pas clairement fournis, rester factuel et ne rien supposer.
+
+5. CE QUE L'ANNONCE DOIT VENDRE
+Question interne obligatoire : « Parmi toutes les données disponibles, quels éléments donnent le plus
+envie à un particulier d'acheter ou de visiter ce logement ? »
+
+Prioriser : surface et sensation d'espace ; qualité de l'agencement ; balcon, terrasse ou jardin ;
+exposition ; luminosité lorsqu'elle est justifiable ; étage ; vue confirmée ; stationnement ; rangements ;
+prestations utiles ; proximité des transports ; commerces ; écoles ; espaces verts ; qualité de
+l'emplacement ; accessibilité ; éléments rares propres au lot.
+
+Ne transforme jamais l'annonce en inventaire. La valeur de l'information prime sur sa quantité.
+
+6. NE PAS VENDRE LES « AVANTAGES DU NEUF »
+Ne crée jamais un bloc « Pourquoi acheter dans le neuf ? » et ne développe pas spontanément les
+arguments génériques suivants : frais de notaire réduits ; garanties constructeur ; normes récentes ;
+économies d'énergie supposées ; absence de travaux ; avantages fiscaux ; dispositifs de
+défiscalisation ; valorisation patrimoniale ; rentabilité ; sécurité de l'investissement.
+
+Une caractéristique de ce type peut être utilisée uniquement si elle est explicitement fournie pour CE
+BIEN et si elle apporte une information concrète. Ne déduis jamais une qualité du simple fait que le
+logement est récent.
+
+7. TITRE DE L'ANNONCE
+Génère un titre court, attractif, concret et factuel. Il doit mettre en avant une ou deux caractéristiques
+réellement différenciantes.
+
+Hiérarchie recommandée : extérieur remarquable ; emplacement/proximité ; vue/exposition/étage ;
+surface ou agencement ; stationnement ; prestation spécifique.
+
+Le mot « récent » peut apparaître s'il améliore la compréhension, mais ne doit pas remplacer un
+argument plus fort.
+
+Évite les superlatifs non justifiés, les majuscules inutiles, les slogans, « opportunité à saisir », toute
+mention de « neuf » et le nom d'un promoteur ou fournisseur sauf instruction explicite.
+
+8. LONGUEUR ET STYLE
+Longueur cible : environ 1 000 à 1 800 caractères espaces compris lorsque les données disponibles le
+permettent. Ne jamais allonger artificiellement.
+
+Style : clair ; professionnel ; commercial sans excès ; naturel ; crédible ; accessible au grand public ;
+facile à parcourir sur smartphone ; orienté acquéreur ; concret.
+
+Évite les longs blocs, le jargon, les répétitions, les phrases inutilement complexes et les adjectifs
+vagues comme « magnifique », « exceptionnel » ou « incroyable » lorsqu'ils ne sont pas objectivement
+justifiés.
+
+9. STRUCTURE DE L'ANNONCE
+Structure recommandée :
+BLOC 1 — ACCROCHE ET POSITIONNEMENT
+BLOC 2 — LES CARACTÉRISTIQUES CLÉS
+BLOC 3 — LE LOGEMENT ET SES ATOUTS
+BLOC 4 — L'ENVIRONNEMENT ET LA LOCALISATION
+BLOC 5 — APPEL À L'ACTION
+
+Une section peut être omise si les données nécessaires n'existent pas. Ne jamais créer de contenu
+artificiel pour remplir un bloc.
+
+10. ACCROCHE ET CARACTÉRISTIQUES CLÉS
+Commence par une accroche courte qui permet de comprendre immédiatement le logement et son
+principal avantage. Exemple de logique : « Découvrez cet appartement récent de 3 pièces, prolongé
+par une terrasse et situé à proximité des transports. »
+
+Puis présente, si utile, un bloc LES CARACTÉRISTIQUES CLÉS. Une donnée par ligne : Type ; Surface ;
+Extérieur ; Étage ; Exposition ; Stationnement ; Prix ; Disponibilité.
+
+Ne jamais afficher « non communiqué », « inconnu » ou une valeur supposée. Si une donnée manque,
+supprimer simplement la ligne.
+
+11. LE LOGEMENT ET SES ATOUTS
+Réécris les informations dans un langage naturel. Ne recopie jamais mécaniquement le descriptif
+partenaire.
+
+Sélectionne 3 à 7 caractéristiques fortes. Une grande terrasse peut être valorisée comme espace
+extérieur exploitable ; une place de parking comme élément pratique ; une vue documentée comme
+argument majeur ; un agencement peut être valorisé uniquement si le plan ou les données permettent
+réellement de le comprendre.
+
+Ne jamais qualifier un plan de « parfaitement optimisé » ou « sans perte de place » sans éléments
+objectifs.
+
+12. ENVIRONNEMENT, PRESTATIONS ET LOCALISATION
+Valorise uniquement les éléments confirmés et utiles : transports ; gare ; axes routiers ; commerces ;
+écoles ; services ; espaces verts ; centre-ville ; pôles d'emploi ; équipements sportifs ou culturels ;
+distances ou temps de trajet fiables.
+
+Pour la résidence, sélectionne les prestations ayant une valeur concrète : ascenseur ; stationnement
+sécurisé ; local vélo ; espaces communs ; accès sécurisé ; accessibilité ; équipements ou matériaux
+explicitement décrits.
+
+Ne transforme pas l'annonce en présentation touristique de la ville et ne cite jamais une prestation
+simplement parce qu'elle est habituelle dans une résidence récente.
+
+13. DONNÉES, PROMESSES ET INFORMATIONS EXTERNES
+Ne jamais inventer une statistique ou ajouter spontanément des chiffres sur la démographie, la
+tension immobilière, les prix au m², la rentabilité, la croissance du quartier ou la demande locale.
+
+Ne jamais promettre : investissement sans risque ; plus-value assurée ; rentabilité garantie ; valeur
+garantie ; placement sécurisé ; avantage fiscal garanti ; économies garanties.
+
+Même si le bien peut intéresser un investisseur, le cœur de l'annonce reste le logement et ses
+caractéristiques concrètes.
+
+14. VARIATION ET CONTRÔLE QUALITÉ
+Les annonces doivent conserver une identité commune sans sembler copiées-collées. Faire
+légèrement varier l'accroche, les transitions, l'ordre des arguments secondaires et la conclusion. Ne
+jamais faire varier un fait.
+
+Avant de répondre, vérifier silencieusement :
+1. Ai-je inventé une information ?
+2. Ai-je utilisé « neuf » ou une formulation interdite ?
+3. Si j'ai utilisé « récent », est-ce cohérent avec les données ?
+4. Ai-je vendu le logement plutôt qu'une catégorie immobilière ?
+5. Ai-je sélectionné les meilleurs arguments ?
+6. Le titre met-il en avant une vraie caractéristique ?
+7. Les chiffres sont-ils fiables ?
+8. Ai-je évité les promesses et superlatifs non justifiés ?
+9. L'annonce est-elle lisible sur smartphone ?
+10. Donne-t-elle envie d'en savoir plus sans exagérer ?
+11. Le texte est-il suffisamment original par rapport à la source ?
+
+15. FORMAT DE SORTIE ET PRIORITÉS ABSOLUES
+Réponds UNIQUEMENT avec un objet JSON strictement conforme à cette structure, sans aucun markdown ni texte autour :
+{"titre": "...", "texte": "..."}
+
+"titre" : titre court, accrocheur et factuel — idéalement 55 à 60 caractères maximum.
+"texte" : description complète prête à être publiée, paragraphes courts de 2 à 3 phrases maximum. Intertitres possibles : LES CARACTÉRISTIQUES CLÉS ; LE LOGEMENT ; L'ENVIRONNEMENT — en MAJUSCULES sur leur propre ligne. Une donnée par ligne dans les caractéristiques clés. Ligne vide entre les blocs. Terminer par un appel à l'action court invitant à demander le dossier ou à échanger avec un conseiller.
+
+Ne retourne jamais ton analyse, les informations écartées, tes raisonnements, les sources, les
+contradictions ou des recommandations internes.
+
+PRIORITÉS ABSOLUES :
+1. Exactitude des informations.
+2. Ne jamais présenter le bien comme « neuf ».
+3. Valoriser les caractéristiques concrètes du bien.
+4. Compréhension immédiate.
+5. Lisibilité.
+6. Pertinence commerciale.
+7. Personnalisation au lot.
+8. Style rédactionnel.
+
+Une annonce légèrement moins commerciale mais exacte est toujours préférable à une annonce
+séduisante contenant une information non vérifiée.`;
+
 // Garde-fou post-génération : le prompt interdit déjà explicitement ces formulations (voir
 // "FISCALITÉ ET SÉCURITÉ — INTERDICTIONS STRICTES" ci-dessus), mais l'instruction seule ne
 // suffit pas à 100% avec une température à 0,7 (constaté en conditions réelles sur 5/8 lots
@@ -674,6 +875,12 @@ Ne retourne rien d'autre : pas ton analyse, pas les informations écartées, pas
 // déjà en place sur la rentabilité aberrante (donneesFinancieresFiablesDepuisLot) : ne jamais
 // laisser passer une donnée/formulation non fiable sans un filet de sécurité côté code.
 const FORMULATIONS_INTERDITES = [
+    // Règle absolue du prompt V1 Neuf (voir PROMPT_SYSTEME_NEUF_V1, section 4) : jamais "neuf"/
+    // "neufs" pour qualifier le bien, employer "récent" à la place. Partagée avec le reste de la
+    // liste (même mécanisme que "garanti"/"sécurisé") plutôt que scindée par chemin de
+    // génération — risque de faux positif jugé négligeable ("neuf" n'a aucun usage légitime
+    // attendu dans une annonce, que ce soit LMNP ou Neuf.
+    ['mot "neuf" interdit (utiliser "récent")', /\bneufs?\b/i],
     ['zéro impôt', /zéro imp[ôo]t/i],
     ["exonération d'impôt garantie", /exon[ée]ration d'imp[ôo]t garantie/i],
     ['revenus totalement défiscalisés', /revenus? totalement défiscalisés?/i],
@@ -893,6 +1100,11 @@ Annexes : 5 m² de balcon, 1 parking extérieur
 // directe et sans ambiguïté. Validé : a rattrapé 5/5 violations réelles observées en test.
 function alternativesPourCorrection(hits, lot) {
     const lignes = [];
+    if (hits.some((h) => h.includes('mot "neuf" interdit'))) {
+        lignes.push(
+            '- Pour "neuf"/"neufs" appliqué au bien/logement/programme/résidence → remplace par "récent"/"récents" (ou "récente"/"récentes" selon l\'accord) — jamais par une autre formulation qui reclasserait implicitement le bien dans le neuf (ex: "tout juste construit", "sortant de terre", "livraison imminente").'
+        );
+    }
     if (hits.some((h) => h.includes('garanti'))) {
         lignes.push(
             '- Pour "loyer garanti" / "revenus garantis" / "garantissant le versement du loyer" → remplace par exactement : "le loyer est versé selon les conditions du bail commercial".',
@@ -1044,6 +1256,74 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
     return { titre: resultat.titre, texte: resultat.texte, alerteConformite: hits.length > 0 ? hits : null };
 }
 
+// Prompt V1 Neuf (client, 2026-09-12, voir PROMPT_SYSTEME_NEUF_V1) — branché sur le chemin
+// ag762216 ("Plusimmo - La Centrale du Neuf"), remplace l'ancien chemin générique callOpenAI
+// pour ce portail. Même structure que callOpenAILmnp (retry 429, mode JSON strict, garde-fou de
+// conformité partagé) : les champs structurés (surface, étage, exposition, balcon/terrasse/
+// loggia, garage/box/cave, parking, DPE, adresse...) ne sont volontairement PAS demandés à l'IA
+// ici — ils viennent tous de champsConnusDepuisLot(lot), écrasés après coup dans /api/generate,
+// exactement comme pour le LMNP. Cette fonction ne renvoie que titre+texte, jamais de champ
+// structuré deviné.
+async function callOpenAINeuf(textContext, base64Images, lot) {
+    const messageContent = [
+        { type: 'text', text: 'Données structurées complètes du lot :\n\n' + (textContext || '(Aucun texte, base-toi sur les images)') },
+    ];
+    for (const img of base64Images) {
+        messageContent.push({ type: 'image_url', image_url: { url: img } });
+    }
+
+    const messages = [{ role: 'system', content: PROMPT_SYSTEME_NEUF_V1 }, { role: 'user', content: messageContent }];
+
+    let resultat, hits = [];
+    const MAX_TENTATIVES_CONFORMITE = 3;
+    for (let essai = 1; essai <= MAX_TENTATIVES_CONFORMITE; essai++) {
+        let response;
+        for (let tentative = 1; tentative <= 3; tentative++) {
+            try {
+                response = await axios.post('https://api.openai.com/v1/chat/completions', {
+                    model: 'gpt-4o',
+                    messages,
+                    temperature: 0.7,
+                    max_tokens: 4000,
+                    response_format: { type: 'json_object' },
+                }, {
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` },
+                    timeout: 60000,
+                });
+                break;
+            } catch (e) {
+                if (e.response?.status !== 429 || tentative === 3) throw e;
+                const delaiMs = 1000 * 2 ** (tentative - 1);
+                console.log(`[callOpenAINeuf] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
+                await new Promise((r) => setTimeout(r, delaiMs));
+            }
+        }
+
+        await enregistrerUsageOpenAI(response.data.usage, 'gpt-4o');
+
+        let content = response.data.choices[0].message.content;
+        content = (content || '').replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+        try {
+            resultat = JSON.parse(content);
+        } catch (e) {
+            throw new Error(`JSON.parse a échoué (finish_reason=${response.data.choices[0].finish_reason}, contenu brut="${content.substring(0, 200)}")`);
+        }
+        hits = detecterProblemesConformite(resultat.texte, lot);
+        if (hits.length === 0) break;
+
+        if (essai < MAX_TENTATIVES_CONFORMITE) {
+            console.log(`[callOpenAINeuf] formulation(s) interdite(s) détectée(s) (${hits.join(', ')}) — nouvelle tentative avec correction ciblée`);
+            messages.push({ role: 'assistant', content: JSON.stringify(resultat) });
+            messages.push({
+                role: 'user',
+                content: `Ta réponse précédente contient un problème détecté par notre vérification automatique : ${hits.join(', ')}.\n\nCorrige en appliquant EXACTEMENT l'une de ces substitutions (ne réinvente pas une reformulation différente) :\n${alternativesPourCorrection(hits, lot)}\n\nNe change rien d'autre au fond ni à la structure. Réponds à nouveau uniquement avec le JSON {"titre": "...", "texte": "..."}.`,
+            });
+        }
+    }
+
+    return { titre: resultat.titre, texte: resultat.texte, alerteConformite: hits.length > 0 ? hits : null };
+}
+
 // Garde-fou "document ne correspond pas au lot" (ex: plan d'un autre appartement) — PUREMENT
 // INFORMATIF, contrairement aux garde-fous ci-dessus : ne bloque jamais la publication, ne
 // modifie jamais rien silencieusement. Signale juste un doute pour vérification humaine (voir
@@ -1192,11 +1472,10 @@ app.post('/api/generate', async (req, res) => {
             aiData = { ...champsConnusDepuisLot(lot), titre, texte };
             alerteConformite = alerte;
         } else {
-            // 'neuf' — chemin générique existant (callOpenAI) en attendant un prompt Neuf dédié.
-            // Pour brancher ce futur prompt : ajouter un cas `chemin === 'neuf-dedie'` ici, sans
-            // toucher à choisirCheminGeneration ni au routage.
-            const { alerteConformite: alerte, ...donnees } = await callOpenAI(buildTextContext(lot), lotImages, lot);
-            aiData = { ...donnees, ...champsConnusDepuisLot(lot) };
+            // 'neuf' — prompt V1 dédié du client (voir PROMPT_SYSTEME_NEUF_V1, callOpenAINeuf),
+            // remplace l'ancien chemin générique callOpenAI pour ce portail (2026-09-12).
+            const { titre, texte, alerteConformite: alerte } = await callOpenAINeuf(buildTextContext(lot), lotImages, lot);
+            aiData = { ...champsConnusDepuisLot(lot), titre, texte };
             alerteConformite = alerte;
         }
         res.json({ success: true, aiData, images: lotImages, villeConnue, codePostalConnu, alerteConformite });
@@ -1357,7 +1636,13 @@ function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, esp
         id_contact_a_afficher: 146265, 
         devise_iso_4217: "EUR",
         afficher_prix: "oui",
-        reference: (aiData.reference || "LMNP") + "-" + Math.floor(Math.random() * 10000),
+        // Préfixe par défaut dépendant du portail — jusqu'ici toujours "LMNP" en dur, ce qui
+        // n'avait jamais posé de problème tant que seul le chemin LMNP (aiData.reference
+        // toujours absent, ni champsConnusDepuisLot ni callOpenAILmnp ne le fournissent)
+        // l'atteignait réellement. callOpenAINeuf (2026-09-12) ne fournit pas non plus de
+        // "reference" — sans cette distinction, un lot Neuf publié aurait affiché une référence
+        // "LMNP-xxxx" trompeuse.
+        reference: (aiData.reference || (espaceLogin === PORTAIL_LOGIN_NEUF ? 'PLUSIMO' : 'LMNP')) + "-" + Math.floor(Math.random() * 10000),
         titre: aiData.titre || "Annonce LMNP",
         titre_alternatif: aiData.titre_alternatif || aiData.titre || "Annonce LMNP",
         texte_resume: aiData.texte_resume || "",
