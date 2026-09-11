@@ -28,7 +28,6 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
-    enrichirLot,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -411,126 +410,6 @@ scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
 scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
-});
-
-// TEMPORAIRE — renvoie un lot Otaree entièrement enrichi (pour POST direct vers
-// /api/generate sur immo76-moteur-ia), afin de tester le correctif DPE (kWh/GES inventés)
-// sur des lots réels avec un DPE connu, sans passer par le pipeline d'auto-publication.
-scraperRouter.post('/diag-lot-enrichi-dpe', exigerConnexion, async (req, res) => {
-    try {
-        const { villeCode, villeLabel, nb } = req.body || {};
-        const where = [{ label: villeLabel || 'Marseille', key: villeCode || 'city_4348', value: villeCode || 'city_4348' }];
-        const { lots } = await rechercherLotsOtaree({ where });
-        const echantillon = lots.slice(0, nb || 20);
-        const enrichis = await Promise.all(echantillon.map((l) => enrichirLot(structuredClone(l))));
-        const avecDpe = enrichis.filter((l) => l.energyClass);
-        if (!avecDpe.length) return res.status(404).json({ erreur: 'Aucun lot avec DPE trouvé dans cet échantillon' });
-        res.json(avecDpe[0]);
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-// TEMPORAIRE — recherche + enrichit tous les lots d'une ville avec un filtre de prix optionnel,
-// pour retrouver un lot précis (le lot brut Otaree reste la seule source fiable, la ligne DB
-// correspondante a été purgée) et vérifier fidèlement ce qui a été envoyé à Hubiflow.
-scraperRouter.post('/diag-lots-ville', exigerConnexion, async (req, res) => {
-    try {
-        const { villeCode, villeLabel, maxPrice, nb, idComplet } = req.body || {};
-        const where = [{ label: villeLabel || 'Rouen', key: villeCode || 'city_29781', value: villeCode || 'city_29781' }];
-        const filters = { where };
-        if (maxPrice) filters.maxPrice = String(maxPrice);
-        const { lots } = await rechercherLotsOtaree(filters);
-        const echantillon = lots.slice(0, nb || 30);
-        const enrichis = await Promise.all(echantillon.map((l) => enrichirLot(structuredClone(l))));
-        if (idComplet) {
-            const trouve = enrichis.find((l) => l.id === idComplet);
-            if (!trouve) return res.status(404).json({ erreur: 'id introuvable dans cet échantillon' });
-            return res.json(trouve);
-        }
-        res.json(enrichis.map((l) => ({
-            id: l.id, number: l.number, prix: l.prices?.[0]?.price, energyClass: l.energyClass,
-            floor: l.floor, landSurface: l.landSurface,
-            annexes: l.annexes, annexesSurfaces: l.annexesSurfaces,
-            adresseName: l.program?.address?.name, zipCode: l.program?.address?.zipCode,
-            ville: l.program?.address?.city?.name,
-            latitude: l.program?.address?.latitude, longitude: l.program?.address?.longitude,
-        })));
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-// TEMPORAIRE — inventaire agrégé avant nettoyage complet (voir demande du 2026-09-11) : compte
-// réel par recherche (pas juste "dernieres_annonces_trouvees", qui ne reflète que le dernier
-// run), et liste des annonces ayant un ad_id_externe (donc potentiellement publiées pour de
-// vrai sur Hubiflow) pour vérification une par une avant suppression. Lecture seule, rien n'est
-// modifié.
-scraperRouter.get('/diag-inventaire-nettoyage', exigerConnexion, async (req, res) => {
-    try {
-        const parRecherche = await db.prepare(`
-            SELECT r.id, r.nom, r.resume, r.cree_le, COUNT(a.id) AS nb_annonces
-            FROM recherches r
-            LEFT JOIN annonces a ON a.recherche_id = r.id
-            GROUP BY r.id
-            ORDER BY r.id
-        `).all();
-
-        const totalAnnonces = await db.prepare(`SELECT COUNT(*) AS n FROM annonces`).get();
-        const totalPortails = await db.prepare(`SELECT COUNT(*) AS n FROM annonce_portails`).get();
-        const avecAdIdExterne = await db.prepare(`
-            SELECT ap.id AS ap_id, ap.annonce_id, ap.portail_id, ap.statut, ap.ad_id_externe, ap.mode,
-                   a.titre, a.ville, p.nom AS portail_nom, p.login AS portail_login
-            FROM annonce_portails ap
-            JOIN annonces a ON a.id = ap.annonce_id
-            JOIN portails p ON p.id = ap.portail_id
-            WHERE ap.ad_id_externe IS NOT NULL
-            ORDER BY ap.id
-        `).all();
-        const parStatutLocal = await db.prepare(`SELECT statut, COUNT(*) AS n FROM annonce_portails GROUP BY statut`).all();
-
-        const utilisateurs = await db.prepare(`SELECT id, email, role, actif FROM utilisateurs ORDER BY id`).all();
-        const portails = await db.prepare(`SELECT id, nom, login, actif FROM portails ORDER BY id`).all();
-        const reglesRoutage = await db.prepare(`SELECT COUNT(*) AS n FROM regles_routage`).get();
-
-        res.json({
-            parRecherche, totalAnnonces: totalAnnonces.n, totalPortails: totalPortails.n,
-            parStatutLocal, nbAvecAdIdExterne: avecAdIdExterne.length, avecAdIdExterne,
-            utilisateurs, portails, nbReglesRoutage: reglesRoutage.n,
-        });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-// TEMPORAIRE — purge finale approuvée (2026-09-11) : supprime les 25 357 annonces (cascade
-// annonce_portails/scraper_runs) et les 9 recherches ayant au moins un lot, une fois les 24
-// lots réellement publiés dépubliés sur Hubiflow (déjà fait séparément avant cet appel).
-// Comptes, portails et règles de routage jamais touchés ici.
-scraperRouter.post('/diag-purge-nettoyage', exigerConnexion, async (req, res) => {
-    try {
-        const resAnnonces = await db.prepare(`DELETE FROM annonces`).run();
-        const resRecherches = await db.prepare(
-            `DELETE FROM recherches WHERE id IN (72,73,74,76,77,79,82,167,169)`
-        ).run();
-        res.json({ annoncesSupprimees: resAnnonces.changes, recherchesSupprimees: resRecherches.changes });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-// TEMPORAIRE — lit les dernières lignes openai_usage_log (base partagée avec Ubiflow-Auto-API)
-// pour obtenir le coût réel du test de bascule gpt-4o sur le chemin LMNP.
-scraperRouter.get('/diag-openai-usage', exigerConnexion, async (req, res) => {
-    try {
-        const nb = Number(req.query.nb) || 10;
-        const lignes = await db.prepare(
-            `SELECT id, prompt_tokens, completion_tokens, cout_usd, cree_le FROM openai_usage_log ORDER BY id DESC LIMIT ?`
-        ).all(nb);
-        res.json(lignes);
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
 });
 
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
