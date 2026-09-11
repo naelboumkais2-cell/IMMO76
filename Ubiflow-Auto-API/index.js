@@ -1112,7 +1112,16 @@ app.post('/api/generate', async (req, res) => {
 
         // Prompt V2 dédié pour les lots LMNP (2/21/30/32) — titre+texte seulement, le reste des
         // champs structurés vient directement des données Otaree connues, jamais de l'IA. Tout
-        // autre dispositif (Pinel, autres lois, Neuf) garde le prompt générique existant inchangé.
+        // autre dispositif (Pinel, autres lois, Neuf) garde le prompt générique existant, mais
+        // champsConnusDepuisLot() écrase désormais aussi ses champs structurés (étendu le
+        // 2026-09-11 — jusque-là uniquement branché sur le chemin LMNP, ce qui laissait le
+        // chemin générique deviner garage/terrasse/cave/box/loggia/DPE/adresse par l'IA, avec
+        // les mêmes risques qu'avant l'extension LMNP : constaté en conditions réelles sur un
+        // lot RP neuf/PTZ, "balcon" ressortait en chaîne de texte libre ("oui") plutôt qu'un
+        // booléen fiable, et garage/cave/terrasse/loggia n'étaient même pas dans le schéma).
+        // champsConnusDepuisLot() ne pose jamais une clé qu'il ne connaît pas avec certitude —
+        // l'écraser en dernier ne fait donc que remplacer une supposition de l'IA par un fait
+        // vérifié quand ce fait existe, jamais l'inverse.
         let aiData;
         let alerteConformite = null;
         if (estLotLmnp(lot)) {
@@ -1121,7 +1130,7 @@ app.post('/api/generate', async (req, res) => {
             alerteConformite = alerte;
         } else {
             const { alerteConformite: alerte, ...donnees } = await callOpenAI(buildTextContext(lot), lotImages, lot);
-            aiData = donnees;
+            aiData = { ...donnees, ...champsConnusDepuisLot(lot) };
             alerteConformite = alerte;
         }
         res.json({ success: true, aiData, images: lotImages, villeConnue, codePostalConnu, alerteConformite });
