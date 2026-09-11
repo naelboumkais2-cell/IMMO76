@@ -26,6 +26,9 @@ export const api = {
         request(`/scraper/recherches/${id}/frequence`, { method: 'PUT', body: JSON.stringify({ minutes }) }),
     setRechercheFavori: (id, favori) =>
         request(`/scraper/recherches/${id}/favori`, { method: 'PUT', body: JSON.stringify({ favori }) }),
+    getRecherchePublieesCount: (id) => request(`/scraper/recherches/${id}/publiees-count`),
+    supprimerRecherche: (id, depublierAvant = false) =>
+        request(`/scraper/recherches/${id}`, { method: 'DELETE', body: JSON.stringify({ depublierAvant }) }),
     getAlertes: () => request('/scraper/alertes'),
     marquerAlertesConsultees: () => request('/scraper/alertes/consultees', { method: 'POST' }),
     runScraper: (url) => request('/scraper/run', { method: 'POST', body: JSON.stringify({ url }) }),

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { IconHistory, IconStar } from './icons.jsx';
+import { IconHistory, IconStar, IconTrash } from './icons.jsx';
 import { Select } from './Select.jsx';
 
 // Fréquence de rescraping programmé — le scheduler (index.js) la respecte pour n'importe quelle
@@ -34,6 +34,7 @@ function formatDate(dateStr) {
 export function Historique({ actif }) {
     const [recherches, setRecherches] = useState(null);
     const [erreur, setErreur] = useState(null);
+    const [suppressionEnCoursId, setSuppressionEnCoursId] = useState(null);
 
     const refresh = useCallback(() => {
         api.getRecherches().then(setRecherches).catch((e) => setErreur(e.message));
@@ -60,6 +61,39 @@ export function Historique({ actif }) {
     async function onToggleFavori(recherche) {
         const updated = await api.setRechercheFavori(recherche.id, !recherche.favori);
         setRecherches((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
+    }
+
+    // Suppression définitive (pas de corbeille) — voir scraper.js, DELETE /recherches/:id. Le
+    // comptage "publiées" (annonces réellement envoyées à Hubiflow, jamais dépubliées depuis) est
+    // vérifié juste avant de choisir le texte de confirmation : jamais de suppression silencieuse
+    // de quelque chose de réellement public, même par erreur de manipulation.
+    async function onSupprimerRecherche(recherche) {
+        const nom = recherche.nom || recherche.resume || recherche.url;
+        setSuppressionEnCoursId(recherche.id);
+        try {
+            const { totalAnnonces, publiees } = await api.getRecherchePublieesCount(recherche.id);
+            let depublierAvant = false;
+            if (publiees > 0) {
+                const confirme = window.confirm(
+                    `${publiees} lot(s) sur ${totalAnnonces} sont publiés sur Hubiflow pour "${nom}".\n\n` +
+                        `Les dépublier automatiquement puis supprimer définitivement la recherche et tous ses lots ?\n\n` +
+                        `Action irréversible — pas de corbeille.`
+                );
+                if (!confirme) return;
+                depublierAvant = true;
+            } else {
+                const confirme = window.confirm(
+                    `Supprimer la recherche "${nom}" et ses ${totalAnnonces} lot(s) ?\n\nAction irréversible — pas de corbeille.`
+                );
+                if (!confirme) return;
+            }
+            await api.supprimerRecherche(recherche.id, depublierAvant);
+            setRecherches((prev) => prev.filter((r) => r.id !== recherche.id));
+        } catch (e) {
+            setErreur(e.message);
+        } finally {
+            setSuppressionEnCoursId(null);
+        }
     }
 
     if (!recherches) {
@@ -93,6 +127,7 @@ export function Historique({ actif }) {
                                 <th>Nom</th>
                                 <th>Date</th>
                                 <th>Résultats</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -126,11 +161,22 @@ export function Historique({ actif }) {
                                             ? <span className="text-error">{r.derniere_erreur}</span>
                                             : `${r.dernieres_annonces_trouvees ?? 0} lot${(r.dernieres_annonces_trouvees ?? 0) > 1 ? 's' : ''}`}
                                     </td>
+                                    <td className="col-tight">
+                                        <button
+                                            type="button"
+                                            className="btn btn-ghost-danger btn-icon-only"
+                                            disabled={suppressionEnCoursId === r.id}
+                                            onClick={() => onSupprimerRecherche(r)}
+                                            title="Supprimer cette recherche et tous ses lots (définitif)"
+                                        >
+                                            <IconTrash width={16} height={16} />
+                                        </button>
+                                    </td>
                                 </tr>
                             ))}
                             {recherches.length === 0 && (
                                 <tr className="empty-row">
-                                    <td colSpan={4}>Aucune recherche pour l'instant.</td>
+                                    <td colSpan={5}>Aucune recherche pour l'instant.</td>
                                 </tr>
                             )}
                         </tbody>

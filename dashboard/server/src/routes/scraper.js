@@ -9,6 +9,7 @@ import {
     annulerRunEnAttente,
     detailLotEnAttente,
     upsertRecherche,
+    depublierInstance,
 } from '../services/orchestrator.js';
 import { getEtatAutoPublish, demanderAnnulation } from '../services/autoPublishStatus.js';
 import { verifierDoublonsHubiflow } from '../services/doublonsChecker.js';
@@ -77,6 +78,61 @@ scraperRouter.put('/recherches/:id/favori', exigerConnexion, async (req, res) =>
         const { favori } = req.body;
         await db.prepare(`UPDATE recherches SET favori = ? WHERE id = ?`).run(favori ? 1 : 0, req.params.id);
         res.json(await db.prepare(`SELECT * FROM recherches WHERE id = ?`).get(req.params.id));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+// Comptage utilisé avant suppression (voir DELETE ci-dessous) : "publié" signifie réellement
+// envoyé à Hubiflow et jamais dépublié depuis (ad_id_externe posé, statut != 'depubliee') —
+// pas juste "en_attente" (jamais généré) ni "erreur" (tentative ratée, rien de public).
+scraperRouter.get('/recherches/:id/publiees-count', exigerConnexion, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const totalAnnonces = await db.prepare(`SELECT COUNT(*)::int AS n FROM annonces WHERE recherche_id = ?`).get(id);
+        const publiees = await db.prepare(
+            `SELECT COUNT(*)::int AS n
+             FROM annonce_portails ap JOIN annonces a ON a.id = ap.annonce_id
+             WHERE a.recherche_id = ? AND ap.ad_id_externe IS NOT NULL AND ap.statut != 'depubliee'`
+        ).get(id);
+        res.json({ totalAnnonces: totalAnnonces.n, publiees: publiees.n });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+// Suppression définitive d'une recherche et de tous ses lots (pas de corbeille) — pensée pour
+// nettoyer un test ou une recherche mal lancée depuis l'interface, sans passer par une
+// intervention manuelle en base à chaque fois (voir nettoyages précédents). Refuse tant que des
+// lots réellement publiés existent, sauf si `depublierAvant` est explicitement demandé (voir
+// publiees-count ci-dessus pour le même critère "réellement publié").
+scraperRouter.delete('/recherches/:id', exigerConnexion, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const { depublierAvant } = req.body || {};
+
+        const aDepublier = await db.prepare(
+            `SELECT a.id AS annonce_id, ap.portail_id
+             FROM annonce_portails ap JOIN annonces a ON a.id = ap.annonce_id
+             WHERE a.recherche_id = ? AND ap.ad_id_externe IS NOT NULL AND ap.statut != 'depubliee'`
+        ).all(id);
+
+        if (aDepublier.length > 0 && !depublierAvant) {
+            return res.status(409).json({ erreur: `${aDepublier.length} lot(s) sont publiés sur Hubiflow — dépublication requise avant suppression.`, publiees: aDepublier.length });
+        }
+
+        let depubliees = 0;
+        for (const { annonce_id, portail_id } of aDepublier) {
+            const result = await depublierInstance(annonce_id, portail_id);
+            if (result.success) depubliees++;
+        }
+        if (depubliees < aDepublier.length) {
+            return res.status(500).json({ erreur: `${aDepublier.length - depubliees}/${aDepublier.length} dépublication(s) ont échoué — suppression annulée, rien n'a été supprimé.` });
+        }
+
+        const suppAnnonces = await db.prepare(`DELETE FROM annonces WHERE recherche_id = ?`).run(id);
+        const suppRecherche = await db.prepare(`DELETE FROM recherches WHERE id = ?`).run(id);
+        res.json({ annoncesSupprimees: suppAnnonces.changes, rechercheSupprimee: suppRecherche.changes, depubliees });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
