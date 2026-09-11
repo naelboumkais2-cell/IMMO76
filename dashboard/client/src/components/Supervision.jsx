@@ -31,28 +31,24 @@ function ModeBadge({ mode }) {
 }
 
 // `actif` (l'onglet Superviser est bien celui affiché en ce moment) : voir le commentaire
-// équivalent dans Historique.jsx — sans ce garde-fou, le rafraîchissement (3 requêtes à la
-// fois : annonces + logs + portails) tournait toutes les 5s en continu même sur un onglet
-// jamais regardé, une part importante du trafic de fond qui a fini par déclencher la
-// protection anti-robot de Cloudflare devant Render.
+// équivalent dans Historique.jsx — sans ce garde-fou, le rafraîchissement (2 requêtes à la
+// fois : annonces + portails) tournait toutes les 5s en continu même sur un onglet jamais
+// regardé, une part importante du trafic de fond qui a fini par déclencher la protection
+// anti-robot de Cloudflare devant Render.
 export function Supervision({ actif }) {
     const [annonces, setAnnonces] = useState([]);
-    const [logs, setLogs] = useState([]);
     const [portails, setPortails] = useState([]);
     const [erreur, setErreur] = useState(null);
     const [busyKey, setBusyKey] = useState(null);
     const [recherche, setRecherche] = useState('');
     const [pageAnnonces, setPageAnnonces] = useState(1);
-    const [pageLogs, setPageLogs] = useState(1);
 
     const LIMIT_ANNONCES = 10;
-    const LIMIT_LOGS = 15;
 
     const refresh = useCallback((q) => {
-        Promise.all([api.getAnnonces(q), api.getLogs(), api.getPortails()])
-            .then(([a, l, p]) => {
+        Promise.all([api.getAnnonces(q), api.getPortails()])
+            .then(([a, p]) => {
                 setAnnonces(a);
-                setLogs(l);
                 setPortails(p);
             })
             .catch((e) => setErreur(e.message));
@@ -164,9 +160,6 @@ export function Supervision({ actif }) {
 
     const totalPagesAnnonces = Math.max(1, Math.ceil(annonces.length / LIMIT_ANNONCES));
     const annoncesPaginated = annonces.slice((pageAnnonces - 1) * LIMIT_ANNONCES, pageAnnonces * LIMIT_ANNONCES);
-
-    const totalPagesLogs = Math.max(1, Math.ceil(logs.length / LIMIT_LOGS));
-    const logsPaginated = logs.slice((pageLogs - 1) * LIMIT_LOGS, pageLogs * LIMIT_LOGS);
 
     return (
         <section className="panel">
@@ -344,36 +337,6 @@ export function Supervision({ actif }) {
                             <button className="btn btn-secondary" disabled={pageAnnonces === 1} onClick={() => setPageAnnonces(p => p - 1)}>Précédent</button>
                             <span style={{ alignSelf: 'center', fontSize: 13, fontWeight: 600, color: 'var(--color-text-muted)' }}>Page {pageAnnonces} / {totalPagesAnnonces}</span>
                             <button className="btn btn-secondary" disabled={pageAnnonces === totalPagesAnnonces} onClick={() => setPageAnnonces(p => p + 1)}>Suivant</button>
-                        </div>
-                    )}
-                </div>
-
-                <div>
-                    <p className="panel-section-title">Logs des appels API</p>
-                    <div className="logs-container">
-                        <div className="logs-header">
-                            <div className="dot"></div>
-                            <div className="dot"></div>
-                            <div className="dot"></div>
-                        </div>
-                        <ul className="logs">
-                            {logsPaginated.map((l) => (
-                                <li key={l.id} className={l.succes ? 'log-ok' : 'log-fail'}>
-                                    <span className="log-date">{l.cree_le}</span>
-                                    <span className="log-type">{l.type}</span>
-                                    {l.annonce_titre && <span className="cell-muted"> {l.annonce_titre}</span>}
-                                    {l.portail_nom && <span className="cell-muted"> → {l.portail_nom}</span>}
-                                    <span className="log-message">{l.message}</span>
-                                </li>
-                            ))}
-                            {logs.length === 0 && <li className="log-empty">Aucun log pour l'instant.</li>}
-                        </ul>
-                    </div>
-                    {totalPagesLogs > 1 && (
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 16 }}>
-                            <button className="btn btn-secondary" disabled={pageLogs === 1} onClick={() => setPageLogs(p => p - 1)}>Précédent</button>
-                            <span style={{ alignSelf: 'center', fontSize: 13, fontWeight: 600, color: 'var(--color-text-muted)' }}>Page {pageLogs} / {totalPagesLogs}</span>
-                            <button className="btn btn-secondary" disabled={pageLogs === totalPagesLogs} onClick={() => setPageLogs(p => p + 1)}>Suivant</button>
                         </div>
                     )}
                 </div>
