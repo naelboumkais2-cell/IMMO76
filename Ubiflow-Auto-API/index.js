@@ -1100,6 +1100,16 @@ Annexes : 5 m² de balcon, 1 parking extérieur
 // directe et sans ambiguïté. Validé : a rattrapé 5/5 violations réelles observées en test.
 function alternativesPourCorrection(hits, lot) {
     const lignes = [];
+    if (hits.some((h) => h.includes('rentabilité/rendement chiffré'))) {
+        lignes.push(
+            '- Supprime entièrement toute mention d\'un pourcentage de rentabilité ou de rendement locatif — cette donnée n\'est jamais fiable pour ce type de bien dans ce pipeline, quelle que soit la valeur vue dans les données brutes. La phrase reste correcte sans elle.'
+        );
+    }
+    if (hits.some((h) => h.includes('proximité (transports/commerces/écoles)'))) {
+        lignes.push(
+            '- Supprime toute mention de proximité des transports, commerces ou écoles dans le bloc ENVIRONNEMENT — cette information n\'est pas confirmée pour ce lot. Recentre le bloc sur ce qui est réellement connu (ville, éventuellement le nom de la résidence), ou supprime le bloc entier si rien d\'autre n\'est disponible.'
+        );
+    }
     if (hits.some((h) => h.includes('mot "neuf" interdit'))) {
         lignes.push(
             '- Pour "neuf"/"neufs" appliqué au bien/logement/programme/résidence → remplace par "récent"/"récents" (ou "récente"/"récentes" selon l\'accord) — jamais par une autre formulation qui reclasserait implicitement le bien dans le neuf (ex: "tout juste construit", "sortant de terre", "livraison imminente").'
@@ -1264,6 +1274,41 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
 // ici — ils viennent tous de champsConnusDepuisLot(lot), écrasés après coup dans /api/generate,
 // exactement comme pour le LMNP. Cette fonction ne renvoie que titre+texte, jamais de champ
 // structuré deviné.
+// Deux garde-fous spécifiques au chemin Neuf, ajoutés après test réel sur 4 lots (2026-09-12) —
+// le prompt V1 interdit déjà ces deux dérives par instruction, mais l'instruction seule n'a pas
+// suffi (même constat que partout ailleurs dans ce pipeline) :
+//
+// 1. Rentabilité/rendement chiffré : Otaree fournit un champ "profitability" sur prices[], mais
+//    sa fiabilité n'est validée QUE pour le LMNP marché secondaire à TVA nulle (voir
+//    donneesFinancieresFiablesDepuisLot) — jamais pour le Neuf/Pinel, où la TVA est presque
+//    toujours renseignée. Sans garde-fou, le modèle cite ce chiffre tel quel dès qu'il le voit
+//    dans les données brutes (constaté : "Profitez d'une rentabilité de 6.44%." sur un lot réel).
+//    Pas de mécanisme "DONNÉES CONNUES AVEC CERTITUDE" ici comme pour le LMNP : plus simple
+//    d'interdire totalement la citation d'un chiffre de rentabilité que de le fiabiliser.
+// 2. Proximité (transports/commerces/écoles) non sourcée : Otaree ne fournit JAMAIS de distance
+//    ou de POI vérifié dans ce pipeline — confirmé par échantillonnage réel, aucun des 4 lots
+//    testés n'avait la moindre mention de proximité dans son descriptif source, alors que le
+//    modèle en a inventé une à chaque fois ("à proximité immédiate des transports et des
+//    commodités", "proche des commerces, écoles et transports"...). Cross-vérifie contre le texte
+//    source réel du lot (description/program.description) plutôt que d'interdire le mot lui-même
+//    — une mention légitime (si un jour Otaree fournit cette donnée) resterait acceptée.
+const RENTABILITE_CHIFFREE_RE = /(rentabilit[ée]|rendement)[^.\n]{0,25}\d/i;
+const MOTS_PROXIMITE_RE = /\b(transports?|commerces?|écoles?|proximit[ée]|proche des|desservi\w*|dessert\b|ligne de (bus|tram|m[ée]tro))\b/i;
+
+function detecterProximiteNonSourcee(texte, lot) {
+    if (!texte || !MOTS_PROXIMITE_RE.test(texte)) return false;
+    const sourceTexte = [lot?.description, lot?.program?.description].filter(Boolean).join(' ');
+    return !MOTS_PROXIMITE_RE.test(sourceTexte);
+}
+
+const ADDENDUM_NEUF_GARDE_FOUS = `
+
+=== GARDE-FOUS SUPPLÉMENTAIRES (spécifiques à ce pipeline) ===
+
+RENTABILITÉ : même si un pourcentage de rentabilité ou de rendement locatif apparaît dans les données brutes fournies, ne le mentionne JAMAIS dans le texte final — ce chiffre n'est pas fiabilisé pour ce type de bien (TVA variable) et pourrait induire en erreur. Omets-le systématiquement, quelle que soit sa plausibilité.
+
+PROXIMITÉ (transports, commerces, écoles) : ce pipeline ne fournit JAMAIS de distance ou de point d'intérêt vérifié. Ne mentionne la proximité des transports, commerces ou écoles QUE si cette information apparaît explicitement dans le descriptif fourni pour CE bien — jamais comme supposition générale liée à la ville ou au quartier. En l'absence de cette donnée (le cas le plus fréquent), omets entièrement le sujet dans le bloc ENVIRONNEMENT plutôt que d'affirmer une proximité non vérifiée.`;
+
 async function callOpenAINeuf(textContext, base64Images, lot) {
     const messageContent = [
         { type: 'text', text: 'Données structurées complètes du lot :\n\n' + (textContext || '(Aucun texte, base-toi sur les images)') },
@@ -1272,7 +1317,7 @@ async function callOpenAINeuf(textContext, base64Images, lot) {
         messageContent.push({ type: 'image_url', image_url: { url: img } });
     }
 
-    const messages = [{ role: 'system', content: PROMPT_SYSTEME_NEUF_V1 }, { role: 'user', content: messageContent }];
+    const messages = [{ role: 'system', content: PROMPT_SYSTEME_NEUF_V1 + ADDENDUM_NEUF_GARDE_FOUS }, { role: 'user', content: messageContent }];
 
     let resultat, hits = [];
     const MAX_TENTATIVES_CONFORMITE = 3;
@@ -1309,6 +1354,12 @@ async function callOpenAINeuf(textContext, base64Images, lot) {
             throw new Error(`JSON.parse a échoué (finish_reason=${response.data.choices[0].finish_reason}, contenu brut="${content.substring(0, 200)}")`);
         }
         hits = detecterProblemesConformite(resultat.texte, lot);
+        if (RENTABILITE_CHIFFREE_RE.test(resultat.texte || '')) {
+            hits = [...hits, 'rentabilité/rendement chiffré non fiable pour ce chemin (Neuf)'];
+        }
+        if (detecterProximiteNonSourcee(resultat.texte, lot)) {
+            hits = [...hits, 'proximité (transports/commerces/écoles) mentionnée sans être sourcée dans les données du lot'];
+        }
         if (hits.length === 0) break;
 
         if (essai < MAX_TENTATIVES_CONFORMITE) {
