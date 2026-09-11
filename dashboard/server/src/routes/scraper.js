@@ -32,58 +32,8 @@ import {
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
-import { verifierDisparitionsHubiflow } from '../services/syncDisparitions.js';
 
 export const scraperRouter = Router();
-
-// TEMPORAIRE — test de la structure en 2 passes du mécanisme de synchronisation des
-// disparitions (revue du 2026-09-12) avant de la considérer prête pour la production. À retirer
-// une fois validé.
-scraperRouter.get('/diag-instances-a-verifier', exigerConnexion, async (req, res) => {
-    try {
-        const instances = await db
-            .prepare(
-                `SELECT ap.id AS instance_id, ap.annonce_id, ap.portail_id, ap.ad_id_externe, a.titre,
-                        (a.raw_data::json ->> '@id') AS at_id
-                 FROM annonce_portails ap JOIN annonces a ON a.id = ap.annonce_id
-                 WHERE ap.ad_id_externe IS NOT NULL AND ap.statut != 'depubliee'
-                 ORDER BY ap.maj_le DESC LIMIT 20`
-            )
-            .all();
-        res.json({ total: instances.length, instances });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-scraperRouter.post('/diag-fabriquer-atid-absent', exigerConnexion, async (req, res) => {
-    try {
-        const { annonceId } = req.body || {};
-        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(annonceId);
-        if (!row) return res.status(404).json({ erreur: 'Annonce introuvable.' });
-        const raw = JSON.parse(row.raw_data || '{}');
-        const ancienAtId = raw['@id'];
-        raw['@id'] = '/properties/fabrique-test-absent-000000';
-        await db.prepare(`UPDATE annonces SET raw_data = ? WHERE id = ?`).run(JSON.stringify(raw), annonceId);
-        res.json({ ancienAtId, nouvelAtId: raw['@id'] });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-scraperRouter.post('/diag-run-sync-disparitions', exigerConnexion, async (req, res) => {
-    try {
-        const { delaiConfirmationMs, delaiEntreAppelsMs } = req.body || {};
-        const t0 = Date.now();
-        const resultat = await verifierDisparitionsHubiflow({
-            delaiConfirmationMs: delaiConfirmationMs != null ? Number(delaiConfirmationMs) : undefined,
-            delaiEntreAppelsMs: delaiEntreAppelsMs != null ? Number(delaiEntreAppelsMs) : undefined,
-        });
-        res.json({ ...resultat, dureeMs: Date.now() - t0 });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
 
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
