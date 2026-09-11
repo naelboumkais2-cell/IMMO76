@@ -473,6 +473,22 @@ scraperRouter.get('/diag-inventaire-nettoyage', exigerConnexion, async (req, res
     }
 });
 
+// TEMPORAIRE — purge finale approuvée (2026-09-11) : supprime les 25 357 annonces (cascade
+// annonce_portails/scraper_runs) et les 9 recherches ayant au moins un lot, une fois les 24
+// lots réellement publiés dépubliés sur Hubiflow (déjà fait séparément avant cet appel).
+// Comptes, portails et règles de routage jamais touchés ici.
+scraperRouter.post('/diag-purge-nettoyage', exigerConnexion, async (req, res) => {
+    try {
+        const resAnnonces = await db.prepare(`DELETE FROM annonces`).run();
+        const resRecherches = await db.prepare(
+            `DELETE FROM recherches WHERE id IN (72,73,74,76,77,79,82,167,169)`
+        ).run();
+        res.json({ annoncesSupprimees: resAnnonces.changes, recherchesSupprimees: resRecherches.changes });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
