@@ -197,6 +197,8 @@ export function ScraperControl() {
     const [resultatOtaree, setResultatOtaree] = useState(null);
     const [erreurOtaree, setErreurOtaree] = useState(null);
     const [confirmationEnAttente, setConfirmationEnAttente] = useState(null);
+    const [lotsEnAttenteCount, setLotsEnAttenteCount] = useState(0);
+    const [traitementEnAttenteEnCours, setTraitementEnAttenteEnCours] = useState(false);
     const [confirmationEnCours, setConfirmationEnCours] = useState(false);
     const [photosEnErreur, setPhotosEnErreur] = useState(() => new Set());
     // Ids des lots cochés sur l'écran de confirmation — tous cochés par défaut à l'ouverture,
@@ -319,6 +321,17 @@ export function ScraperControl() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Compteur des lots importés mais jamais proposés en candidat (donnees_ia IS NULL, voir
+    // /lots-en-attente-count) — rafraîchi périodiquement pour refléter aussi bien les lots
+    // laissés de côté par un run interrompu/plafonné que ceux qui viennent d'être traités via
+    // le bouton "Traiter les lots en attente" plus bas.
+    useEffect(() => {
+        const poll = () => api.getLotsEnAttenteCount().then(({ count }) => setLotsEnAttenteCount(count)).catch(() => {});
+        poll();
+        const id = setInterval(poll, 15000);
+        return () => clearInterval(id);
+    }, []);
+
     // Polling de la recherche+import (voir pollingImportActif, distinct de rechercheOtareeEnCours
     // — s'arrête dès que le résultat est consommé, voir l'effet suivant).
     useEffect(() => {
@@ -328,6 +341,35 @@ export function ScraperControl() {
         const id = setInterval(poll, 2000);
         return () => clearInterval(id);
     }, [pollingImportActif]);
+
+    // Peuple l'écran de confirmation à partir d'un `result` au format {nbLots, autoPublish}, où
+    // autoPublish.enAttente signale des candidats prêts à être passés en revue — partagé entre le
+    // polling de recherche (ci-dessous) et le bouton "Traiter les lots en attente" (voir
+    // onTraiterLotsEnAttente), qui produit exactement la même forme sans repasser par Otaree.
+    function activerConfirmation(result) {
+        const lots = result.autoPublish.candidatsApercu || [];
+        const portailsDisponibles = result.autoPublish.portailsDisponibles || [];
+        setConfirmationEnAttente({
+            nbCandidats: result.autoPublish.nbCandidats,
+            lots,
+            portailsDisponibles,
+            resultBase: result,
+        });
+        setLotsSelectionnes(new Set(lots.map((l) => l.id)));
+        setReferencesEditees(new Map(lots.map((l) => [l.id, l.referenceGeneree || ''])));
+        setImagesEditees(new Map());
+        setDoublonsTrouves(new Map());
+        setErreurDoublons(null);
+        const portailsResolus = new Set(lots.flatMap((l) => (l.portails || []).map((p) => p.id)));
+        setPortailsChoix(
+            new Map(
+                portailsDisponibles.map((p) => [
+                    p.id,
+                    { publier: portailsResolus.has(p.id), mode: p.mode_publication_defaut },
+                ])
+            )
+        );
+    }
 
     // Traite le résultat une seule fois dès qu'il est disponible (recherche+import terminés côté
     // serveur, avec ou sans erreur) — reprend exactement la logique qui s'exécutait avant en
@@ -346,28 +388,7 @@ export function ScraperControl() {
         if (!result) return; // état initial (aucune recherche encore lancée) — rien à traiter
 
         if (result.autoPublish?.enAttente) {
-            const lots = result.autoPublish.candidatsApercu || [];
-            const portailsDisponibles = result.autoPublish.portailsDisponibles || [];
-            setConfirmationEnAttente({
-                nbCandidats: result.autoPublish.nbCandidats,
-                lots,
-                portailsDisponibles,
-                resultBase: result,
-            });
-            setLotsSelectionnes(new Set(lots.map((l) => l.id)));
-            setReferencesEditees(new Map(lots.map((l) => [l.id, l.referenceGeneree || ''])));
-            setImagesEditees(new Map());
-            setDoublonsTrouves(new Map());
-            setErreurDoublons(null);
-            const portailsResolus = new Set(lots.flatMap((l) => (l.portails || []).map((p) => p.id)));
-            setPortailsChoix(
-                new Map(
-                    portailsDisponibles.map((p) => [
-                        p.id,
-                        { publier: portailsResolus.has(p.id), mode: p.mode_publication_defaut },
-                    ])
-                )
-            );
+            activerConfirmation(result);
             return;
         }
         setResultatOtaree({
@@ -479,6 +500,37 @@ export function ScraperControl() {
         } catch (err) {
             setErreurOtaree(err.message);
             setRechercheOtareeEnCours(false);
+        }
+    }
+
+    // Reprend le pipeline auto-publish directement depuis les lots déjà en base (donnees_ia IS
+    // NULL, voir /traiter-lots-en-attente côté serveur) — comble le trou laissé par une recherche
+    // interrompue/plafonnée : ces lots ne repassent jamais par Otaree ici, donc pas de temps
+    // d'attente comparable à une recherche (quelques secondes, pas ~1h). Réponse synchrone
+    // (contrairement à otaree-search/-national) : pas besoin du polling pollingImportActif.
+    async function onTraiterLotsEnAttente() {
+        setErreurOtaree(null);
+        setResultatOtaree(null);
+        setTraitementEnAttenteEnCours(true);
+        try {
+            const autoPublish = await api.traiterLotsEnAttente();
+            if (autoPublish.enAttente) {
+                activerConfirmation({ nbLots: autoPublish.nbCandidats, autoPublish });
+            } else if (!autoPublish.nbCandidats) {
+                setResultatOtaree({ message: 'Aucun lot en attente à traiter.', tronque: false, annule: false });
+            } else {
+                setResultatOtaree({
+                    message: `${autoPublish.nbTraites} lot(s) traité(s) directement (mode ${autoPublish.mode}).`,
+                    tronque: false,
+                    annule: !!autoPublish.annule,
+                });
+            }
+            const { count } = await api.getLotsEnAttenteCount();
+            setLotsEnAttenteCount(count);
+        } catch (err) {
+            setErreurOtaree(err.message);
+        } finally {
+            setTraitementEnAttenteEnCours(false);
         }
     }
 
@@ -810,6 +862,19 @@ export function ScraperControl() {
                                     style={{ margin: '4px' }}
                                 >
                                     {annulationDemandee ? 'Annulation demandée…' : 'Annuler'}
+                                </button>
+                            )}
+                            {lotsEnAttenteCount > 0 && (
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    disabled={traitementEnAttenteEnCours || !!confirmationEnAttente}
+                                    onClick={onTraiterLotsEnAttente}
+                                    style={{ margin: '4px' }}
+                                    title="Reprend directement depuis les lots déjà importés en base mais jamais proposés (recherche interrompue ou plafond atteint) — aucun nouvel appel à Otaree."
+                                >
+                                    <IconRefresh style={traitementEnAttenteEnCours ? { animation: 'spin 0.8s linear infinite' } : undefined} />
+                                    {traitementEnAttenteEnCours ? 'Traitement…' : `Traiter les lots en attente (${lotsEnAttenteCount})`}
                                 </button>
                             )}
                         </div>

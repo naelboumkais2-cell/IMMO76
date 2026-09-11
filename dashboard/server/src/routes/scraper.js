@@ -412,6 +412,49 @@ scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     res.json({ success: true });
 });
 
+// Lots déjà importés (par un run passé, terminé ou interrompu) mais jamais proposés en
+// candidat à la génération/publication — voir orchestrator.js, importerLotsOtaree pose
+// systématiquement donnees_ia = NULL à l'import, et ça ne change que lorsqu'executerTraitement
+// génère effectivement les données IA. Sert de marqueur "jamais traité" sans colonne dédiée.
+scraperRouter.get('/lots-en-attente-count', exigerConnexion, async (req, res) => {
+    try {
+        const row = await db.prepare(`SELECT COUNT(*)::int AS n FROM annonces WHERE donnees_ia IS NULL`).get();
+        res.json({ count: row.n });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+// Reprend le pipeline auto-publish directement depuis la base, sans repasser par Otaree —
+// comble le trou laissé par otaree-search(-national) : leur liste de candidats ne vit qu'en
+// mémoire le temps d'un seul appel HTTP (voir commentaire sur candidatsAccumules plus haut),
+// donc toute reprise après interruption, ou tout dépassement de MAX_PAR_RUN, laisse des lots
+// importés mais jamais soumis à autoGenererEtPublier. Rejouable autant de fois que nécessaire :
+// chaque appel prend les MAX_PAR_RUN plus anciens encore non traités (ORDER BY scrapee_le ASC),
+// donc les appels suivants avancent naturellement dans la file plutôt que de reprendre les mêmes.
+scraperRouter.post('/traiter-lots-en-attente', exigerConnexion, async (req, res) => {
+    try {
+        const rows = await db.prepare(
+            `SELECT * FROM annonces WHERE donnees_ia IS NULL ORDER BY scrapee_le ASC LIMIT ?`
+        ).all(MAX_PAR_RUN);
+
+        if (!rows.length) {
+            return res.json({ mode: null, nbCandidats: 0, nbTraites: 0 });
+        }
+
+        const candidats = rows.map((annonce) => ({
+            annonce,
+            lotBrut: JSON.parse(annonce.raw_data || '{}'),
+            estNouvelle: true,
+        }));
+
+        const autoPublish = await autoGenererEtPublier(candidats, null);
+        res.json(autoPublish);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();

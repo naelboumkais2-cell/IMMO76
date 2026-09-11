@@ -41,6 +41,8 @@ export const api = {
     confirmerAutoPublish: (idsSelectionnes, portailsChoisis, referencesEditees, imagesEditees) =>
         request('/scraper/auto-publish-confirm', { method: 'POST', body: JSON.stringify({ idsSelectionnes, portailsChoisis, referencesEditees, imagesEditees }) }),
     annulerAutoPublishEnAttente: () => request('/scraper/auto-publish-discard-pending', { method: 'POST' }),
+    getLotsEnAttenteCount: () => request('/scraper/lots-en-attente-count'),
+    traiterLotsEnAttente: () => request('/scraper/traiter-lots-en-attente', { method: 'POST' }),
     getLotDetail: (annonceId) => request('/scraper/lot-detail', { method: 'POST', body: JSON.stringify({ annonceId }) }),
     verifierDoublons: (ids, portailsChoisis) =>
         request('/scraper/verifier-doublons', { method: 'POST', body: JSON.stringify({ ids, portailsChoisis }) }),
