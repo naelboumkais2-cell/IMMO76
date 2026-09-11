@@ -12,6 +12,7 @@ import { rescraperRechercheFavorite } from './services/orchestrator.js';
 import { mode as hubiflowMode } from './integrations/hubiflowRouter.js';
 import { verifierEtMettreAJourDepenses } from './services/depenseMonitor.js';
 import { depensesRouter } from './routes/depenses.js';
+import { verifierDisparitionsHubiflow } from './services/syncDisparitions.js';
 
 // Filet de sécurité pour le diagnostic en hébergement distant : sans ça, un rejet de promesse
 // non intercepté peut faire quitter le process sans qu'aucun message n'apparaisse dans les logs
@@ -102,6 +103,36 @@ if (!process.env.VERCEL) {
     const controleDepenses = () => verifierEtMettreAJourDepenses().catch((e) => console.error('[depenseMonitor] échec du contrôle:', e.message));
     controleDepenses();
     setInterval(controleDepenses, 10 * 60 * 1000);
+}
+
+// Synchronisation des disparitions Otaree -> suppression Hubiflow (voir syncDisparitions.js,
+// demande du 2026-09-12) — job quotidien nocturne (~3h), pensé pour ne solliciter Otaree qu'une
+// fois par jour sur l'ensemble des lots réellement publiés. Même principe que
+// executerRecherchesDues plus haut : pas de vrai cron, juste une vérification périodique de
+// "est-ce déjà fait aujourd'hui, et est-il l'heure ?" sur un process persistant. Vérifié toutes
+// les 30 min — largement suffisant pour une fenêtre horaire, contrairement au polling minute par
+// minute des recherches programmées (dont la fréquence la plus fine est 15 min).
+const HEURE_CIBLE_SYNC_DISPARITIONS = 3;
+
+async function verifierEtLancerSyncDisparitions() {
+    const { derniere_execution_le } = await db.prepare(`SELECT derniere_execution_le FROM sync_disparition_etat WHERE id = 1`).get();
+    const maintenant = new Date();
+    const dejaExecuteAujourdhui =
+        derniere_execution_le &&
+        new Date(derniere_execution_le).toDateString() === maintenant.toDateString();
+
+    if (dejaExecuteAujourdhui || maintenant.getHours() < HEURE_CIBLE_SYNC_DISPARITIONS) return;
+
+    console.log('[sync-disparitions] démarrage du run nocturne...');
+    const resultat = await verifierDisparitionsHubiflow();
+    console.log('[sync-disparitions] run terminé :', resultat);
+}
+
+if (!process.env.VERCEL) {
+    const lancerSyncDisparitions = () =>
+        verifierEtLancerSyncDisparitions().catch((e) => console.error('[sync-disparitions] échec du run:', e.message));
+    lancerSyncDisparitions();
+    setInterval(lancerSyncDisparitions, 30 * 60 * 1000);
 }
 
 // Sur Vercel, `VERCEL` est toujours défini (peu importe NODE_ENV) — écouter un port n'a aucun
