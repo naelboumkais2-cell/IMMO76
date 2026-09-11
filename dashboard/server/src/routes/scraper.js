@@ -28,6 +28,7 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
+    enrichirLot,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -410,6 +411,24 @@ scraperRouter.get('/auto-publish-status', exigerConnexion, (req, res) => {
 scraperRouter.post('/auto-publish-cancel', exigerConnexion, (req, res) => {
     demanderAnnulation();
     res.json({ success: true });
+});
+
+// TEMPORAIRE — renvoie un lot Otaree entièrement enrichi (pour POST direct vers
+// /api/generate sur immo76-moteur-ia), afin de tester le correctif DPE (kWh/GES inventés)
+// sur des lots réels avec un DPE connu, sans passer par le pipeline d'auto-publication.
+scraperRouter.post('/diag-lot-enrichi-dpe', exigerConnexion, async (req, res) => {
+    try {
+        const { villeCode, villeLabel, nb } = req.body || {};
+        const where = [{ label: villeLabel || 'Marseille', key: villeCode || 'city_4348', value: villeCode || 'city_4348' }];
+        const { lots } = await rechercherLotsOtaree({ where });
+        const echantillon = lots.slice(0, nb || 20);
+        const enrichis = await Promise.all(echantillon.map((l) => enrichirLot(structuredClone(l))));
+        const avecDpe = enrichis.filter((l) => l.energyClass);
+        if (!avecDpe.length) return res.status(404).json({ erreur: 'Aucun lot avec DPE trouvé dans cet échantillon' });
+        res.json(avecDpe[0]);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
 });
 
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
