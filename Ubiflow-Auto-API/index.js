@@ -362,6 +362,35 @@ app.post('/api/diag-publish-brut', async (req, res) => {
     }
 });
 
+// TEMPORAIRE — teste l'envoi direct de nom_voie/type_voie (au lieu du champ "adresse" combiné,
+// qu'Hubiflow re-parse et sépare lui-même en perdant le type de voie à l'affichage) pour voir
+// si passer ces clés directement évite ce découpage.
+app.post('/api/diag-nomvoie-direct', async (req, res) => {
+    try {
+        const { nomVoie, typeVoie, villeConnue, codePostalConnu, prixConnu, espaceLoginAttendu } = req.body;
+        const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
+        if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
+
+        const payload = buildUbiflowPayload({ titre: 'TEST nom_voie direct', titre_alternatif: 'TEST', texte: 'Test', texte_resume: 'Test', reference: 'TESTNVD' }, [], { ville: villeConnue, codePostal: codePostalConnu, prix: prixConnu }, espaceLoginAttendu);
+        delete payload.annonce.adresse;
+        if (nomVoie) payload.annonce.nom_voie = nomVoie;
+        if (typeVoie) payload.annonce.type_voie = typeVoie;
+
+        const response = await axios.post(
+            'https://espace-client-backend.ubiflow.net/traitement-envoi-annonce-advanced?lang=fr',
+            payload,
+            { headers: { 'Accept': 'application/json, text/plain, */*', 'Content-Type': 'application/json;charset=UTF-8', 'Authorization': `Bearer ${resolu.token}` } }
+        );
+        const donnees = response.data?.ad?.donnees || {};
+        res.json({
+            adId: response.data?.ad?.id,
+            nom_voie: donnees.nom_voie?.valeur, type_voie: donnees.type_voie?.valeur,
+        });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message, details: e.response?.data });
+    }
+});
+
 app.post('/api/publish-payload', async (req, res) => {
     const { aiData, base64Images, villeConnue, codePostalConnu, prixConnu, espaceLoginAttendu, mode } = req.body;
 
