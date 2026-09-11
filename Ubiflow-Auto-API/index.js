@@ -603,6 +603,8 @@ IDENTITÉ DE L'EXPLOITANT — VIGILANCE PARTICULIÈRE : le champ "developer" des
 
 DONNÉES FINANCIÈRES FIABLES : quand elles te sont fournies explicitement dans un bloc "DONNÉES CONNUES AVEC CERTITUDE" du message utilisateur, utilise EXCLUSIVEMENT ces valeurs pour prix/loyer/rentabilité — ne recalcule jamais une rentabilité toi-même, et si aucune rentabilité fiable n'est fournie dans ce bloc, omets simplement la ligne correspondante dans les chiffres clés (ne jamais écrire "non communiquée").
 
+DPE — INTERDICTION STRICTE DE CHIFFRE INVENTÉ : si une étiquette DPE (une seule lettre A à G) t'est fournie dans le bloc "DONNÉES CONNUES AVEC CERTITUDE", tu peux mentionner cette lettre telle quelle. Tu ne dois JAMAIS, dans aucun cas, inventer ou estimer une valeur chiffrée de consommation énergétique (ex: "137 kWh/m²/an") ni une lettre d'étiquette GES (émissions de gaz à effet de serre) — ces deux données ne sont jamais fournies dans ce pipeline, quelle que soit la plausibilité de la valeur que tu pourrais produire. Si aucune lettre DPE n'est fournie, n'aborde pas le sujet de la performance énergétique. Si une lettre DPE est fournie, mentionne uniquement cette lettre, jamais une consommation en kWh ni une lettre GES.
+
 === PRINCIPE FONDAMENTAL : ANALYSER AVANT DE RÉDIGER ===
 
 Avant de rédiger l'annonce, analyse l'intégralité des informations disponibles afin d'établir une fiche fiable du bien. Cette analyse est une étape interne, elle ne doit pas apparaître dans l'annonce finale. Identifie : la catégorie exacte de résidence, le type de logement, la surface, les annexes, le prix, le loyer, la rentabilité si fournie, les caractéristiques de la résidence, les services, l'emplacement, les points d'intérêt, les arguments commerciaux réellement différenciants. Ne cherche pas à utiliser toutes les informations disponibles — identifie les plus utiles.
@@ -730,6 +732,14 @@ const FORMULATIONS_INTERDITES = [
     // formulation exacte, contrairement à "sans référence contractuelle spécifique" (traité côté
     // prompt, voir PROMPT_SYSTEME_LMNP_V2) qui est trop variable pour un motif fiable.
     ['fuite de ton "documents/sources internes" (parenthèse)', /\([^)]*\b(plan|documents?|dossier|fiches?)\b[^)]*\)/i],
+    // DPE — repéré en conditions réelles (2026-09-10, lot Strasbourg) : le modèle invente une
+    // consommation chiffrée ("137 kWh/m²/an") et une lettre GES alors que ni l'une ni l'autre ne
+    // sont jamais fournies dans ce pipeline (seule la lettre DPE, A-G, est parfois connue). Toute
+    // occurrence de "kWh" ou "GES" dans le texte est donc nécessairement une invention, quel que
+    // soit son contexte — pas besoin de motif plus précis puisque ces données n'existent jamais
+    // côté source.
+    ['DPE : consommation chiffrée inventée (kWh)', /kWh/i],
+    ['DPE : lettre GES inventée', /\bGES\b/i],
 ];
 
 // Filet de sécurité structurel — pas dans le prompt initial, ajouté après avoir constaté que
@@ -866,6 +876,11 @@ function alternativesPourCorrection(hits, lot) {
     if (hits.some((h) => h.includes('donnée manquante explicitée'))) {
         lignes.push(
             '- Pour "non communiqué"/"non fourni"/"non renseigné"/"non spécifié"/"non précisé"/"non disponible" appliqué à une donnée absente (loyer, rentabilité, annexe, balcon...) → supprime ENTIÈREMENT la ligne ou la mention concernée, ne la remplace par aucun texte, aucune formule d\'absence. L\'information disparaît simplement du texte comme si elle n\'avait jamais été envisagée.'
+        );
+    }
+    if (hits.some((h) => h.includes('DPE : consommation chiffrée inventée') || h.includes('DPE : lettre GES inventée'))) {
+        lignes.push(
+            '- Supprime toute mention d\'une consommation énergétique chiffrée (kWh/m²/an) et toute mention d\'une lettre GES — ces deux données ne sont jamais fournies et ne doivent jamais apparaître, inventées ou non. Si une lettre DPE (A-G) est connue, tu peux la garder seule ("DPE classe C" par exemple), mais sans aucun chiffre ni lettre GES à côté.'
         );
     }
     if (hits.some((h) => h.includes('fuite de ton "documents/sources internes"'))) {
@@ -1147,6 +1162,8 @@ async function callOpenAI(textContext, base64Images, lot) {
     const systemPrompt = `Agis comme un expert immobilier de la loi Pinel et LMNP, rédacteur pour une agence haut de gamme. Tu dois lire ATTENTIVEMENT toutes les informations fournies (textes, documents extraits de PDF, ou plans en image) et en extraire un MAXIMUM de détails concrets et vérifiables pour rédiger une annonce précise, complète et jamais générique.
 
 Ne cite JAMAIS le nom du promoteur (champ "developer" des données Otaree, ou tout nom de programme immobilier qui lui est associé) dans le texte de l'annonce, même s'il est connu et exact — utilise une formulation générique ("un promoteur reconnu", "ce programme immobilier neuf"...) si tu as besoin d'évoquer le développeur du bien. N'utilise jamais non plus les mots "sécurisé", "sécurisée", "sécuriser", "sécurité", "garanti", "garantie", "garantissant" ou "garantit" pour qualifier l'investissement, le placement, les revenus locatifs ou la rentabilité — ces mots restent acceptables uniquement pour un sens sans rapport avec l'investissement (ex: digicode, garantie décennale du bâtiment).
+
+DPE — INTERDICTION STRICTE DE CHIFFRE INVENTÉ : si une étiquette DPE (une seule lettre A à G) est fournie dans les données du lot, tu peux mentionner cette lettre telle quelle. Tu ne dois JAMAIS inventer ou estimer une valeur chiffrée de consommation énergétique (ex: "137 kWh/m²/an") ni une lettre d'étiquette GES (émissions de gaz à effet de serre) — ces deux données ne sont jamais fournies dans ce pipeline. Si aucune lettre DPE n'est fournie, n'aborde pas le sujet de la performance énergétique.
 
 Renvoie UNIQUEMENT un objet JSON strictement conforme à la structure suivante, sans aucun markdown ni texte autour :
 {
