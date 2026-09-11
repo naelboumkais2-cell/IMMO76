@@ -431,6 +431,31 @@ scraperRouter.post('/diag-lot-enrichi-dpe', exigerConnexion, async (req, res) =>
     }
 });
 
+// TEMPORAIRE — recherche + enrichit tous les lots d'une ville avec un filtre de prix optionnel,
+// pour retrouver un lot précis (le lot brut Otaree reste la seule source fiable, la ligne DB
+// correspondante a été purgée) et vérifier fidèlement ce qui a été envoyé à Hubiflow.
+scraperRouter.post('/diag-lots-ville', exigerConnexion, async (req, res) => {
+    try {
+        const { villeCode, villeLabel, maxPrice, nb } = req.body || {};
+        const where = [{ label: villeLabel || 'Rouen', key: villeCode || 'city_29781', value: villeCode || 'city_29781' }];
+        const filters = { where };
+        if (maxPrice) filters.maxPrice = String(maxPrice);
+        const { lots } = await rechercherLotsOtaree(filters);
+        const echantillon = lots.slice(0, nb || 30);
+        const enrichis = await Promise.all(echantillon.map((l) => enrichirLot(structuredClone(l))));
+        res.json(enrichis.map((l) => ({
+            id: l.id, number: l.number, prix: l.prices?.[0]?.price, energyClass: l.energyClass,
+            floor: l.floor, landSurface: l.landSurface,
+            annexes: l.annexes, annexesSurfaces: l.annexesSurfaces,
+            adresseName: l.program?.address?.name, zipCode: l.program?.address?.zipCode,
+            ville: l.program?.address?.city?.name,
+            latitude: l.program?.address?.latitude, longitude: l.program?.address?.longitude,
+        })));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // TEMPORAIRE — inventaire agrégé avant nettoyage complet (voir demande du 2026-09-11) : compte
 // réel par recherche (pas juste "dernieres_annonces_trouvees", qui ne reflète que le dernier
 // run), et liste des annonces ayant un ad_id_externe (donc potentiellement publiées pour de
