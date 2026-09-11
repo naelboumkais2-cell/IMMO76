@@ -994,19 +994,21 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
     let resultat, hits = [];
     const MAX_TENTATIVES_CONFORMITE = 3;
     for (let essai = 1; essai <= MAX_TENTATIVES_CONFORMITE; essai++) {
-        // gpt-5-nano est un modèle de raisonnement à effort minimal par défaut (rapide, pas
-        // cher) — relevé à "low" sur les tentatives de correction pour le rendre plus attentif
-        // à la consigne de substitution précise. N'accepte pas de température réglable (valeur
-        // par défaut uniquement) : reasoning_effort est le levier le plus proche disponible.
-        const effort = essai === 1 ? 'minimal' : 'low';
         let response;
         for (let tentative = 1; tentative <= 3; tentative++) {
             try {
+                // Repassé sur gpt-4o (2026-09-11, demande client : trop de fautes d'orthographe
+                // et qualité de rédaction insuffisante avec gpt-5-nano) — seul le modèle change,
+                // le prompt (PROMPT_SYSTEME_LMNP_V2 + PROMPT_ADDENDUM_GPT5) reste identique. Les
+                // paramètres reasoning_effort/max_completion_tokens (spécifiques aux modèles de
+                // raisonnement gpt-5) n'existent pas pour gpt-4o — remplacés par
+                // temperature/max_tokens, mêmes valeurs que celles déjà éprouvées sur le chemin
+                // générique (callOpenAI, resté sur gpt-4o depuis toujours).
                 response = await axios.post('https://api.openai.com/v1/chat/completions', {
-                    model: 'gpt-5-nano',
+                    model: 'gpt-4o',
                     messages,
-                    reasoning_effort: effort,
-                    max_completion_tokens: 4000,
+                    temperature: 0.7,
+                    max_tokens: 4000,
                     // Mode JSON strict d'OpenAI — sans ça, un texte long avec guillemets/apostrophes
                     // (ex: nom de résidence entre guillemets dans la description) peut produire un
                     // JSON mal formé et faire échouer JSON.parse malgré le prompt qui le demande déjà
@@ -1029,7 +1031,7 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
             }
         }
 
-        await enregistrerUsageOpenAI(response.data.usage, 'gpt-5-nano');
+        await enregistrerUsageOpenAI(response.data.usage, 'gpt-4o');
 
         let content = response.data.choices[0].message.content;
         content = (content || '').replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
