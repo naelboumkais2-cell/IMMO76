@@ -34,7 +34,7 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — diagnostic avant nettoyage du test de reprise nationale LMNP (recherche 172).
+// TEMPORAIRE — diagnostic + purge du test de reprise nationale LMNP (recherche 172).
 scraperRouter.get('/diag-recherche/:id', exigerConnexion, async (req, res) => {
     try {
         const id = Number(req.params.id);
@@ -50,6 +50,25 @@ scraperRouter.get('/diag-recherche/:id', exigerConnexion, async (req, res) => {
              WHERE a.recherche_id = ? AND ap.ad_id_externe IS NOT NULL AND ap.statut != 'depubliee'`
         ).all(id);
         res.json({ totalAnnonces: totalAnnonces.n, parStatut, publiees });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+scraperRouter.post('/diag-purge-recherche/:id', exigerConnexion, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const restantes = await db.prepare(
+            `SELECT COUNT(*)::int AS n
+             FROM annonce_portails ap JOIN annonces a ON a.id = ap.annonce_id
+             WHERE a.recherche_id = ? AND ap.ad_id_externe IS NOT NULL AND ap.statut != 'depubliee'`
+        ).get(id);
+        if (restantes.n > 0) {
+            return res.status(400).json({ erreur: `${restantes.n} instance(s) encore publiée(s) — dépublier avant de purger.` });
+        }
+        const suppAnnonces = await db.prepare(`DELETE FROM annonces WHERE recherche_id = ?`).run(id);
+        const suppRecherche = await db.prepare(`DELETE FROM recherches WHERE id = ?`).run(id);
+        res.json({ annoncesSupprimees: suppAnnonces.changes, rechercheSupprimee: suppRecherche.changes });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
