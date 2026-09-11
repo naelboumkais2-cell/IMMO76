@@ -436,13 +436,18 @@ scraperRouter.post('/diag-lot-enrichi-dpe', exigerConnexion, async (req, res) =>
 // correspondante a été purgée) et vérifier fidèlement ce qui a été envoyé à Hubiflow.
 scraperRouter.post('/diag-lots-ville', exigerConnexion, async (req, res) => {
     try {
-        const { villeCode, villeLabel, maxPrice, nb } = req.body || {};
+        const { villeCode, villeLabel, maxPrice, nb, idComplet } = req.body || {};
         const where = [{ label: villeLabel || 'Rouen', key: villeCode || 'city_29781', value: villeCode || 'city_29781' }];
         const filters = { where };
         if (maxPrice) filters.maxPrice = String(maxPrice);
         const { lots } = await rechercherLotsOtaree(filters);
         const echantillon = lots.slice(0, nb || 30);
         const enrichis = await Promise.all(echantillon.map((l) => enrichirLot(structuredClone(l))));
+        if (idComplet) {
+            const trouve = enrichis.find((l) => l.id === idComplet);
+            if (!trouve) return res.status(404).json({ erreur: 'id introuvable dans cet échantillon' });
+            return res.json(trouve);
+        }
         res.json(enrichis.map((l) => ({
             id: l.id, number: l.number, prix: l.prices?.[0]?.price, energyClass: l.energyClass,
             floor: l.floor, landSurface: l.landSurface,
