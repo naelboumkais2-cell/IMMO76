@@ -35,21 +35,6 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — récupère le raw_data brut de quelques annonces pour tester le prompt V1 Neuf
-// directement contre l'API du moteur IA (2026-09-12). À retirer une fois le test terminé.
-scraperRouter.get('/diag-raw-data', exigerConnexion, async (req, res) => {
-    try {
-        const ids = String(req.query.ids || '').split(',').map((s) => Number(s.trim())).filter(Boolean);
-        if (!ids.length) return res.status(400).json({ erreur: 'ids requis (query ?ids=1,2,3)' });
-        const rows = await db
-            .prepare(`SELECT id, titre, ville, prix, raw_data FROM annonces WHERE id IN (${ids.map(() => '?').join(',')})`)
-            .all(...ids);
-        res.json(rows.map((r) => ({ id: r.id, titre: r.titre, ville: r.ville, prix: r.prix, raw_data: JSON.parse(r.raw_data || '{}') })));
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
