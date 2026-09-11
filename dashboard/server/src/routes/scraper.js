@@ -431,6 +431,48 @@ scraperRouter.post('/diag-lot-enrichi-dpe', exigerConnexion, async (req, res) =>
     }
 });
 
+// TEMPORAIRE — inventaire agrégé avant nettoyage complet (voir demande du 2026-09-11) : compte
+// réel par recherche (pas juste "dernieres_annonces_trouvees", qui ne reflète que le dernier
+// run), et liste des annonces ayant un ad_id_externe (donc potentiellement publiées pour de
+// vrai sur Hubiflow) pour vérification une par une avant suppression. Lecture seule, rien n'est
+// modifié.
+scraperRouter.get('/diag-inventaire-nettoyage', exigerConnexion, async (req, res) => {
+    try {
+        const parRecherche = await db.prepare(`
+            SELECT r.id, r.nom, r.resume, r.cree_le, COUNT(a.id) AS nb_annonces
+            FROM recherches r
+            LEFT JOIN annonces a ON a.recherche_id = r.id
+            GROUP BY r.id
+            ORDER BY r.id
+        `).all();
+
+        const totalAnnonces = await db.prepare(`SELECT COUNT(*) AS n FROM annonces`).get();
+        const totalPortails = await db.prepare(`SELECT COUNT(*) AS n FROM annonce_portails`).get();
+        const avecAdIdExterne = await db.prepare(`
+            SELECT ap.id AS ap_id, ap.annonce_id, ap.portail_id, ap.statut, ap.ad_id_externe, ap.mode,
+                   a.titre, a.ville, p.nom AS portail_nom, p.login AS portail_login
+            FROM annonce_portails ap
+            JOIN annonces a ON a.id = ap.annonce_id
+            JOIN portails p ON p.id = ap.portail_id
+            WHERE ap.ad_id_externe IS NOT NULL
+            ORDER BY ap.id
+        `).all();
+        const parStatutLocal = await db.prepare(`SELECT statut, COUNT(*) AS n FROM annonce_portails GROUP BY statut`).all();
+
+        const utilisateurs = await db.prepare(`SELECT id, email, role, actif FROM utilisateurs ORDER BY id`).all();
+        const portails = await db.prepare(`SELECT id, nom, login, actif FROM portails ORDER BY id`).all();
+        const reglesRoutage = await db.prepare(`SELECT COUNT(*) AS n FROM regles_routage`).get();
+
+        res.json({
+            parRecherche, totalAnnonces: totalAnnonces.n, totalPortails: totalPortails.n,
+            parStatutLocal, nbAvecAdIdExterne: avecAdIdExterne.length, avecAdIdExterne,
+            utilisateurs, portails, nbReglesRoutage: reglesRoutage.n,
+        });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
