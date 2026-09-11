@@ -34,6 +34,27 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
+// TEMPORAIRE — diagnostic avant nettoyage du test de reprise nationale LMNP (recherche 172).
+scraperRouter.get('/diag-recherche/:id', exigerConnexion, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const totalAnnonces = await db.prepare(`SELECT COUNT(*)::int AS n FROM annonces WHERE recherche_id = ?`).get(id);
+        const parStatut = await db.prepare(
+            `SELECT ap.statut, COUNT(*)::int AS n
+             FROM annonce_portails ap JOIN annonces a ON a.id = ap.annonce_id
+             WHERE a.recherche_id = ? GROUP BY ap.statut ORDER BY n DESC`
+        ).all(id);
+        const publiees = await db.prepare(
+            `SELECT a.id AS annonce_id, ap.portail_id, ap.statut, ap.ad_id_externe
+             FROM annonce_portails ap JOIN annonces a ON a.id = ap.annonce_id
+             WHERE a.recherche_id = ? AND ap.ad_id_externe IS NOT NULL AND ap.statut != 'depubliee'`
+        ).all(id);
+        res.json({ totalAnnonces: totalAnnonces.n, parStatut, publiees });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
