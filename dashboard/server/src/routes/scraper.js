@@ -30,6 +30,7 @@ import {
     compterLotsOtaree,
     rechercherZoneAvecRepli,
     verifierExistenceLot,
+    verifierDisparitionConfirmee,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -52,6 +53,24 @@ scraperRouter.get('/diag-instances-a-verifier', exigerConnexion, async (req, res
             )
             .all();
         res.json({ total: instances.length, instances });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+// Fabrique un atId inexistant sur une annonce précise (test uniquement) — permet de tester le
+// chemin "disparition confirmée -> suppression réelle" sur un vrai brouillon Hubiflow créé pour
+// l'occasion, sans dépendre de la chance de tomber sur un vrai lot disparu.
+scraperRouter.post('/diag-fabriquer-atid-absent', exigerConnexion, async (req, res) => {
+    try {
+        const { annonceId } = req.body || {};
+        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(annonceId);
+        if (!row) return res.status(404).json({ erreur: 'Annonce introuvable.' });
+        const raw = JSON.parse(row.raw_data || '{}');
+        const ancienAtId = raw['@id'];
+        raw['@id'] = '/properties/fabrique-test-absent-000000';
+        await db.prepare(`UPDATE annonces SET raw_data = ? WHERE id = ?`).run(JSON.stringify(raw), annonceId);
+        res.json({ ancienAtId, nouvelAtId: raw['@id'] });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
@@ -81,6 +100,21 @@ scraperRouter.get('/diag-test-existence', exigerConnexion, async (req, res) => {
         if (!atId) return res.status(400).json({ erreur: 'atId requis' });
         const statut = await verifierExistenceLot(atId, timeoutMs ? Number(timeoutMs) : undefined);
         res.json({ atId, statut });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+scraperRouter.get('/diag-test-disparition-confirmee', exigerConnexion, async (req, res) => {
+    try {
+        const { atId, delaiMs, timeoutMs } = req.query;
+        if (!atId) return res.status(400).json({ erreur: 'atId requis' });
+        const result = await verifierDisparitionConfirmee(
+            atId,
+            delaiMs ? Number(delaiMs) : undefined,
+            timeoutMs ? Number(timeoutMs) : undefined
+        );
+        res.json(result);
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }

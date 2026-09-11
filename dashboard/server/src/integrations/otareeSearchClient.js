@@ -367,13 +367,13 @@ export async function verifierExistenceLot(atId, timeoutMs = TIMEOUT_DETAIL_OTAR
 // nuit (voir syncDisparitions.js).
 const DELAI_ENTRE_VERIFICATIONS_MS = 5 * 60 * 1000;
 
-export async function verifierDisparitionConfirmee(atId, delaiMs = DELAI_ENTRE_VERIFICATIONS_MS) {
-    const premiere = await verifierExistenceLot(atId);
+export async function verifierDisparitionConfirmee(atId, delaiMs = DELAI_ENTRE_VERIFICATIONS_MS, timeoutMs = undefined) {
+    const premiere = await verifierExistenceLot(atId, timeoutMs);
     if (premiere !== 'absent') return { disparitionConfirmee: false, statut: premiere };
 
     await new Promise((r) => setTimeout(r, delaiMs));
 
-    const seconde = await verifierExistenceLot(atId);
+    const seconde = await verifierExistenceLot(atId, timeoutMs);
     if (seconde !== 'absent') return { disparitionConfirmee: false, statut: seconde };
 
     return { disparitionConfirmee: true, statut: 'absent' };
