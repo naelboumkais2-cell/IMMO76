@@ -13,6 +13,34 @@ export const annoncesRouter = Router();
 // d'un dépassement réel du quota de transfert Neon.
 const COLONNES_LISTE_ANNONCES = 'id, external_id, reference, titre, ville, code_postal, type_bien, surface, prix, recherche_id, scrapee_le, est_annonce_test, alerte_document';
 
+// TEMPORAIRE — diagnostic d'une annonce précise (donnees_ia/nombre de photos/raw_data), pour
+// vérifier ce qui a réellement été envoyé à Hubiflow sur un lot publié en conditions réelles.
+annoncesRouter.get('/:id/diag-complet', exigerConnexion, async (req, res) => {
+    try {
+        const a = await db.prepare(`SELECT * FROM annonces WHERE id = ?`).get(req.params.id);
+        if (!a) return res.status(404).json({ erreur: 'introuvable' });
+        let images = [];
+        try { images = JSON.parse(a.images || '[]'); } catch {}
+        let donneesIa = null;
+        try { donneesIa = a.donnees_ia ? JSON.parse(a.donnees_ia) : null; } catch {}
+        let rawData = null;
+        try { rawData = a.raw_data ? JSON.parse(a.raw_data) : null; } catch {}
+        res.json({
+            id: a.id, titre: a.titre, prix: a.prix,
+            nbImagesEnBase: images.length,
+            donneesIa,
+            rawDataExtrait: rawData ? {
+                floor: rawData.floor, landSurface: rawData.landSurface,
+                annexes: rawData.annexes, annexesSurfaces: rawData.annexesSurfaces,
+                energyClass: rawData.energyClass,
+                nbImagesRaw: (rawData.images || []).length,
+            } : null,
+        });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 annoncesRouter.get('/', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
