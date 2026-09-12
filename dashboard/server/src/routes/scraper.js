@@ -35,26 +35,6 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — échantillon de descriptions brutes pour tester le regex DPE contre des formats
-// variés (2026-09-12), à la recherche de faux positifs. À retirer une fois le test terminé.
-scraperRouter.get('/diag-descriptions', exigerConnexion, async (req, res) => {
-    try {
-        const limit = Number(req.query.limit) || 200;
-        const rows = await db
-            .prepare(`SELECT id, titre, raw_data FROM annonces WHERE raw_data IS NOT NULL ORDER BY random() LIMIT ?`)
-            .all(limit);
-        res.json(
-            rows.map((r) => {
-                let description = null;
-                try { description = JSON.parse(r.raw_data).description || null; } catch {}
-                return { id: r.id, titre: r.titre, description };
-            })
-        );
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
