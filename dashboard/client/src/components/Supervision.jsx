@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { api } from '../api.js';
 import { IconGauge, IconRefresh, IconAlert, IconTrash, IconCloudCheck } from './icons.jsx';
 import { Select } from './Select.jsx';
@@ -54,6 +54,7 @@ export function Supervision({ actif }) {
     const [traitementEnCours, setTraitementEnCours] = useState(false);
     const [suppressionEnCours, setSuppressionEnCours] = useState(false);
     const [messageAction, setMessageAction] = useState(null);
+    const panneauEnAttenteRef = useRef(null);
 
     const LIMIT_ANNONCES = 10;
 
@@ -66,29 +67,34 @@ export function Supervision({ actif }) {
             .catch((e) => setErreur(e.message));
     }, []);
 
-    // Fermeture au clic ailleurs sur la page — le clic à l'intérieur du panneau est arrêté avant
-    // d'atteindre document (voir stopPropagation plus bas), donc ce handler ne voit jamais que
-    // les clics réellement extérieurs.
+    // Fermeture au clic ailleurs sur la page — même mécanisme (ref + mousedown, vérifie que le
+    // clic est réellement hors de l'élément) que Select.jsx, déjà éprouvé dans ce projet pour ce
+    // même besoin. Préféré à un stopPropagation() sur le panneau lui-même, plus fragile.
     useEffect(() => {
         if (!panneauEnAttenteOuvert) return;
-        const fermer = () => setPanneauEnAttenteOuvert(false);
-        document.addEventListener('click', fermer);
-        return () => document.removeEventListener('click', fermer);
+        function onClickOutside(e) {
+            if (panneauEnAttenteRef.current && !panneauEnAttenteRef.current.contains(e.target)) {
+                setPanneauEnAttenteOuvert(false);
+            }
+        }
+        document.addEventListener('mousedown', onClickOutside);
+        return () => document.removeEventListener('mousedown', onClickOutside);
     }, [panneauEnAttenteOuvert]);
 
     function rafraichirCompteurEnAttente() {
         api.getLotsEnAttenteCount().then(({ count }) => setEnAttenteCount(count)).catch(() => {});
     }
 
+    // TEMPORAIRE — log de diagnostic (popover "En attente" signalé non fonctionnel) : à retirer
+    // une fois confirmé que le clic ouvre bien le panneau en conditions réelles.
     function onTogglePanneauEnAttente() {
-        setPanneauEnAttenteOuvert((ouvert) => {
-            const prochainEtat = !ouvert;
-            if (prochainEtat) {
-                setMessageAction(null);
-                rafraichirCompteurEnAttente();
-            }
-            return prochainEtat;
-        });
+        console.log('[Supervision] clic carte "En attente", panneauEnAttenteOuvert avant =', panneauEnAttenteOuvert);
+        const prochainEtat = !panneauEnAttenteOuvert;
+        setPanneauEnAttenteOuvert(prochainEtat);
+        if (prochainEtat) {
+            setMessageAction(null);
+            rafraichirCompteurEnAttente();
+        }
     }
 
     // Même mécanisme que "Traiter les lots en attente" (ScraperControl.jsx) — en mode 'on' (le
@@ -261,9 +267,11 @@ export function Supervision({ actif }) {
                         <span className="stat-label">Publiées</span>
                         <span className="stat-value" style={{ color: 'var(--success)' }}>{stats.publiees}</span>
                     </div>
-                    <div className="stat-card" style={{ position: 'relative', cursor: 'pointer' }} onClick={onTogglePanneauEnAttente}>
-                        <span className="stat-label">En attente</span>
-                        <span className="stat-value" style={{ color: 'var(--warning)' }}>{stats.enAttente}</span>
+                    <div ref={panneauEnAttenteRef} className="stat-card" style={{ position: 'relative' }}>
+                        <div style={{ cursor: 'pointer' }} onClick={onTogglePanneauEnAttente}>
+                            <span className="stat-label">En attente</span>
+                            <span className="stat-value" style={{ color: 'var(--warning)' }}>{stats.enAttente}</span>
+                        </div>
 
                         {panneauEnAttenteOuvert && (
                             <div
@@ -273,7 +281,6 @@ export function Supervision({ actif }) {
                                     width: 280, padding: 16, textAlign: 'left', cursor: 'default',
                                     boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
                                 }}
-                                onClick={(e) => e.stopPropagation()}
                             >
                                 <p className="hint" style={{ marginTop: 0 }}>
                                     {enAttenteCount === null
