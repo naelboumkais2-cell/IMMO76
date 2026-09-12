@@ -523,6 +523,23 @@ scraperRouter.post('/traiter-lots-en-attente', exigerConnexion, async (req, res)
     }
 });
 
+// Supprime tous les lots jamais traités (donnees_ia IS NULL, même critère que
+// lots-en-attente-count/traiter-lots-en-attente ci-dessus) — pour le cas où on décide de ne
+// finalement pas les publier plutôt que de les laisser traîner. Ne touche jamais un lot déjà
+// généré/publié : par construction, donnees_ia IS NULL implique qu'aucune publication n'a jamais
+// eu lieu pour ce lot (executerTraitement ne pose donnees_ia qu'après génération, et publie
+// seulement ensuite) — pas besoin ici du garde-fou "vérifier les publications avant suppression"
+// utilisé pour la suppression d'une recherche entière (DELETE /recherches/:id), qui elle peut
+// contenir des lots déjà traités.
+scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
+    try {
+        const result = await db.prepare(`DELETE FROM annonces WHERE donnees_ia IS NULL`).run();
+        res.json({ supprimees: result.changes });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();

@@ -199,6 +199,7 @@ export function ScraperControl() {
     const [confirmationEnAttente, setConfirmationEnAttente] = useState(null);
     const [lotsEnAttenteCount, setLotsEnAttenteCount] = useState(0);
     const [traitementEnAttenteEnCours, setTraitementEnAttenteEnCours] = useState(false);
+    const [suppressionLotsEnAttenteEnCours, setSuppressionLotsEnAttenteEnCours] = useState(false);
     const [confirmationEnCours, setConfirmationEnCours] = useState(false);
     const [photosEnErreur, setPhotosEnErreur] = useState(() => new Set());
     // Ids des lots cochés sur l'écran de confirmation — tous cochés par défaut à l'ouverture,
@@ -534,6 +535,25 @@ export function ScraperControl() {
         }
     }
 
+    // Supprime tous les lots jamais traités (donnees_ia IS NULL) — pour le cas où on décide de ne
+    // finalement pas les publier. Ne touche jamais un lot déjà généré/publié (voir DELETE
+    // /scraper/lots-en-attente côté serveur, même garantie que pour "Traiter les lots en attente").
+    async function onSupprimerLotsEnAttente() {
+        const confirme = window.confirm(
+            `Supprimer les ${lotsEnAttenteCount} lot(s) en attente ? Action irréversible.`
+        );
+        if (!confirme) return;
+        setSuppressionLotsEnAttenteEnCours(true);
+        try {
+            await api.supprimerLotsEnAttente();
+            setLotsEnAttenteCount(0);
+        } catch (err) {
+            setErreurOtaree(err.message);
+        } finally {
+            setSuppressionLotsEnAttenteEnCours(false);
+        }
+    }
+
     function onReferenceChange(id, value) {
         setReferencesEditees((prev) => new Map(prev).set(id, value));
     }
@@ -791,14 +811,6 @@ export function ScraperControl() {
                                             ))}
                                     </ul>
                                 )}
-                                {!villeSelectionnee && (
-                                    <span
-                                        className="field-hint"
-                                        style={{ display: 'block', marginTop: 4, fontSize: '0.85em', color: '#b26a00' }}
-                                    >
-                                        ⚠️ Aucune ville choisie : la recherche portera sur toute la France (~45min-1h). Les autres filtres (prix, typologie...) restent appliqués.
-                                    </span>
-                                )}
                             </label>
                             <label className="field" style={{ width: 120 }}>
                                 <span className="field-label">Prix min (€)</span>
@@ -875,6 +887,18 @@ export function ScraperControl() {
                                 >
                                     <IconRefresh style={traitementEnAttenteEnCours ? { animation: 'spin 0.8s linear infinite' } : undefined} />
                                     {traitementEnAttenteEnCours ? 'Traitement…' : `Traiter les lots en attente (${lotsEnAttenteCount})`}
+                                </button>
+                            )}
+                            {lotsEnAttenteCount > 0 && (
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost-danger"
+                                    disabled={suppressionLotsEnAttenteEnCours || traitementEnAttenteEnCours}
+                                    onClick={onSupprimerLotsEnAttente}
+                                    style={{ margin: '4px' }}
+                                    title="Supprime définitivement les lots en attente jamais générés/publiés — pour le cas où on décide de ne finalement pas les publier."
+                                >
+                                    {suppressionLotsEnAttenteEnCours ? 'Suppression…' : `Supprimer les lots en attente (${lotsEnAttenteCount})`}
                                 </button>
                             )}
                         </div>

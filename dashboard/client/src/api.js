@@ -46,6 +46,7 @@ export const api = {
     annulerAutoPublishEnAttente: () => request('/scraper/auto-publish-discard-pending', { method: 'POST' }),
     getLotsEnAttenteCount: () => request('/scraper/lots-en-attente-count'),
     traiterLotsEnAttente: () => request('/scraper/traiter-lots-en-attente', { method: 'POST' }),
+    supprimerLotsEnAttente: () => request('/scraper/lots-en-attente', { method: 'DELETE' }),
     getLotDetail: (annonceId) => request('/scraper/lot-detail', { method: 'POST', body: JSON.stringify({ annonceId }) }),
     verifierDoublons: (ids, portailsChoisis) =>
         request('/scraper/verifier-doublons', { method: 'POST', body: JSON.stringify({ ids, portailsChoisis }) }),
