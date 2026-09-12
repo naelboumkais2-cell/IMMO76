@@ -43,6 +43,18 @@ export function Supervision({ actif }) {
     const [recherche, setRecherche] = useState('');
     const [pageAnnonces, setPageAnnonces] = useState(1);
 
+    // Panneau d'action "en attente" (voir carte statistique plus bas) — réutilise exactement les
+    // mêmes endpoints que le bouton équivalent de l'écran Rechercher (ScraperControl.jsx), aucune
+    // nouvelle logique métier. Compteur volontairement distinct de stats.enAttente (voir ce
+    // dernier plus bas, basé sur annonce_portails.statut) : /lots-en-attente-count reflète le
+    // vrai périmètre sur lequel ces deux actions agissent (annonces.donnees_ia IS NULL) — les deux
+    // chiffres peuvent légitimement différer légèrement, jamais mélangés l'un avec l'autre.
+    const [panneauEnAttenteOuvert, setPanneauEnAttenteOuvert] = useState(false);
+    const [enAttenteCount, setEnAttenteCount] = useState(null);
+    const [traitementEnCours, setTraitementEnCours] = useState(false);
+    const [suppressionEnCours, setSuppressionEnCours] = useState(false);
+    const [messageAction, setMessageAction] = useState(null);
+
     const LIMIT_ANNONCES = 10;
 
     const refresh = useCallback((q) => {
@@ -53,6 +65,72 @@ export function Supervision({ actif }) {
             })
             .catch((e) => setErreur(e.message));
     }, []);
+
+    // Fermeture au clic ailleurs sur la page — le clic à l'intérieur du panneau est arrêté avant
+    // d'atteindre document (voir stopPropagation plus bas), donc ce handler ne voit jamais que
+    // les clics réellement extérieurs.
+    useEffect(() => {
+        if (!panneauEnAttenteOuvert) return;
+        const fermer = () => setPanneauEnAttenteOuvert(false);
+        document.addEventListener('click', fermer);
+        return () => document.removeEventListener('click', fermer);
+    }, [panneauEnAttenteOuvert]);
+
+    function rafraichirCompteurEnAttente() {
+        api.getLotsEnAttenteCount().then(({ count }) => setEnAttenteCount(count)).catch(() => {});
+    }
+
+    function onTogglePanneauEnAttente() {
+        setPanneauEnAttenteOuvert((ouvert) => {
+            const prochainEtat = !ouvert;
+            if (prochainEtat) {
+                setMessageAction(null);
+                rafraichirCompteurEnAttente();
+            }
+            return prochainEtat;
+        });
+    }
+
+    // Même mécanisme que "Traiter les lots en attente" (ScraperControl.jsx) — en mode 'on' (le
+    // mode par défaut), les candidats sont mis en attente de confirmation côté serveur, pas
+    // directement publiés : cet écran n'a pas d'écran de confirmation propre (pas de duplication
+    // voulue de cette UI), donc on redirige simplement vers l'onglet Rechercher pour valider.
+    async function onTraiterEnAttente() {
+        setTraitementEnCours(true);
+        setMessageAction(null);
+        try {
+            const autoPublish = await api.traiterLotsEnAttente();
+            if (autoPublish.enAttente) {
+                setMessageAction(`${autoPublish.nbCandidats} lot(s) proposé(s) — rendez-vous sur l'onglet "Rechercher" pour les sélectionner et confirmer la publication.`);
+            } else if (!autoPublish.nbCandidats) {
+                setMessageAction('Aucun lot en attente à traiter.');
+            } else {
+                setMessageAction(`${autoPublish.nbTraites} lot(s) traité(s) directement (mode ${autoPublish.mode}).`);
+            }
+            rafraichirCompteurEnAttente();
+            refresh(recherche);
+        } catch (e) {
+            setMessageAction(`Erreur : ${e.message}`);
+        } finally {
+            setTraitementEnCours(false);
+        }
+    }
+
+    async function onSupprimerEnAttente() {
+        if (!window.confirm(`Supprimer les ${enAttenteCount ?? ''} lot(s) en attente ? Action irréversible.`)) return;
+        setSuppressionEnCours(true);
+        setMessageAction(null);
+        try {
+            const { supprimees } = await api.supprimerLotsEnAttente();
+            setMessageAction(`${supprimees} lot(s) supprimé(s).`);
+            setEnAttenteCount(0);
+            refresh(recherche);
+        } catch (e) {
+            setMessageAction(`Erreur : ${e.message}`);
+        } finally {
+            setSuppressionEnCours(false);
+        }
+    }
 
     // Dans la réalité, un seul espace Hubiflow a un token actif côté serveur à la fois —
     // publier vers un portail qui n'est pas l'espace actif échouerait (ou publierait au
@@ -183,9 +261,46 @@ export function Supervision({ actif }) {
                         <span className="stat-label">Publiées</span>
                         <span className="stat-value" style={{ color: 'var(--success)' }}>{stats.publiees}</span>
                     </div>
-                    <div className="stat-card">
+                    <div className="stat-card" style={{ position: 'relative', cursor: 'pointer' }} onClick={onTogglePanneauEnAttente}>
                         <span className="stat-label">En attente</span>
                         <span className="stat-value" style={{ color: 'var(--warning)' }}>{stats.enAttente}</span>
+
+                        {panneauEnAttenteOuvert && (
+                            <div
+                                className="panel"
+                                style={{
+                                    position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 20,
+                                    width: 280, padding: 16, textAlign: 'left', cursor: 'default',
+                                    boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <p className="hint" style={{ marginTop: 0 }}>
+                                    {enAttenteCount === null
+                                        ? 'Chargement…'
+                                        : `${enAttenteCount} lot(s) jamais générés (toutes recherches confondues).`}
+                                </p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        disabled={traitementEnCours || suppressionEnCours || !enAttenteCount}
+                                        onClick={onTraiterEnAttente}
+                                    >
+                                        {traitementEnCours ? 'Traitement…' : 'Traiter les lots en attente'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn btn-ghost-danger"
+                                        disabled={traitementEnCours || suppressionEnCours || !enAttenteCount}
+                                        onClick={onSupprimerEnAttente}
+                                    >
+                                        {suppressionEnCours ? 'Suppression…' : 'Supprimer les lots en attente'}
+                                    </button>
+                                </div>
+                                {messageAction && <p className="hint" style={{ marginBottom: 0 }}>{messageAction}</p>}
+                            </div>
+                        )}
                     </div>
                     <div className="stat-card">
                         <span className="stat-label">Erreurs</span>
