@@ -35,6 +35,19 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
+// TEMPORAIRE — audit final (2026-09-13) : identifie le program.id d'un lot pour retester la
+// référence Neuf. À retirer une fois le test terminé.
+scraperRouter.get('/diag-program-id/:id', exigerConnexion, async (req, res) => {
+    try {
+        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(req.params.id);
+        if (!row) return res.status(404).json({ erreur: 'introuvable' });
+        const raw = JSON.parse(row.raw_data || '{}');
+        res.json({ programId: raw?.program?.id || null, programNom: raw?.program?.name || null, lotNumber: raw?.number ?? null });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
