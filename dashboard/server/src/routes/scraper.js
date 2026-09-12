@@ -48,6 +48,18 @@ scraperRouter.post('/diag-remettre-en-attente/:id', exigerConnexion, async (req,
     }
 });
 
+// TEMPORAIRE — restaure donnees_ia après le test ci-dessus (annonce déjà publiée avant le test,
+// jamais republiée pendant, uniquement remise en cohérence avec son statut Hubiflow inchangé).
+scraperRouter.post('/diag-restaurer-donnees-ia/:id', exigerConnexion, async (req, res) => {
+    try {
+        const { donnees_ia } = req.body || {};
+        await db.prepare(`UPDATE annonces SET donnees_ia = ? WHERE id = ?`).run(donnees_ia, req.params.id);
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
