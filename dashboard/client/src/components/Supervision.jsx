@@ -85,10 +85,7 @@ export function Supervision({ actif }) {
         api.getLotsEnAttenteCount().then(({ count }) => setEnAttenteCount(count)).catch(() => {});
     }
 
-    // TEMPORAIRE — log de diagnostic (popover "En attente" signalé non fonctionnel) : à retirer
-    // une fois confirmé que le clic ouvre bien le panneau en conditions réelles.
     function onTogglePanneauEnAttente() {
-        console.log('[Supervision] clic carte "En attente", panneauEnAttenteOuvert avant =', panneauEnAttenteOuvert);
         const prochainEtat = !panneauEnAttenteOuvert;
         setPanneauEnAttenteOuvert(prochainEtat);
         if (prochainEtat) {
