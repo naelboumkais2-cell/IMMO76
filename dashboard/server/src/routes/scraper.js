@@ -35,6 +35,19 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
+// TEMPORAIRE — remet une annonce déjà traitée en attente (donnees_ia = NULL) pour retester la
+// génération de référence Neuf sur un programme sans unité neuve disponible (2026-09-13). N'a
+// aucun effet sur l'état Hubiflow réel (statut/ad_id_externe inchangés) — sert uniquement à
+// revoir cette annonce dans candidatsApercu. À retirer une fois le test terminé.
+scraperRouter.post('/diag-remettre-en-attente/:id', exigerConnexion, async (req, res) => {
+    try {
+        await db.prepare(`UPDATE annonces SET donnees_ia = NULL WHERE id = ?`).run(req.params.id);
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
