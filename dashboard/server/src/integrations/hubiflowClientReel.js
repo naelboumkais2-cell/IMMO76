@@ -47,6 +47,12 @@ export async function publish(annonce, portail, mode, opts = {}) {
                 // ("76 208,31 €") de façon à faire échouer silencieusement le parsing côté
                 // Ubiflow-Auto-API (voir buildUbiflowPayload) et publier un prix ~1000x trop bas.
                 prixConnu: annonce.prix,
+                // Référence générée/éditée sur l'écran de confirmation (genererReferenceLmnp/
+                // genererReferenceNeuf, voir referenceGenerator.js) — bug corrigé le 2026-09-13 :
+                // ce champ était calculé, affiché, éditable et persisté en base, mais jamais
+                // transmis jusqu'ici, donc jamais visible sur la vraie annonce Hubiflow (voir
+                // buildUbiflowPayload, qui retombait silencieusement sur un défaut codé en dur).
+                referenceConnue: annonce.reference_generee || null,
                 espaceLoginAttendu: portail.login,
                 mode,
             }),

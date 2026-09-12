@@ -16,7 +16,7 @@ import {
 } from './autoPublishStatus.js';
 import { utilisateurActuelId } from './requestContext.js';
 import { estEnPause, obtenirEtatPause } from './depenseMonitor.js';
-import { genererReferenceLmnp } from './referenceGenerator.js';
+import { genererReferenceLmnp, genererReferenceNeuf } from './referenceGenerator.js';
 import { estLotLmnp } from './dispositifFiscal.js';
 
 // utilisateur_id vient du contexte de requête (voir requestContext.js/index.js), jamais passé
@@ -261,7 +261,7 @@ async function apercuCandidats(candidats) {
 
     return await Promise.all(
         candidats.map(async ({ annonce, lotBrut }) => {
-            const referenceGeneree = await genererReferenceLmnp(annonce, lotBrut);
+            const referenceGeneree = (await genererReferenceLmnp(annonce, lotBrut)) ?? (await genererReferenceNeuf(annonce, lotBrut));
             // Hypothèse INT (mandat direct agence) pas encore confirmée sur un vrai cas — voir
             // referenceGenerator.js. Loggé explicitement à chaque occurrence pour que
             // l'utilisateur puisse vérifier chaque premier cas avant de le considérer acquis.

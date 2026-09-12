@@ -338,7 +338,7 @@ app.get('/api/rechercher-doublons-hubiflow', async (req, res) => {
 });
 
 app.post('/api/publish-payload', async (req, res) => {
-    const { aiData, base64Images, villeConnue, codePostalConnu, prixConnu, espaceLoginAttendu, mode } = req.body;
+    const { aiData, base64Images, villeConnue, codePostalConnu, prixConnu, referenceConnue, espaceLoginAttendu, mode } = req.body;
 
     if (!espaceLoginAttendu) return res.status(400).json({ success: false, error: 'espaceLoginAttendu requis' });
     if (!aiData) return res.status(400).json({ success: false, error: 'aiData manquant' });
@@ -346,7 +346,7 @@ app.post('/api/publish-payload', async (req, res) => {
     const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
     if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
 
-    const payload = buildUbiflowPayload(aiData, base64Images || [], { ville: villeConnue, codePostal: codePostalConnu, prix: prixConnu }, espaceLoginAttendu);
+    const payload = buildUbiflowPayload(aiData, base64Images || [], { ville: villeConnue, codePostal: codePostalConnu, prix: prixConnu, reference: referenceConnue }, espaceLoginAttendu);
     const { statusCode, body } = await envoyerAUbiflow(payload, resolu.token, espaceLoginAttendu);
 
     if (statusCode === 200 && body.success && mode === 'actif') {
@@ -1716,13 +1716,18 @@ function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, esp
         id_contact_a_afficher: 146265, 
         devise_iso_4217: "EUR",
         afficher_prix: "oui",
-        // Préfixe par défaut dépendant du portail — jusqu'ici toujours "LMNP" en dur, ce qui
-        // n'avait jamais posé de problème tant que seul le chemin LMNP (aiData.reference
-        // toujours absent, ni champsConnusDepuisLot ni callOpenAILmnp ne le fournissent)
-        // l'atteignait réellement. callOpenAINeuf (2026-09-12) ne fournit pas non plus de
-        // "reference" — sans cette distinction, un lot Neuf publié aurait affiché une référence
-        // "LMNP-xxxx" trompeuse.
-        reference: (aiData.reference || (espaceLogin === PORTAIL_LOGIN_NEUF ? 'PLUSIMO' : 'LMNP')) + "-" + Math.floor(Math.random() * 10000),
+        // donneesConnues.reference : référence générée/éditée sur l'écran de confirmation
+        // (genererReferenceLmnp/genererReferenceNeuf, dashboard-server) — bug de transport
+        // corrigé le 2026-09-13 : ce champ était calculé, affiché, éditable et persisté en base
+        // côté dashboard depuis le début du chantier référencement LMNP, mais jamais transmis
+        // jusqu'ici jusqu'à cette route, qui retombait donc TOUJOURS sur le défaut ci-dessous,
+        // même pour un lot avec une vraie référence saisie. Utilisée telle quelle (déjà rendue
+        // unique par rendreUnique côté dashboard, jamais de suffixe aléatoire supplémentaire ici).
+        // Défaut (aucune référence connue) inchangé : préfixe dépendant du portail + suffixe
+        // aléatoire — "LMNP" ou "PLUSIMO" selon le portail réel, voir commit du 2026-09-12.
+        reference: donneesConnues.reference
+            ? String(donneesConnues.reference)
+            : (aiData.reference || (espaceLogin === PORTAIL_LOGIN_NEUF ? 'PLUSIMO' : 'LMNP')) + "-" + Math.floor(Math.random() * 10000),
         titre: aiData.titre || "Annonce LMNP",
         titre_alternatif: aiData.titre_alternatif || aiData.titre || "Annonce LMNP",
         texte_resume: aiData.texte_resume || "",

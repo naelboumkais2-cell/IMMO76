@@ -225,6 +225,22 @@ export async function initDb() {
     derniere_execution_le TIMESTAMP,
     CONSTRAINT un_seul_id_sync_disparition CHECK (id = 1)
   );
+
+  -- Référence de programme saisie manuellement par l'agence pour le Neuf (demande client,
+  -- 2026-09-13) — associe le program.id Otaree (identifiant stable et unique par résidence,
+  -- partagé par tous les lots de ce programme, vérifié sur des lots réels) à une référence de
+  -- son choix. genererReferenceNeuf (referenceGenerator.js) l'utilise pour générer automatiquement
+  -- {référence}-{n°lot} sur tout futur lot de ce même programme, sans jamais avoir à la ressaisir
+  -- — durable (vraie table, pas un état de session), retrouvée quelle que soit la recherche ou la
+  -- date à laquelle ce programme réapparaît.
+  CREATE TABLE IF NOT EXISTS programmes_reference (
+    id SERIAL PRIMARY KEY,
+    program_id TEXT NOT NULL UNIQUE,
+    program_nom TEXT,
+    reference TEXT NOT NULL,
+    cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    maj_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   `);
 
   await db.exec(`INSERT INTO parametres_depense (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);

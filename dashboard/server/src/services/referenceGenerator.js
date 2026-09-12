@@ -55,3 +55,21 @@ export async function genererReferenceLmnp(annonce, lot) {
 
     return await rendreUnique(`${promoteur.initiales}-${ville}-${numeroLot}`, annonce.id);
 }
+
+// Génère la référence Neuf ({référence de programme}-{n°lot}) pour une annonce, ou null si le
+// programme du lot n'a pas encore de référence connue (voir programmes_reference, table saisie
+// manuellement par l'agence — table de routes/parametres.js) — dans ce cas la référence reste à
+// saisir manuellement sur l'écran de confirmation, exactement comme pour un lot LMNP sans
+// promoteur reconnu. Clé program.id (voir champsConnusDepuisLot pour d'autres usages de cet
+// identifiant Otaree stable) : tous les lots d'une même résidence partagent la même référence
+// automatiquement, y compris sur une future recherche qui retrouve ce même programme.
+export async function genererReferenceNeuf(annonce, lot) {
+    const programId = lot?.program?.id;
+    const numeroLot = annonce.reference;
+    if (!programId || !numeroLot) return null;
+
+    const row = await db.prepare(`SELECT reference FROM programmes_reference WHERE program_id = ?`).get(programId);
+    if (!row) return null;
+
+    return await rendreUnique(`${row.reference}-${numeroLot}`, annonce.id);
+}

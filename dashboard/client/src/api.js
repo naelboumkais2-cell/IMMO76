@@ -64,6 +64,14 @@ export const api = {
         request('/portails/regles-routage', { method: 'POST', body: JSON.stringify({ type_bien, portail_id, dispositif }) }),
     deleteRegleRoutage: (id) => request(`/portails/regles-routage/${id}`, { method: 'DELETE' }),
 
+    // Références de programme Neuf (voir genererReferenceNeuf côté serveur)
+    getProgrammesReference: () => request('/portails/programmes-reference'),
+    creerProgrammeReference: (program_id, program_nom, reference) =>
+        request('/portails/programmes-reference', { method: 'POST', body: JSON.stringify({ program_id, program_nom, reference }) }),
+    modifierProgrammeReference: (id, reference, program_nom) =>
+        request(`/portails/programmes-reference/${id}`, { method: 'PUT', body: JSON.stringify({ reference, program_nom }) }),
+    supprimerProgrammeReference: (id) => request(`/portails/programmes-reference/${id}`, { method: 'DELETE' }),
+
     // Annonces / supervision — q optionnel : recherche par id/titre/ville, sans se limiter
     // aux 200 plus récentes (utile une fois la base à plusieurs milliers de lignes).
     getAnnonces: (q) => request(`/annonces${q ? `?q=${encodeURIComponent(q)}` : ''}`),

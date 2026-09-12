@@ -111,3 +111,57 @@ portailsRouter.delete('/regles-routage/:id', exigerConnexion, async (req, res) =
         res.status(500).json({ erreur: e.message });
     }
 });
+
+// Références de programme Neuf (voir genererReferenceNeuf, referenceGenerator.js) — saisies
+// manuellement par l'agence une fois par programme (program.id Otaree, stable et partagé par
+// tous les lots d'une même résidence), réutilisées automatiquement sur tout futur lot du même
+// programme sans jamais avoir à ressaisir.
+portailsRouter.get('/programmes-reference', exigerConnexion, async (req, res) => {
+    try {
+        res.json(await db.prepare(`SELECT * FROM programmes_reference ORDER BY maj_le DESC`).all());
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+portailsRouter.post('/programmes-reference', exigerConnexion, async (req, res) => {
+    try {
+        const { program_id, program_nom = null, reference } = req.body || {};
+        if (!program_id?.trim() || !reference?.trim()) {
+            return res.status(400).json({ erreur: 'program_id et reference requis' });
+        }
+        const info = await db
+            .prepare(
+                `INSERT INTO programmes_reference (program_id, program_nom, reference)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT (program_id) DO UPDATE SET reference = EXCLUDED.reference, program_nom = COALESCE(EXCLUDED.program_nom, programmes_reference.program_nom), maj_le = CURRENT_TIMESTAMP
+                 RETURNING id`
+            )
+            .run(program_id.trim(), program_nom?.trim() || null, reference.trim());
+        res.status(201).json(await db.prepare(`SELECT * FROM programmes_reference WHERE id = ?`).get(info.lastInsertRowid));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+portailsRouter.put('/programmes-reference/:id', exigerConnexion, async (req, res) => {
+    try {
+        const { reference, program_nom } = req.body || {};
+        if (!reference?.trim()) return res.status(400).json({ erreur: 'reference requise' });
+        await db
+            .prepare(`UPDATE programmes_reference SET reference = ?, program_nom = COALESCE(?, program_nom), maj_le = CURRENT_TIMESTAMP WHERE id = ?`)
+            .run(reference.trim(), program_nom?.trim() || null, req.params.id);
+        res.json(await db.prepare(`SELECT * FROM programmes_reference WHERE id = ?`).get(req.params.id));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+portailsRouter.delete('/programmes-reference/:id', exigerConnexion, async (req, res) => {
+    try {
+        await db.prepare(`DELETE FROM programmes_reference WHERE id = ?`).run(req.params.id);
+        res.status(204).end();
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
