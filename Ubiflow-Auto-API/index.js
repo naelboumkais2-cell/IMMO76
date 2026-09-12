@@ -292,24 +292,6 @@ app.get('/api/annonce/:id/etat', async (req, res) => {
     res.status(result.success ? 200 : 502).json(result);
 });
 
-// TEMPORAIRE — vérifie le champ "reference" réellement enregistré sur Hubiflow après le
-// correctif de transport du 2026-09-13. À retirer une fois le test terminé.
-app.get('/api/annonce/:id/brut', async (req, res) => {
-    const { espaceLoginAttendu } = req.query;
-    if (!espaceLoginAttendu) return res.status(400).json({ success: false, error: 'espaceLoginAttendu requis' });
-    const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
-    if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
-    try {
-        const response = await axios.get(
-            `https://espace-client-backend.ubiflow.net/annonce/${parseInt(req.params.id, 10)}?lang=fr`,
-            { headers: { Accept: 'application/json, text/plain, */*', Authorization: `Bearer ${resolu.token}` } }
-        );
-        res.json({ success: true, reference: response.data.reference, titre: response.data.titre, etat: response.data.etat });
-    } catch (error) {
-        res.status(502).json({ success: false, error: error.message });
-    }
-});
-
 // Recherche libre Hubiflow — sert au dédup "avertissement" avant publication (dashboard/,
 // bouton explicite "Vérifier les doublons", jamais automatique). Deux appels (etat=A actif +
 // etat=B brouillon) car `etat` est obligatoire côté Hubiflow et ne couvre qu'un seul statut à la
