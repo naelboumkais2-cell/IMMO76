@@ -286,7 +286,7 @@ export function Supervision({ actif }) {
                         <span className="stat-value" style={{ color: 'var(--success)' }}>{stats.publiees}</span>
                     </div>
                     <div ref={panneauEnAttenteRef} className="stat-card" style={{ position: 'relative' }}>
-                        <div style={{ cursor: 'pointer' }} onClick={onTogglePanneauEnAttente}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer' }} onClick={onTogglePanneauEnAttente}>
                             <span className="stat-label">En attente</span>
                             <span className="stat-value" style={{ color: 'var(--warning)' }}>{stats.enAttente}</span>
                         </div>
