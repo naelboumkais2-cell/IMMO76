@@ -35,23 +35,6 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — diagnostic DPE/intérieur sur le test réel Rouen (2026-09-12). À retirer une fois
-// l'investigation terminée.
-scraperRouter.get('/diag-lot-complet/:id', exigerConnexion, async (req, res) => {
-    try {
-        const row = await db.prepare(`SELECT id, titre, raw_data, donnees_ia FROM annonces WHERE id = ?`).get(req.params.id);
-        if (!row) return res.status(404).json({ erreur: 'introuvable' });
-        res.json({
-            id: row.id,
-            titre: row.titre,
-            raw_data: JSON.parse(row.raw_data || '{}'),
-            donnees_ia: JSON.parse(row.donnees_ia || '{}'),
-        });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
