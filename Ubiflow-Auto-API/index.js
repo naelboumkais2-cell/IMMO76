@@ -471,6 +471,17 @@ function extraireNumeroVoie(nomAdresse, codePostal, ville) {
     return { numero: null, voie: texte };
 }
 
+// Extrait la lettre DPE (A-G) d'un texte libre "description" Otaree quand energyClass est
+// absent — formats réels observés : "Classe énergétique : <strong>C</strong>" et
+// "DPE : C / GES : C" (2026-09-12, test réel Rouen + lots Advenis vus plus tôt). Capture
+// uniquement la lettre qui suit IMMÉDIATEMENT le label DPE/classe énergétique — jamais la lettre
+// GES même quand les deux se suivent dans la même description, jamais une valeur par défaut.
+function extraireDpeDepuisDescription(description) {
+    if (typeof description !== 'string' || !description) return null;
+    const m = description.match(/(?:classe\s+[ée]nerg[ée]tique|\bDPE)\s*:?\s*(?:<[^>]+>\s*)?([A-G])\b/i);
+    return m ? m[1].toUpperCase() : null;
+}
+
 // Champs structurés qu'on connaît déjà avec certitude depuis les données Otaree du lot — jamais
 // à faire deviner par l'IA (voir callOpenAILmnp, qui ne génère plus que titre+texte pour les lots
 // LMNP). Mêmes clés que le schéma JSON historique, pour ne rien changer à buildUbiflowPayload en
@@ -534,8 +545,21 @@ function champsConnusDepuisLot(lot) {
     // energyClass est une lettre (A-G) quand elle est connue — jamais une consommation chiffrée
     // (qu'on n'a pas) : on ne remplit dpe_conso/dpe_ges que si la lettre est réellement présente,
     // jamais une valeur par défaut.
+    //
+    // Repli sur lot.description (2026-09-12, test réel Rouen) : constaté que energyClass est
+    // souvent null alors que la lettre DPE est réellement présente en texte libre dans la
+    // description Otaree ("Classe énergétique : C", ou "DPE : C / GES : C" sur d'autres lots) —
+    // jamais inventée, juste dans un champ différent de celui qu'on lisait. Sans ce repli, le
+    // texte généré mentionnait correctement "Classe énergétique C" (lu depuis la description,
+    // transmise telle quelle au modèle) alors que la case DPE Hubiflow restait vide, faute de
+    // valeur structurée à envoyer. Capture UNIQUEMENT la lettre qui suit immédiatement le label
+    // DPE/classe énergétique — jamais GES, même quand les deux apparaissent l'un après l'autre
+    // dans la même description (voir garde-fou existant sur GES, inchangé, hors sujet ici).
+    const dpeDepuisDescription = extraireDpeDepuisDescription(lot.description);
     if (typeof lot.energyClass === 'string' && lot.energyClass) {
         champs.dpe_conso = lot.energyClass;
+    } else if (dpeDepuisDescription) {
+        champs.dpe_conso = dpeDepuisDescription;
     }
 
     // Surface du terrain : uniquement si réellement > 0 (0 est la valeur par défaut pour un
