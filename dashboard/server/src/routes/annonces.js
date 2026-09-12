@@ -111,6 +111,33 @@ annoncesRouter.post('/:id/portails/:portailId/depublier', exigerConnexion, async
     }
 });
 
+// Retire une ligne annonce_portails orpheline — résidu d'une résolution de portails ambiguë à
+// l'import (dispositif fiscal indéterminé, voir resolvePortailsPourAnnonce) où l'annonce a
+// finalement été confirmée/publiée sur UN SEUL des portails proposés, laissant l'autre bloqué en
+// 'en_attente' indéfiniment (2026-09-13, 5 cas réels trouvés : Mantes-la-Ville x3, Le Mans x2).
+// Ne supprime QUE cette ligne précise, jamais l'annonce elle-même ni la ligne du portail où elle
+// est déjà publiée — refuse explicitement si un ad_id_externe existe (une vraie publication ne
+// doit jamais être silencieusement désynchronisée de Hubiflow par cette route, elle doit être
+// dépubliée explicitement via /depublier).
+annoncesRouter.delete('/:id/portails/:portailId', exigerConnexion, async (req, res) => {
+    try {
+        const instance = await db
+            .prepare(`SELECT * FROM annonce_portails WHERE annonce_id = ? AND portail_id = ?`)
+            .get(req.params.id, req.params.portailId);
+        if (!instance) return res.status(404).json({ erreur: 'Instance introuvable.' });
+        if (instance.ad_id_externe) {
+            return res.status(400).json({ erreur: 'Cette ligne est déjà publiée sur Hubiflow — dépubliez-la explicitement plutôt que de la retirer.' });
+        }
+        if (instance.statut !== 'en_attente') {
+            return res.status(400).json({ erreur: `Statut "${instance.statut}" inattendu pour un retrait — seule une ligne 'en_attente' sans publication peut être retirée.` });
+        }
+        await db.prepare(`DELETE FROM annonce_portails WHERE id = ?`).run(instance.id);
+        res.status(204).end();
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 annoncesRouter.post('/:id/portails/:portailId/synchroniser', exigerConnexion, async (req, res) => {
     try {
         const result = await synchroniserInstance(Number(req.params.id), Number(req.params.portailId));

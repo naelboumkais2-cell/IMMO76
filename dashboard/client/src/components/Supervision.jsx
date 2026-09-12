@@ -222,6 +222,27 @@ export function Supervision({ actif }) {
         }
     }
 
+    // Retire une ligne "en_attente" orpheline (jamais publiée) — résidu d'une résolution de
+    // portails ambiguë à l'import où l'annonce a finalement été confirmée sur l'AUTRE portail
+    // proposé (voir services/orchestrator.js, resolvePortailsPourAnnonce). Le serveur refuse déjà
+    // si un ad_id_externe existe ; ce bouton n'est de toute façon affiché que pour les lignes
+    // 'en_attente' sans ad_id_externe (voir plus bas).
+    async function onRetirerPortail(annonceId, portailId, titre, portailNom) {
+        if (!window.confirm(`Retirer "${titre}" du portail "${portailNom}" ? Cette ligne n'a jamais été publiée — l'annonce reste inchangée sur ses autres portails.`)) {
+            return;
+        }
+        const key = `retirer-${annonceId}-${portailId}`;
+        setBusyKey(key);
+        try {
+            await api.retirerPortail(annonceId, portailId);
+        } catch (e) {
+            setErreur(e.message);
+        } finally {
+            setBusyKey(null);
+            refresh(recherche);
+        }
+    }
+
     async function onToggleTest(a) {
         try {
             await api.setAnnonceTest(a.id, !a.est_annonce_test);
@@ -421,6 +442,18 @@ export function Supervision({ actif }) {
                                                                 >
                                                                     <IconCloudCheck
                                                                         style={busyKey === `sync-${a.id}-${p.portail_id}` ? { animation: 'spin 0.8s linear infinite' } : undefined}
+                                                                    />
+                                                                </button>
+                                                            )}
+                                                            {p.statut === 'en_attente' && !p.ad_id_externe && (
+                                                                <button
+                                                                    className="btn btn-ghost-danger btn-icon-only"
+                                                                    disabled={busyKey === `retirer-${a.id}-${p.portail_id}`}
+                                                                    onClick={() => onRetirerPortail(a.id, p.portail_id, a.titre, p.portail_nom)}
+                                                                    title="Retirer ce portail — ligne jamais publiée, résidu d'une résolution ambiguë à l'import (l'annonce a été confirmée sur un autre portail)."
+                                                                >
+                                                                    <IconTrash
+                                                                        style={busyKey === `retirer-${a.id}-${p.portail_id}` ? { animation: 'spin 0.8s linear infinite' } : undefined}
                                                                     />
                                                                 </button>
                                                             )}

@@ -85,6 +85,8 @@ export const api = {
         request(`/annonces/${annonceId}/portails/${portailId}/depublier`, { method: 'POST' }),
     synchroniser: (annonceId, portailId) =>
         request(`/annonces/${annonceId}/portails/${portailId}/synchroniser`, { method: 'POST' }),
+    retirerPortail: (annonceId, portailId) =>
+        request(`/annonces/${annonceId}/portails/${portailId}`, { method: 'DELETE' }),
 
     // Logs
     getLogs: () => request('/logs'),
