@@ -63,6 +63,18 @@ scraperRouter.post('/diag-simuler-publie/:annonceId/:portailId', exigerConnexion
     }
 });
 
+// TEMPORAIRE — annule la simulation ci-dessus avant nettoyage normal.
+scraperRouter.post('/diag-annuler-simulation/:annonceId/:portailId', exigerConnexion, async (req, res) => {
+    try {
+        await db.prepare(
+            `UPDATE annonce_portails SET statut = 'en_attente', ad_id_externe = NULL WHERE annonce_id = ? AND portail_id = ? AND ad_id_externe = '000000'`
+        ).run(req.params.annonceId, req.params.portailId);
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
