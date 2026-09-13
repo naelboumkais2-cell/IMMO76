@@ -35,46 +35,6 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — reproduit une ligne orpheline historique (2026-09-13) pour tester la visibilité
-// du bouton "Retirer ce portail" sur le cas légitime. À retirer une fois le test terminé.
-scraperRouter.post('/diag-simuler-orphelin/:annonceId/:portailId', exigerConnexion, async (req, res) => {
-    try {
-        await db.prepare(
-            `INSERT INTO annonce_portails (annonce_id, portail_id, statut, mode) VALUES (?, ?, 'en_attente', 'brouillon')
-             ON CONFLICT (annonce_id, portail_id) DO NOTHING`
-        ).run(req.params.annonceId, req.params.portailId);
-        res.json({ ok: true });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-// TEMPORAIRE — simule un ad_id_externe (publication réelle jamais faite, uniquement pour tester
-// la condition d'affichage côté client, qui ne lit que sa présence/absence). À retirer une fois
-// le test terminé.
-scraperRouter.post('/diag-simuler-publie/:annonceId/:portailId', exigerConnexion, async (req, res) => {
-    try {
-        await db.prepare(
-            `UPDATE annonce_portails SET statut = 'publiee', ad_id_externe = '000000' WHERE annonce_id = ? AND portail_id = ?`
-        ).run(req.params.annonceId, req.params.portailId);
-        res.json({ ok: true });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-// TEMPORAIRE — annule la simulation ci-dessus avant nettoyage normal.
-scraperRouter.post('/diag-annuler-simulation/:annonceId/:portailId', exigerConnexion, async (req, res) => {
-    try {
-        await db.prepare(
-            `UPDATE annonce_portails SET statut = 'en_attente', ad_id_externe = NULL WHERE annonce_id = ? AND portail_id = ? AND ad_id_externe = '000000'`
-        ).run(req.params.annonceId, req.params.portailId);
-        res.json({ ok: true });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
