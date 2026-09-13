@@ -35,6 +35,21 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
+// TEMPORAIRE — recherche exhaustive des logs "référence INT" (hypothèse mandat direct, voir
+// referenceGenerator.js), au-delà de la limite de 200 lignes de GET /api/logs. À retirer une
+// fois la vérification terminée.
+scraperRouter.get('/diag-logs-int', exigerConnexion, async (req, res) => {
+    try {
+        const total = await db.prepare(`SELECT COUNT(*)::int AS n FROM logs_api`).get();
+        const matches = await db
+            .prepare(`SELECT * FROM logs_api WHERE message ILIKE '%INT-%' OR message ILIKE '%mandat direct%' ORDER BY id ASC`)
+            .all();
+        res.json({ totalLogs: total.n, matches });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
