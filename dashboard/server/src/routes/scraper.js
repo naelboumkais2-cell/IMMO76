@@ -35,6 +35,20 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
+// TEMPORAIRE — reproduit une ligne orpheline historique (2026-09-13) pour tester la visibilité
+// du bouton "Retirer ce portail" sur le cas légitime. À retirer une fois le test terminé.
+scraperRouter.post('/diag-simuler-orphelin/:annonceId/:portailId', exigerConnexion, async (req, res) => {
+    try {
+        await db.prepare(
+            `INSERT INTO annonce_portails (annonce_id, portail_id, statut, mode) VALUES (?, ?, 'en_attente', 'brouillon')
+             ON CONFLICT (annonce_id, portail_id) DO NOTHING`
+        ).run(req.params.annonceId, req.params.portailId);
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
