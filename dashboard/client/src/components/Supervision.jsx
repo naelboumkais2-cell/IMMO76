@@ -445,7 +445,8 @@ export function Supervision({ actif }) {
                                                                     />
                                                                 </button>
                                                             )}
-                                                            {p.statut === 'en_attente' && !p.ad_id_externe && (
+                                                            {p.statut === 'en_attente' && !p.ad_id_externe &&
+                                                                a.portails.some((autre) => autre.id !== p.id && autre.ad_id_externe) && (
                                                                 <button
                                                                     className="btn btn-ghost-danger btn-icon-only"
                                                                     disabled={busyKey === `retirer-${a.id}-${p.portail_id}`}
