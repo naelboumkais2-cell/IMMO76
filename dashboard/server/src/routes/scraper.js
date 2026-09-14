@@ -39,6 +39,23 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
+// TEMPORAIRE — inspecte les program.developer bruts d'une recherche sans rien importer en base,
+// pour vérifier l'orthographe/casse exacte de "La Centrale du LMNP" avant de coder la comparaison
+// dans referenceGenerator.js. À retirer une fois la vérification terminée.
+scraperRouter.post('/diag-developers', exigerConnexion, async (req, res) => {
+    try {
+        const { filters } = req.body || {};
+        const { lots } = await rechercherLotsOtaree(filters || {});
+        const developers = lots.map((l) => ({
+            lotId: l.id,
+            developer: l.program?.developer || null,
+        }));
+        res.json({ nbLots: lots.length, developers });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
