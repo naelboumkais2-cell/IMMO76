@@ -70,13 +70,18 @@ const MAX_PAGES = 100;
 // limite a été atteinte alors qu'il restait encore des résultats (hydra:next toujours
 // présent) : le total réel excède alors ce qui a été rapporté, l'appelant doit le signaler
 // plutôt que de laisser croire que la liste est complète.
-async function paginerRecherche(jwt, credentials, filters) {
+// `onPage(allLotsSoFar)` est appelé après CHAQUE page (pas seulement à la fin) et `estAnnule()`
+// vérifié au même rythme — permet au dashboard de voir grossir "trouvés" en direct et d'annuler
+// une recherche qui part sur un volume trop important, avant même d'arriver au bout de la
+// pagination. Jamais vérifié en plein milieu d'un fetch déjà parti : uniquement entre deux pages.
+async function paginerRecherche(jwt, credentials, filters, onPage = () => {}, estAnnule = () => false) {
     const allLots = [];
     let currentUrl = `${API_BASE}/estate/properties.jsonld`;
     let currentPage = 1;
     let loopCount = 0;
     let next = null;
     let jetonActuel = jwt;
+    let annule = false;
 
     while (currentUrl && loopCount < MAX_PAGES) {
         loopCount++;
@@ -107,6 +112,7 @@ async function paginerRecherche(jwt, credentials, filters) {
         const data = await res.json();
         const members = data['hydra:member'] || [];
         allLots.push(...members);
+        onPage(allLots);
 
         next = data['hydra:view'] && data['hydra:view']['hydra:next'];
         if (next) {
@@ -116,9 +122,14 @@ async function paginerRecherche(jwt, credentials, filters) {
         } else {
             currentUrl = null;
         }
+
+        if (currentUrl && estAnnule()) {
+            annule = true;
+            break;
+        }
     }
 
-    return { lots: allLots, tronque: loopCount >= MAX_PAGES && !!next };
+    return { lots: allLots, tronque: !annule && loopCount >= MAX_PAGES && !!next, annule };
 }
 
 // Credentials + JWT frais, avec erreurs typées (err.code) pour que la route HTTP renvoie un
@@ -149,9 +160,9 @@ export async function obtenirJwtFrais() {
 }
 
 // Point d'entrée principal : refresh -> recherche paginée -> { lots, tronque }.
-export async function rechercherLotsOtaree(filters) {
+export async function rechercherLotsOtaree(filters, onPage = () => {}, estAnnule = () => false) {
     const { jwt, credentials } = await obtenirJwtFrais();
-    return paginerRecherche(jwt, credentials, filters);
+    return paginerRecherche(jwt, credentials, filters, onPage, estAnnule);
 }
 
 // Résout un nom de région/département en code Otaree (`region_X`/`department_X`) via
@@ -191,9 +202,14 @@ function whereDe(zone) {
 // partir au ramasse-miettes avant de passer à la suivante — jamais plus qu'une seule zone
 // (~3000 lots max) en mémoire à la fois, comme la recherche nationale brute (sans découpage)
 // qui n'avait jamais posé ce problème.
-export async function rechercherZoneAvecRepli(nomRegion, departementsRegion, filtresBase = {}, onZoneLots = async () => {}) {
+export async function rechercherZoneAvecRepli(nomRegion, departementsRegion, filtresBase = {}, onZoneLots = async () => {}, onPage = () => {}, estAnnule = () => false) {
     const region = await resoudreZone(nomRegion, 'region');
-    const { lots, tronque } = await rechercherLotsOtaree({ ...filtresBase, where: whereDe(region) });
+    const { lots, tronque, annule } = await rechercherLotsOtaree({ ...filtresBase, where: whereDe(region) }, onPage, estAnnule);
+
+    if (annule) {
+        await onZoneLots(lots, { nom: nomRegion, type: 'region', nb: lots.length, tronque: false });
+        return { zones: [{ nom: nomRegion, type: 'region', nb: lots.length, tronque: false }], annule: true };
+    }
 
     if (!tronque) {
         await onZoneLots(lots, { nom: nomRegion, type: 'region', nb: lots.length, tronque: false });
@@ -203,9 +219,10 @@ export async function rechercherZoneAvecRepli(nomRegion, departementsRegion, fil
     const zones = [];
     for (const nomDept of departementsRegion) {
         const dept = await resoudreZone(nomDept, 'department');
-        const resultat = await rechercherLotsOtaree({ ...filtresBase, where: whereDe(dept) });
+        const resultat = await rechercherLotsOtaree({ ...filtresBase, where: whereDe(dept) }, onPage, estAnnule);
         await onZoneLots(resultat.lots, { nom: nomDept, type: 'department', nb: resultat.lots.length, tronque: resultat.tronque });
         zones.push({ nom: nomDept, type: 'department', nb: resultat.lots.length, tronque: resultat.tronque });
+        if (resultat.annule) return { zones, annule: true };
     }
     return { zones };
 }

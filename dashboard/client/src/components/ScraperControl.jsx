@@ -194,6 +194,7 @@ export function ScraperControl() {
     const [comptageOtaree, setComptageOtaree] = useState(null);
     const [autoPublishStatus, setAutoPublishStatus] = useState(null);
     const [annulationDemandee, setAnnulationDemandee] = useState(false);
+    const [annulationRechercheDemandee, setAnnulationRechercheDemandee] = useState(false);
     const [resultatOtaree, setResultatOtaree] = useState(null);
     const [erreurOtaree, setErreurOtaree] = useState(null);
     const [confirmationEnAttente, setConfirmationEnAttente] = useState(null);
@@ -385,6 +386,12 @@ export function ScraperControl() {
             setRechercheOtareeEnCours(false);
             return;
         }
+        if (rechercheImportStatus.annule) {
+            setResultatOtaree({ message: 'Recherche annulée — tout ce qui avait été trouvé/importé a été supprimé.', tronque: false, annule: true });
+            setRechercheOtareeEnCours(false);
+            setAnnulationRechercheDemandee(false);
+            return;
+        }
         const result = rechercheImportStatus.resultat;
         if (!result) return; // état initial (aucune recherche encore lancée) — rien à traiter
 
@@ -426,6 +433,25 @@ export function ScraperControl() {
         if (numeroBien.trim()) filters.propertyNumber = numeroBien.trim();
         if (surfaceDependancesMin.trim()) filters.minAnnexesSurface = surfaceDependancesMin.trim();
         return filters;
+    }
+
+    // Annulation de la recherche/import en cours (voir rechercheStatus.js côté serveur) — distinct
+    // de onAnnulerAutoPublish, qui agit sur la phase postérieure (génération/publication de
+    // candidats déjà importés). Destructif (tout ce qui a été trouvé/importé est supprimé),
+    // d'où la confirmation explicite.
+    async function onAnnulerRecherche() {
+        const nbTrouves = rechercheImportStatus?.nbTrouves || 0;
+        const confirme = window.confirm(
+            `Annuler cette recherche ? ${nbTrouves} lot(s) déjà trouvé(s)/importé(s) seront supprimés — comme si la recherche n'avait jamais eu lieu.`
+        );
+        if (!confirme) return;
+        setAnnulationRechercheDemandee(true);
+        try {
+            await api.annulerRechercheEnCours();
+        } catch (err) {
+            setAnnulationRechercheDemandee(false);
+            setErreurOtaree(err.message);
+        }
     }
 
     async function onAnnulerAutoPublish() {
@@ -487,6 +513,7 @@ export function ScraperControl() {
         const resume = construireResumeFiltres({ villeSelectionnee, minPrice, maxPrice, typologie, nature, statut, loi, promoteur });
 
         setRechercheOtareeEnCours(true);
+        setAnnulationRechercheDemandee(false);
         try {
             // Ne renvoie plus le résultat directement : la recherche+import tourne en arrière-plan
             // côté serveur (voir rechercheStatus.js — évite le timeout de 120s du proxy Vercel sur
@@ -740,13 +767,22 @@ export function ScraperControl() {
                 compte, entre le clic et la première réponse serveur. Masqué dès que l'écran de
                 confirmation prend le relais (confirmationEnAttente), qui a son propre affichage. */}
             {rechercheOtareeEnCours && !confirmationEnAttente && (
-                <div className="progress-banner" style={{ margin: 'var(--space-6)' }}>
+                <div className="progress-banner" style={{ margin: 'var(--space-6)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
                     <span>
                         Recherche et import Otaree en cours
                         {rechercheImportStatus?.nbTrouves
                             ? ` : ${rechercheImportStatus.nbImportes}/${rechercheImportStatus.nbTrouves} lot(s) importé(s)`
                             : '…'}
+                        {annulationRechercheDemandee ? ' — annulation demandée, arrêt en cours…' : ''}
                     </span>
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={onAnnulerRecherche}
+                        disabled={annulationRechercheDemandee}
+                    >
+                        {annulationRechercheDemandee ? 'Annulation…' : 'Annuler'}
+                    </button>
                 </div>
             )}
 

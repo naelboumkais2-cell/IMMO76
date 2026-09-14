@@ -10,6 +10,7 @@ import {
     detailLotEnAttente,
     upsertRecherche,
     depublierInstance,
+    annulerImportRecherche,
 } from '../services/orchestrator.js';
 import { getEtatAutoPublish, demanderAnnulation } from '../services/autoPublishStatus.js';
 import { verifierDoublonsHubiflow } from '../services/doublonsChecker.js';
@@ -18,6 +19,9 @@ import {
     mettreAJourProgression,
     terminerRecherche,
     echouerRecherche,
+    annulerRecherche,
+    demanderAnnulationRecherche,
+    estAnnulationRechercheDemandee,
     getEtatRecherche,
 } from '../services/rechercheStatus.js';
 import { executerAvecUtilisateur, utilisateurActuelId } from '../services/requestContext.js';
@@ -243,6 +247,12 @@ scraperRouter.post('/otaree-search', exigerConnexion, async (req, res) => {
     demarrerRecherche(nom?.trim() || null);
     res.json({ enCours: true });
 
+    // Recherche neuve ou relancement d'une recherche favorite existante ? Détermine, en cas
+    // d'annulation, si la ligne `recherches` elle-même doit disparaître ou si son historique doit
+    // être préservé — voir annulerImportRecherche, orchestrator.js.
+    const url = construireUrlRechercheOtaree(filters);
+    const rechercheEtaitNouvelle = !(await db.prepare(`SELECT 1 FROM recherches WHERE url = ?`).get(url));
+
     // Utilisateur courant capturé avant le retour de la requête HTTP (le contexte de requête
     // d'origine, voir requestContext.js, ne survit pas au-delà — le traitement continue dans une
     // tâche détachée) pour que log()/logs_api gardent la bonne attribution malgré l'exécution en
@@ -250,13 +260,29 @@ scraperRouter.post('/otaree-search', exigerConnexion, async (req, res) => {
     const utilisateurId = utilisateurActuelId();
     executerAvecUtilisateur(utilisateurId, async () => {
         try {
-            const { lots, tronque } = await rechercherLotsOtaree(filters);
-            mettreAJourProgression(lots.length, 0);
-            const url = construireUrlRechercheOtaree(filters);
-            const { annonces, ...result } = await importerLotsOtaree(
-                url, lots, nom?.trim() || null, resume?.trim() || null,
-                (fait, total) => mettreAJourProgression(total, fait)
+            const { lots, tronque, annule: annuleAvantImport } = await rechercherLotsOtaree(
+                filters,
+                (lotsSoFar) => mettreAJourProgression(lotsSoFar.length, 0),
+                estAnnulationRechercheDemandee
             );
+            mettreAJourProgression(lots.length, 0);
+            if (annuleAvantImport) {
+                if (rechercheEtaitNouvelle) {
+                    await db.prepare(`DELETE FROM recherches WHERE url = ?`).run(url);
+                }
+                annulerRecherche();
+                return;
+            }
+            const { annonces, idsNouvellementInserees, annule, ...result } = await importerLotsOtaree(
+                url, lots, nom?.trim() || null, resume?.trim() || null,
+                (fait, total) => mettreAJourProgression(total, fait),
+                estAnnulationRechercheDemandee
+            );
+            if (annule) {
+                await annulerImportRecherche(result.rechercheId, idsNouvellementInserees, rechercheEtaitNouvelle);
+                annulerRecherche();
+                return;
+            }
             const autoPublish = await autoGenererEtPublier(annonces, result.rechercheId);
             terminerRecherche({ ...result, tronque, autoPublish });
         } catch (e) {
@@ -343,15 +369,30 @@ scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) 
             // l'auto-publication de ce run repris (republish manuel possible depuis
             // Supervision si besoin, même filet de sécurité que le dépassement de MAX_PAR_RUN).
             let candidatsAccumules = [];
+            // Annulation en cours de route (voir estAnnulationRechercheDemandee) : seules les
+            // annonces importées PENDANT CETTE tentative sont annulables — jamais celles des
+            // régions déjà terminées lors d'une tentative précédente (`regionsDejaTerminees`),
+            // qui restent un progrès légitime déjà acquis. La recherche "France entière" elle-même
+            // n'est jamais supprimée (contrairement à /otaree-search) : c'est une entrée durable et
+            // réutilisable, avec sa propre progression de reprise — l'annuler reviendrait à jeter
+            // potentiellement des heures de progrès des tentatives précédentes, pas seulement de
+            // celle-ci. Sur annulation, `progression_nationale` reste donc figée à l'état d'AVANT
+            // cette tentative (les régions traitées ici ne sont pas ajoutées à regionsTerminees).
+            let idsAnnulables = [];
+            let annule = false;
 
             for (const region of REGIONS_FRANCE) {
                 if (regionsDejaTerminees.has(region.nom)) continue;
+                if (estAnnulationRechercheDemandee()) {
+                    annule = true;
+                    break;
+                }
 
                 // Import à l'intérieur même du callback (voir rechercherZoneAvecRepli) : chaque
                 // sous-zone (région entière, ou un seul département en cas de repli) est importée
                 // et peut partir au ramasse-miettes avant que la suivante ne soit demandée à
                 // Otaree — jamais plus d'une seule sous-zone (~3000 lots max) en mémoire à la fois.
-                await rechercherZoneAvecRepli(region.nom, region.departements, filtresBase || {}, async (lots) => {
+                const { annule: zoneAnnulee } = await rechercherZoneAvecRepli(region.nom, region.departements, filtresBase || {}, async (lots) => {
                     totalTrouves += lots.length;
                     mettreAJourProgression(totalTrouves, totalImportes);
 
@@ -361,12 +402,18 @@ scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) 
                     );
                     totalImportes += lots.length;
                     nbNouvellesTotal += result.nbNouvelles;
+                    idsAnnulables = idsAnnulables.concat(result.idsNouvellementInserees);
                     if (candidatsAccumules.length < MAX_PAR_RUN) {
                         const nouvelles = result.annonces.filter((a) => a.estNouvelle);
                         candidatsAccumules = candidatsAccumules.concat(nouvelles.slice(0, MAX_PAR_RUN - candidatsAccumules.length));
                     }
                     mettreAJourProgression(totalTrouves, totalImportes);
-                });
+                }, () => {}, estAnnulationRechercheDemandee);
+
+                if (zoneAnnulee) {
+                    annule = true;
+                    break;
+                }
 
                 // Persisté après CHAQUE région (pas seulement à la fin) : c'est le point de
                 // reprise réel en cas d'interruption — région par région, jamais au milieu d'une.
@@ -375,6 +422,16 @@ scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) 
                     JSON.stringify({ filtresFingerprint: empreinte, regionsTerminees, totalTrouves, totalImportes, nbNouvellesTotal }),
                     rechercheId
                 );
+            }
+
+            if (annule) {
+                if (idsAnnulables.length) {
+                    await db
+                        .prepare(`DELETE FROM annonces WHERE id IN (${idsAnnulables.map(() => '?').join(',')})`)
+                        .run(...idsAnnulables);
+                }
+                annulerRecherche();
+                return;
             }
 
             // Toutes les régions traitées avec succès : plus rien à reprendre, et
@@ -393,6 +450,16 @@ scraperRouter.post('/otaree-search-national', exigerConnexion, async (req, res) 
 
 scraperRouter.get('/otaree-search-status', exigerConnexion, (req, res) => {
     res.json(getEtatRecherche());
+});
+
+// Annulation d'une recherche/import en cours (pagination Otaree ou import en base) — distinct de
+// /auto-publish-cancel, qui agit sur la phase postérieure (génération/publication de candidats
+// déjà importés). Pose juste le drapeau : le rollback réel (suppression des annonces importées
+// pendant ce run) se fait dans la tâche de fond elle-même, au premier point de contrôle atteint
+// (entre deux pages Otaree ou entre deux lots) — jamais instantané.
+scraperRouter.post('/otaree-search-cancel', exigerConnexion, (req, res) => {
+    demanderAnnulationRecherche();
+    res.json({ success: true });
 });
 
 scraperRouter.post('/auto-publish-confirm', exigerConnexion, async (req, res) => {

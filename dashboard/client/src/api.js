@@ -37,6 +37,7 @@ export const api = {
     rechercherOtareeNationale: (filtresBase, nom, resume) =>
         request('/scraper/otaree-search-national', { method: 'POST', body: JSON.stringify({ filtresBase, nom, resume }) }),
     getRechercheStatus: () => request('/scraper/otaree-search-status'),
+    annulerRechercheEnCours: () => request('/scraper/otaree-search-cancel', { method: 'POST' }),
     compterOtaree: (filters) => request('/scraper/otaree-count', { method: 'POST', body: JSON.stringify({ filters }) }),
     rechercherVillesOtaree: (q) => request(`/scraper/otaree-locations?q=${encodeURIComponent(q)}`),
     getAutoPublishStatus: () => request('/scraper/auto-publish-status'),

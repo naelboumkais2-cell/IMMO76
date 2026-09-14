@@ -183,7 +183,12 @@ function mapLotOtareeVersAnnonce(lot) {
     };
 }
 
-export async function importerLotsOtaree(url, lotsBruts, nom, resume, onProgress = () => {}) {
+// `estAnnule()` vérifié entre deux lots (jamais en plein milieu d'un insert déjà commencé) — sur
+// annulation, la boucle s'arrête net et les inserts de finalisation (scraper_runs, mise à jour de
+// `recherches`, log) sont sautés : l'appelant (route /otaree-search(-national)) est responsable
+// du rollback réel (suppression des annonces listées dans `idsNouvellementInserees`) et ne doit
+// jamais traiter ce retour comme un import terminé normalement.
+export async function importerLotsOtaree(url, lotsBruts, nom, resume, onProgress = () => {}, estAnnule = () => false) {
     const recherche = await upsertRecherche(url, nom, resume);
 
     const insertAnnonce = db.prepare(
@@ -199,7 +204,13 @@ export async function importerLotsOtaree(url, lotsBruts, nom, resume, onProgress
 
     let nbNouvelles = 0;
     const annoncesTraitees = [];
+    const idsNouvellementInserees = [];
+    let annule = false;
     for (const lotBrut of lotsBruts) {
+        if (estAnnule()) {
+            annule = true;
+            break;
+        }
         const a = mapLotOtareeVersAnnonce(lotBrut);
         const info = await insertAnnonce.run(
             a.external_id, a.reference, a.titre, a.ville, a.code_postal, a.type_bien, a.surface, a.prix,
@@ -209,12 +220,17 @@ export async function importerLotsOtaree(url, lotsBruts, nom, resume, onProgress
         if (estNouvelle) nbNouvelles++;
 
         const row = await getByExternalId.get(a.external_id);
+        if (estNouvelle) idsNouvellementInserees.push(row.id);
         const portailsCibles = await resolvePortailsPourAnnonce(row);
         for (const portail of portailsCibles) {
             await insertInstance.run(row.id, portail.id, portail.mode_publication_defaut);
         }
         annoncesTraitees.push({ annonce: row, lotBrut, estNouvelle });
         onProgress(annoncesTraitees.length, lotsBruts.length);
+    }
+
+    if (annule) {
+        return { rechercheId: recherche.id, nbLots: annoncesTraitees.length, nbNouvelles, annonces: annoncesTraitees, idsNouvellementInserees, annule: true };
     }
 
     await db.prepare(
@@ -231,7 +247,24 @@ export async function importerLotsOtaree(url, lotsBruts, nom, resume, onProgress
         message: `${lotsBruts.length} lot(s) Otaree importé(s) (${nbNouvelles} nouveau(x)) — ${url}`,
     });
 
-    return { rechercheId: recherche.id, nbLots: lotsBruts.length, nbNouvelles, annonces: annoncesTraitees };
+    return { rechercheId: recherche.id, nbLots: lotsBruts.length, nbNouvelles, annonces: annoncesTraitees, idsNouvellementInserees };
+}
+
+// Rollback d'une recherche annulée en cours de route (voir importerLotsOtaree, `estAnnule`) :
+// supprime uniquement les annonces réellement insérées PENDANT ce run précis (jamais celles d'un
+// run antérieur de la même recherche favorite, même si elles partagent le même recherche_id — un
+// relancement d'une recherche existante doit rester une opération sûre, jamais un risque de
+// perdre l'historique d'un run précédent). La ligne `recherches` elle-même n'est supprimée que si
+// elle a été créée par ce run (recherche neuve) — sinon on la laisse intacte, avec son historique.
+export async function annulerImportRecherche(rechercheId, idsNouvellementInserees, rechercheEtaitNouvelle) {
+    if (idsNouvellementInserees.length) {
+        await db
+            .prepare(`DELETE FROM annonces WHERE id IN (${idsNouvellementInserees.map(() => '?').join(',')})`)
+            .run(...idsNouvellementInserees);
+    }
+    if (rechercheEtaitNouvelle) {
+        await db.prepare(`DELETE FROM recherches WHERE id = ?`).run(rechercheId);
+    }
 }
 
 export async function rescraperRechercheFavorite(recherche) {
