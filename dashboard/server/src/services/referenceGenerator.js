@@ -23,22 +23,27 @@ async function rendreUnique(base, annonceIdAExclure) {
     return candidate;
 }
 
-// Mandat direct agence (INT) : d'après un collègue de la cliente, "nos mandats" (biens gérés en
-// direct par l'agence, sans promoteur partenaire) se réfèrent uniquement en INT-ville-n°lot.
-// Hypothèse de départ, PAS encore confirmée sur un vrai cas en base (aucun lot sans developer
-// trouvé lors du diagnostic initial) — à vérifier dès qu'un exemple réel apparaît dans un import.
-// Distinct d'un promoteur non reconnu (ex. "Edouard Denis") : ici program.developer est
-// totalement absent du lot, pas juste absent du mapping promoteurs.js.
-function estMandatDirect(lot) {
-    return !lot?.program?.developer;
+// Correction suite à un retour client (2026-09-14) : l'hypothèse initiale "mandat direct = pas de
+// promoteur du tout" était fausse — le promoteur est TOUJOURS renseigné chez Otaree pour ces lots,
+// jamais absent (cohérent avec le fait que cette ancienne logique ne s'était d'ailleurs jamais
+// déclenchée en production). Le vrai déclencheur INT est un promoteur précis : "La Centrale du
+// LMNP" (id Otaree /developers/bec3d1402a8a, orthographe/casse vérifiées sur un vrai lot avant de
+// coder cette comparaison — voir diag temporaire du 2026-09-14). Comparaison sur le nom (pas
+// l'id) à la demande explicite du client, trim() par prudence contre un espace parasite.
+function estCentraleLmnp(lot) {
+    return (lot?.program?.developer?.name || '').trim() === 'La Centrale du LMNP';
 }
 
-// Génère la référence LMNP ({Initiales}-{VILLE}-{n°lot}, ou INT-{VILLE}-{n°lot} pour un mandat
-// direct) pour une annonce, ou null si la génération automatique ne s'applique pas (lot non-LMNP,
-// promoteur non reconnu avec certitude, ou donnée manquante) — dans ce cas la référence reste à
-// saisir manuellement sur l'écran de confirmation, jamais devinée. En cas de collision réelle
-// (même promoteur, même ville, même n° de lot dans deux résidences différentes — cas confirmé
-// existant en base), un suffixe -2, -3... est ajouté pour garantir l'unicité.
+// Génère la référence LMNP ({Initiales}-{VILLE}-{n°lot}, ou INT-{VILLE}-{n°lot} pour "La Centrale
+// du LMNP") pour une annonce, ou null si la génération automatique ne s'applique pas (lot non-LMNP,
+// promoteur non reconnu, ou donnée manquante) — dans ce cas la référence reste à saisir
+// manuellement sur l'écran de confirmation, jamais devinée. Un promoteur non reconnu (ni un des 4
+// partenaires connus, ni "La Centrale du LMNP") signifie plus que "référence à saisir à la main" :
+// voir promoteurLmnpExclu ci-dessous, utilisé par orchestrator.js pour exclure ces lots de
+// l'auto-publication entièrement (demande explicite du client — "on ne le diffusera pas"). En cas
+// de collision réelle (même promoteur, même ville, même n° de lot dans deux résidences
+// différentes — cas confirmé existant en base), un suffixe -2, -3... est ajouté pour garantir
+// l'unicité.
 export async function genererReferenceLmnp(annonce, lot) {
     if (!estLotLmnp(lot)) return null;
 
@@ -46,7 +51,7 @@ export async function genererReferenceLmnp(annonce, lot) {
     const numeroLot = annonce.reference;
     if (!ville || !numeroLot) return null;
 
-    if (estMandatDirect(lot)) {
+    if (estCentraleLmnp(lot)) {
         return await rendreUnique(`INT-${ville}-${numeroLot}`, annonce.id);
     }
 
@@ -54,6 +59,20 @@ export async function genererReferenceLmnp(annonce, lot) {
     if (!promoteur) return null;
 
     return await rendreUnique(`${promoteur.initiales}-${ville}-${numeroLot}`, annonce.id);
+}
+
+// Un lot LMNP dont le promoteur n'est ni l'un des 4 partenaires reconnus (promoteurs.js) ni "La
+// Centrale du LMNP" doit être exclu de l'auto-publication (jamais proposé sur l'écran de
+// confirmation ni publié automatiquement) — demande explicite du client : ces promoteurs tiers ne
+// doivent pas être diffusés du tout, pas juste laissés avec une référence vide à compléter à la
+// main. Le lot reste importé en base normalement (visible/traitable manuellement si besoin, voir
+// Supervision) — voir orchestrator.js, autoGenererEtPublier, qui filtre les candidats avec ceci.
+// Ne s'applique qu'aux lots LMNP : un lot Neuf sans référence de programme connue garde son
+// comportement inchangé (référence à saisir manuellement, jamais exclu).
+export function promoteurLmnpExclu(lot) {
+    if (!estLotLmnp(lot)) return false;
+    if (estCentraleLmnp(lot)) return false;
+    return !promoteurDepuisLot(lot);
 }
 
 // Génère la référence Neuf ({référence de programme}-{n°lot}) pour une annonce, ou null si le

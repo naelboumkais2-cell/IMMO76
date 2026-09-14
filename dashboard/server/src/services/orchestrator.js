@@ -16,7 +16,7 @@ import {
 } from './autoPublishStatus.js';
 import { utilisateurActuelId } from './requestContext.js';
 import { estEnPause, obtenirEtatPause } from './depenseMonitor.js';
-import { genererReferenceLmnp, genererReferenceNeuf } from './referenceGenerator.js';
+import { genererReferenceLmnp, genererReferenceNeuf, promoteurLmnpExclu } from './referenceGenerator.js';
 import { estLotLmnp } from './dispositifFiscal.js';
 
 // utilisateur_id vient du contexte de requête (voir requestContext.js/index.js), jamais passé
@@ -295,14 +295,13 @@ async function apercuCandidats(candidats) {
     return await Promise.all(
         candidats.map(async ({ annonce, lotBrut }) => {
             const referenceGeneree = (await genererReferenceLmnp(annonce, lotBrut)) ?? (await genererReferenceNeuf(annonce, lotBrut));
-            // Hypothèse INT (mandat direct agence) pas encore confirmée sur un vrai cas — voir
-            // referenceGenerator.js. Loggé explicitement à chaque occurrence pour que
-            // l'utilisateur puisse vérifier chaque premier cas avant de le considérer acquis.
+            // Déclencheur confirmé (2026-09-14) : promoteur "La Centrale du LMNP" — voir
+            // referenceGenerator.js. Loggé pour garder une trace visible de chaque occurrence.
             if (referenceGeneree?.startsWith('INT-')) {
                 await log('auto_publish', {
                     annonceId: annonce.id,
                     succes: true,
-                    message: `Référence INT générée automatiquement (${referenceGeneree}) — hypothèse "mandat direct" non encore confirmée sur un cas réel, à vérifier manuellement.`,
+                    message: `Référence INT générée automatiquement (${referenceGeneree}) — promoteur "La Centrale du LMNP".`,
                 });
             }
             return {
@@ -558,9 +557,27 @@ export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null)
     const mode = getAutoPublishMode();
     if (mode === 'off' || !annoncesTraitees?.length) return { mode, nbCandidats: 0, nbTraites: 0 };
 
-    const candidats = annoncesTraitees.filter(({ annonce, estNouvelle }) =>
+    const candidatsBruts = annoncesTraitees.filter(({ annonce, estNouvelle }) =>
         mode === 'test' ? !!annonce.est_annonce_test : estNouvelle
     );
+
+    // Promoteur LMNP tiers non reconnu (ni un des 4 partenaires, ni "La Centrale du LMNP") : exclu
+    // de l'auto-publication entièrement, demande explicite du client ("on ne le diffusera pas") —
+    // voir promoteurLmnpExclu, referenceGenerator.js. Le lot reste importé normalement (déjà fait
+    // par importerLotsOtaree, avant cette fonction), juste jamais proposé ici. Loggé pour garder
+    // une trace visible de chaque exclusion (même logique que le log INT existant).
+    const candidats = [];
+    for (const c of candidatsBruts) {
+        if (promoteurLmnpExclu(c.lotBrut)) {
+            await log('auto_publish', {
+                annonceId: c.annonce.id,
+                succes: true,
+                message: `Lot exclu de l'auto-publication : promoteur LMNP non reconnu (${c.lotBrut?.program?.developer?.name || 'nom inconnu'}) — ni partenaire connu, ni "La Centrale du LMNP".`,
+            });
+            continue;
+        }
+        candidats.push(c);
+    }
 
     // Plafond de dépense (voir services/depenseMonitor.js) : vérifié ici aussi, avant même un
     // éventuel écran de confirmation — sinon un run déjà en pause afficherait quand même

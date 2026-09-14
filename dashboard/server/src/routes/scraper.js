@@ -36,21 +36,33 @@ import {
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
+import { genererReferenceLmnp, promoteurLmnpExclu } from '../services/referenceGenerator.js';
+import { estLotLmnp } from '../services/dispositifFiscal.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — inspecte les program.developer bruts d'une recherche sans rien importer en base,
-// pour vérifier l'orthographe/casse exacte de "La Centrale du LMNP" avant de coder la comparaison
-// dans referenceGenerator.js. À retirer une fois la vérification terminée.
+// TEMPORAIRE — inspecte les program.developer bruts d'une recherche sans rien importer en base, et
+// teste la nouvelle logique referenceGenerator.js (correctif "La Centrale du LMNP" / exclusion
+// promoteur tiers) sur de vraies données, avec une annonce synthétique (jamais écrite en base) —
+// à retirer une fois la vérification terminée.
 scraperRouter.post('/diag-developers', exigerConnexion, async (req, res) => {
     try {
         const { filters } = req.body || {};
         const { lots } = await rechercherLotsOtaree(filters || {});
-        const developers = lots.map((l) => ({
-            lotId: l.id,
-            developer: l.program?.developer || null,
-        }));
-        res.json({ nbLots: lots.length, developers });
+        const resultats = [];
+        for (const l of lots) {
+            const ville = l.program?.address?.city?.name || null;
+            const annonceSynthetique = { id: 0, ville, reference: l.number != null ? String(l.number) : null };
+            const referenceGeneree = await genererReferenceLmnp(annonceSynthetique, l);
+            resultats.push({
+                lotId: l.id,
+                developer: l.program?.developer ? { id: l.program.developer['@id'], name: l.program.developer.name } : null,
+                estLmnp: estLotLmnp(l),
+                referenceGeneree,
+                exclu: promoteurLmnpExclu(l),
+            });
+        }
+        res.json({ nbLots: lots.length, resultats });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
