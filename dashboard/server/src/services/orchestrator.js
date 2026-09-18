@@ -561,22 +561,24 @@ export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null)
         mode === 'test' ? !!annonce.est_annonce_test : estNouvelle
     );
 
-    // Promoteur LMNP tiers non reconnu (ni un des 4 partenaires, ni "La Centrale du LMNP") : exclu
-    // de l'auto-publication entièrement, demande explicite du client ("on ne le diffusera pas") —
-    // voir promoteurLmnpExclu, referenceGenerator.js. Le lot reste importé normalement (déjà fait
-    // par importerLotsOtaree, avant cette fonction), juste jamais proposé ici. Loggé pour garder
-    // une trace visible de chaque exclusion (même logique que le log INT existant).
-    const candidats = [];
+    // DÉSACTIVÉ TEMPORAIREMENT (2026-09-18, urgence démo client) : l'exclusion automatique des
+    // promoteurs LMNP tiers non reconnus (ci-dessous) bloquait TOUTE recherche filtrée "LMNP" dès
+    // lors qu'aucun lot ne venait des 4 partenaires connus ni de "La Centrale du LMNP" — candidats
+    // tombait alors à 0 et l'écran de confirmation ne s'ouvrait plus du tout, sans message clair
+    // pour l'utilisateur (voir autoPublishStatus/onTraiterLotsEnAttente). Le log de visibilité est
+    // conservé (utile pour identifier ces lots après coup) mais ne retire plus rien des candidats
+    // — comportement redevenu celui d'avant le 2026-09-14 : promoteur non reconnu = référence vide
+    // à saisir manuellement sur l'écran de confirmation, jamais exclu d'office. À rediscuter avec
+    // le client avant de réactiver (ex. exclusion visible/décochée par défaut plutôt qu'invisible).
+    const candidats = candidatsBruts;
     for (const c of candidatsBruts) {
         if (promoteurLmnpExclu(c.lotBrut)) {
             await log('auto_publish', {
                 annonceId: c.annonce.id,
                 succes: true,
-                message: `Lot exclu de l'auto-publication : promoteur LMNP non reconnu (${c.lotBrut?.program?.developer?.name || 'nom inconnu'}) — ni partenaire connu, ni "La Centrale du LMNP".`,
+                message: `Promoteur LMNP non reconnu (${c.lotBrut?.program?.developer?.name || 'nom inconnu'}) — ni partenaire connu, ni "La Centrale du LMNP". Référence à saisir manuellement (exclusion automatique désactivée temporairement).`,
             });
-            continue;
         }
-        candidats.push(c);
     }
 
     // Plafond de dépense (voir services/depenseMonitor.js) : vérifié ici aussi, avant même un
