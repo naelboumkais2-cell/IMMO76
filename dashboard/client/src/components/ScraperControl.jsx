@@ -86,6 +86,10 @@ const DEVELOPER_OPTIONS = [
     { value: '/developers/ab3f89e93847', label: 'Pierre & Sens' },
     { value: '/developers/dc7ffc55ea78', label: 'Consultim' },
     { value: '/developers/3d765184da1e', label: 'Pierre Loyers Conseil' },
+    // id confirmé sur un vrai lot (Caen, 2026-09-14) — voir estCentraleLmnp, referenceGenerator.js
+    // côté serveur, qui matche sur le nom plutôt que cet id (demande explicite du client) : les
+    // deux méthodes coexistent, celle-ci sert uniquement à filtrer la recherche en amont.
+    { value: '/developers/bec3d1402a8a', label: 'La Centrale du LMNP' },
 ];
 
 const TAX_AREA_OPTIONS = ['A', 'A BIS', 'B1', 'B2', 'C', 'DOM'].map((v) => ({ value: v, label: v }));
