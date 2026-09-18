@@ -16,10 +16,16 @@ const FREQUENCE_OPTIONS = [
     { value: '1440', label: 'Tous les jours' },
 ];
 
+// `dateStr` vient de Postgres (colonne TIMESTAMP) sérialisé en JSON — déjà un ISO 8601 complet
+// avec 'T' et 'Z' (ex. "2026-09-13T02:10:53.639Z"), pas le format "YYYY-MM-DD HH:MM:SS" de
+// l'ancien SQLite. L'ancien `.replace(' ', 'T') + 'Z'` ajoutait donc un second 'Z' en trop
+// (aucun espace à remplacer) et produisait systématiquement une date invalide — jamais repéré
+// avant faute d'y regarder de près, `new Date(...)` avalant l'erreur sans exception.
 function formatDate(dateStr) {
     if (!dateStr) return '—';
-    const then = new Date(dateStr.replace(' ', 'T') + 'Z');
-    return then.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const then = new Date(dateStr);
+    if (Number.isNaN(then.getTime())) return '—';
+    return then.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 // Page dédiée (accessible depuis la sidebar) — extraite de ScraperControl.jsx pour être
@@ -145,7 +151,11 @@ export function Historique({ actif }) {
                                     </td>
                                     <td style={{ fontWeight: 500 }} title={r.url}>
                                         {r.nom || r.resume || r.url}
-                                        {r.favori && (
+                                        {/* `favori` est un INTEGER 0/1 côté Postgres (jamais un vrai booléen) — `!!` est
+                                            indispensable : `0 && (<div/>)` vaut 0, et React affiche bel et bien "0" comme
+                                            texte (contrairement à false/null/undefined) — cause du "0" parasite après
+                                            chaque nom de recherche non favorite. */}
+                                        {!!r.favori && (
                                             <div className="recherche-frequence" onClick={(e) => e.stopPropagation()}>
                                                 <Select
                                                     value={r.frequence_minutes ? String(r.frequence_minutes) : ''}
