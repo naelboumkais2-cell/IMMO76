@@ -790,9 +790,14 @@ permettent. Ne jamais allonger artificiellement.
 Style : clair ; professionnel ; commercial sans excès ; naturel ; crédible ; accessible au grand public ;
 facile à parcourir sur smartphone ; orienté acquéreur ; concret.
 
-Évite les longs blocs, le jargon, les répétitions, les phrases inutilement complexes et les adjectifs
-vagues comme « magnifique », « exceptionnel » ou « incroyable » lorsqu'ils ne sont pas objectivement
-justifiés.
+Un superlatif positif (« magnifique », « exceptionnel »...) est autorisé avec modération stricte :
+au maximum UN SEUL dans l'ensemble du texte, et uniquement s'il décrit une caractéristique
+réellement remarquable et objectivement présente dans les données (une vue confirmée
+exceptionnelle, une terrasse particulièrement grande, une prestation rare...). Ne jamais
+l'utiliser pour compenser l'absence de qualités objectives réelles, ni en placer plusieurs dans
+la même annonce. En dehors de ce superlatif unique et justifié, éviter les adjectifs vagues.
+
+Évite les longs blocs, le jargon, les répétitions, les phrases inutilement complexes.
 
 9. STRUCTURE DE L'ANNONCE
 Structure recommandée :
@@ -806,9 +811,13 @@ Une section peut être omise si les données nécessaires n'existent pas. Ne jam
 artificiel pour remplir un bloc.
 
 10. ACCROCHE ET CARACTÉRISTIQUES CLÉS
-Commence par une accroche courte qui permet de comprendre immédiatement le logement et son
-principal avantage. Exemple de logique : « Découvrez cet appartement récent de 3 pièces, prolongé
-par une terrasse et situé à proximité des transports. »
+Commence par une accroche courte mais travaillée, qui donne immédiatement envie d'en savoir plus
+sur CE bien précis — pas une formule interchangeable d'un lot à l'autre. Mets en avant dès la
+première phrase le ou les éléments les plus différenciants du logement, à partir des données
+réellement disponibles, avec un ton vivant plutôt que purement descriptif. Exemple de logique :
+« Cet appartement récent de 3 pièces séduit par sa terrasse de 12 m² et sa proximité immédiate
+avec la gare. » (les valeurs de l'exemple sont illustratives — n'utiliser que des données réelles
+du dossier).
 
 Puis présente, si utile, un bloc LES CARACTÉRISTIQUES CLÉS. Une donnée par ligne : Type ; Surface ;
 Extérieur ; Étage ; Exposition ; Stationnement ; Prix ; Disponibilité.
@@ -863,7 +872,7 @@ Avant de répondre, vérifier silencieusement :
 5. Ai-je sélectionné les meilleurs arguments ?
 6. Le titre met-il en avant une vraie caractéristique ?
 7. Les chiffres sont-ils fiables ?
-8. Ai-je évité les promesses et superlatifs non justifiés ?
+8. Ai-je évité les promesses non justifiées ? Si j'ai utilisé un superlatif, est-il unique dans le texte et objectivement justifié par une donnée réelle (pas un artifice pour masquer l'absence de qualités concrètes) ?
 9. L'annonce est-elle lisible sur smartphone ?
 10. Donne-t-elle envie d'en savoir plus sans exagérer ?
 11. Le texte est-il suffisamment original par rapport à la source ?
@@ -1150,6 +1159,16 @@ function alternativesPourCorrection(hits, lot) {
             '- Pour "sécurisé"/"sécurisée"/"sécurité" → supprime le mot, ou remplace par "adapté", "de qualité" ou "confortable" selon le contexte — jamais par un synonyme de certitude.'
         );
     }
+    if (hits.some((h) => h.includes("plus d'un superlatif dans le texte"))) {
+        lignes.push(
+            '- Le texte contient plus d\'un superlatif ("magnifique", "exceptionnel", "superbe"...). Garde au maximum UN SEUL superlatif dans tout le texte — celui qui est le plus objectivement justifié par une donnée réelle du dossier — et remplace chaque autre occurrence par une formulation neutre qui décrit simplement la caractéristique, sans adjectif emphatique.'
+        );
+    }
+    if (hits.some((h) => h.includes('superlatif détecté dans le titre'))) {
+        lignes.push(
+            '- Retire tout superlatif du titre ("magnifique", "superbe", "exceptionnel"...) — le titre reste factuel et concret, sans adjectif emphatique, même si un superlatif est utilisé dans le texte.'
+        );
+    }
     if (hits.some((h) => h.includes('donnée manquante explicitée'))) {
         lignes.push(
             '- Pour "non communiqué"/"non fourni"/"non renseigné"/"non spécifié"/"non précisé"/"non disponible" appliqué à une donnée absente (loyer, rentabilité, annexe, balcon...) → supprime ENTIÈREMENT la ligne ou la mention concernée, ne la remplace par aucun texte, aucune formule d\'absence. L\'information disparaît simplement du texte comme si elle n\'avait jamais été envisagée.'
@@ -1330,6 +1349,20 @@ function detecterProximiteNonSourcee(texte, lot) {
     return !MOTS_PROXIMITE_RE.test(sourceTexte);
 }
 
+// Assouplissement du 2026-09-18 (prompt V1 Neuf uniquement, décision confirmée côté client) : un
+// superlatif positif est désormais toléré, mais l'instruction seule dans le prompt ne suffit pas
+// à la respecter de façon fiable (constaté en test réel le jour même : 2 superlatifs dans le
+// texte + 1 dans le titre sur 1 lot testé sur 4, alors que le prompt limite à 1 maximum dans le
+// texte et 0 dans le titre) — même limite que les autres garde-fous de ce pipeline (le prompt
+// seul échoue parfois à ~0,7 de température). Liste volontairement limitée aux superlatifs les
+// plus caractéristiques, pas une détection de ton exhaustive.
+const SUPERLATIFS_RE = /\b(magnifiques?|exceptionnels?|incroyables?|superbes?|extraordinaires?|somptueux|somptueuses?|sublimes?|idylliques?)\b/gi;
+
+function compterSuperlatifs(texte) {
+    if (!texte) return 0;
+    return (texte.match(SUPERLATIFS_RE) || []).length;
+}
+
 const ADDENDUM_NEUF_GARDE_FOUS = `
 
 === GARDE-FOUS SUPPLÉMENTAIRES (spécifiques à ce pipeline) ===
@@ -1388,6 +1421,13 @@ async function callOpenAINeuf(textContext, base64Images, lot) {
         }
         if (detecterProximiteNonSourcee(resultat.texte, lot)) {
             hits = [...hits, 'proximité (transports/commerces/écoles) mentionnée sans être sourcée dans les données du lot'];
+        }
+        const nbSuperlatifsTexte = compterSuperlatifs(resultat.texte);
+        if (nbSuperlatifsTexte > 1) {
+            hits = [...hits, `plus d'un superlatif dans le texte (${nbSuperlatifsTexte} détectés, maximum 1 autorisé)`];
+        }
+        if (compterSuperlatifs(resultat.titre) > 0) {
+            hits = [...hits, 'superlatif détecté dans le titre (interdit, le titre reste factuel)'];
         }
         if (hits.length === 0) break;
 
