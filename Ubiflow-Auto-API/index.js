@@ -482,6 +482,22 @@ function extraireDpeDepuisDescription(description) {
     return m ? m[1].toUpperCase() : null;
 }
 
+// Extrait la lettre GES (gaz à effet de serre) d'un texte libre "description" Otaree — aucun champ
+// structuré équivalent à energyClass n'existe pour le GES (vérifié sur un vrai lot complet,
+// 2026-09-20 : aucune clé ghg/co2/climat/ges au niveau du lot), donc uniquement ce repli texte,
+// jamais de valeur par défaut. Deux formulations réelles observées selon le gestionnaire/template
+// source, mutuellement exclusives sur un échantillon de 1288 lots réels (jamais les deux à la
+// fois sur un même lot) : "Classe GES : B" (Pierre & Vacances, Center Parcs, Adagio...) et
+// "Classe climat : A" (autre gamme de programmes). Confirmé sur cet échantillon que la lettre GES
+// diffère du DPE dans la majorité des cas (ex. DPE D / GES B) — une vraie donnée distincte, pas
+// une répétition du DPE comme on l'avait supposé à tort en écartant "Classe climat" la première
+// fois qu'elle avait été repérée.
+function extraireGesDepuisDescription(description) {
+    if (typeof description !== 'string' || !description) return null;
+    const m = description.match(/(?:\bGES\b|classe\s+climat)\s*:?\s*(?:<[^>]+>\s*)?([A-G])\b/i);
+    return m ? m[1].toUpperCase() : null;
+}
+
 // Champs structurés qu'on connaît déjà avec certitude depuis les données Otaree du lot — jamais
 // à faire deviner par l'IA (voir callOpenAILmnp, qui ne génère plus que titre+texte pour les lots
 // LMNP). Mêmes clés que le schéma JSON historique, pour ne rien changer à buildUbiflowPayload en
@@ -553,14 +569,20 @@ function champsConnusDepuisLot(lot) {
     // texte généré mentionnait correctement "Classe énergétique C" (lu depuis la description,
     // transmise telle quelle au modèle) alors que la case DPE Hubiflow restait vide, faute de
     // valeur structurée à envoyer. Capture UNIQUEMENT la lettre qui suit immédiatement le label
-    // DPE/classe énergétique — jamais GES, même quand les deux apparaissent l'un après l'autre
-    // dans la même description (voir garde-fou existant sur GES, inchangé, hors sujet ici).
+    // DPE/classe énergétique — jamais la lettre GES, même quand les deux apparaissent l'un après
+    // l'autre dans la même description (voir extraireGesDepuisDescription juste en dessous,
+    // extraction désormais bien réelle et distincte depuis le 2026-09-20).
     const dpeDepuisDescription = extraireDpeDepuisDescription(lot.description);
     if (typeof lot.energyClass === 'string' && lot.energyClass) {
         champs.dpe_conso = lot.energyClass;
     } else if (dpeDepuisDescription) {
         champs.dpe_conso = dpeDepuisDescription;
     }
+
+    // Lettre GES — aucun champ structuré équivalent à energyClass (vérifié, voir
+    // extraireGesDepuisDescription) : uniquement le repli texte, jamais une valeur par défaut.
+    const gesDepuisDescription = extraireGesDepuisDescription(lot.description);
+    if (gesDepuisDescription) champs.dpe_ges = gesDepuisDescription;
 
     // Surface du terrain : uniquement si réellement > 0 (0 est la valeur par défaut pour un
     // appartement sans terrain propre — l'omettre plutôt que d'afficher "0 m²" sur l'annonce).
@@ -581,13 +603,16 @@ function champsConnusDepuisLot(lot) {
     return champs;
 }
 
-// Rentabilité Otaree (prices[0].profitability) vérifiée empiriquement (838 lots LMNP en base,
-// 2026-08-30) : correspond exactement à loyer HT x12 / prix HT UNIQUEMENT quand vatRate === 0
-// (635/635 lots, écart nul). Dès que la TVA entre en jeu (vatRate 20 ou -1/inconnu), la méthode
-// réelle d'Otaree diverge de façon incohérente (115/203 seulement) — jamais assez fiable pour
-// être affichée. Ne jamais l'utiliser hors de ce cas précis, et ne jamais recalculer nous-mêmes
-// une alternative non vérifiée : conforme à la consigne "ne jamais afficher un chiffre dont on
-// n'est pas sûr qu'il suit la bonne méthode".
+// Rentabilité Otaree (prices[0].profitability) — décision explicite du client (2026-09-20) :
+// affichée systématiquement dès qu'elle est présente, quel que soit vatRate et quelle que soit la
+// méthode de calcul sous-jacente côté Otaree. Revient sur la restriction précédente (vatRate === 0
+// uniquement) qui avait été posée par prudence après une vérification empirique du 2026-08-30
+// montrant que la méthode réelle d'Otaree divergeait parfois de loyer HT x12/prix HT hors de ce
+// cas — le client a tranché : il fait confiance à la donnée Otaree telle quelle, pas de contrôle
+// croisé. Le garde-fou anti-donnée aberrante ci-dessous reste néanmoins en place : il protège
+// contre une erreur de saisie dans la donnée source elle-même (constaté une fois : un loyer sans
+// rapport plausible avec le prix, ~50% de rendement implicite), pas contre la méthode de calcul —
+// hors sujet de cette décision.
 function donneesFinancieresFiablesDepuisLot(lot) {
     const p = lot.prices?.[0];
     if (!p) return null;
@@ -596,14 +621,11 @@ function donneesFinancieresFiablesDepuisLot(lot) {
 
     if (typeof p.price === 'number' && p.price > 0 && typeof p.monthlyRent === 'number') {
         const rendementImplicite = (p.monthlyRent * 12 / p.price) * 100;
-        // Garde-fou anti-donnée aberrante : constaté sur un vrai lot Otaree en test (loyer mensuel
-        // sans rapport plausible avec le prix, ~50% de rendement implicite) — une erreur dans la
-        // donnée source elle-même, pas une invention de l'IA, mais jamais à transmettre comme
-        // "connue avec certitude" si le rendement qu'elle impliquerait est hors de toute
+        // Garde-fou anti-donnée aberrante (inchangé) : rendement implicite hors de toute
         // plausibilité pour du LMNP géré (typiquement 2 à 7%, marge large jusqu'à 15%).
         if (rendementImplicite >= 1 && rendementImplicite <= 15) {
             donnees.loyerMensuel = p.monthlyRent;
-            if (p.vatRate === 0 && typeof p.profitability === 'number') donnees.rentabilite = p.profitability;
+            if (typeof p.profitability === 'number') donnees.rentabilite = p.profitability;
         }
     }
     return Object.keys(donnees).length > 0 ? donnees : null;
@@ -627,7 +649,7 @@ IDENTITÉ DE L'EXPLOITANT — VIGILANCE PARTICULIÈRE : le champ "developer" des
 
 DONNÉES FINANCIÈRES FIABLES : quand elles te sont fournies explicitement dans un bloc "DONNÉES CONNUES AVEC CERTITUDE" du message utilisateur, utilise EXCLUSIVEMENT ces valeurs pour prix/loyer/rentabilité — ne recalcule jamais une rentabilité toi-même, et si aucune rentabilité fiable n'est fournie dans ce bloc, omets simplement la ligne correspondante dans les chiffres clés (ne jamais écrire "non communiquée").
 
-DPE — INTERDICTION STRICTE DE CHIFFRE INVENTÉ : si une étiquette DPE (une seule lettre A à G) t'est fournie dans le bloc "DONNÉES CONNUES AVEC CERTITUDE", tu peux mentionner cette lettre telle quelle. Tu ne dois JAMAIS, dans aucun cas, inventer ou estimer une valeur chiffrée de consommation énergétique (ex: "137 kWh/m²/an") ni une lettre d'étiquette GES (émissions de gaz à effet de serre) — ces deux données ne sont jamais fournies dans ce pipeline, quelle que soit la plausibilité de la valeur que tu pourrais produire. Si aucune lettre DPE n'est fournie, n'aborde pas le sujet de la performance énergétique. Si une lettre DPE est fournie, mentionne uniquement cette lettre, jamais une consommation en kWh ni une lettre GES.
+DPE ET GES — INTERDICTION STRICTE DE CHIFFRE INVENTÉ : si une étiquette DPE (une seule lettre A à G) t'est fournie dans le bloc "DONNÉES CONNUES AVEC CERTITUDE", tu peux mentionner cette lettre telle quelle. Si une lettre GES (émissions de gaz à effet de serre) t'est également fournie dans ce même bloc, tu peux aussi la mentionner telle quelle, distinctement du DPE (ex: "DPE classe C, GES classe B") — ne confonds jamais les deux lettres entre elles, chacune reste attachée à son propre libellé. Tu ne dois JAMAIS, dans aucun cas, inventer ou estimer une valeur chiffrée de consommation énergétique (ex: "137 kWh/m²/an") — cette donnée n'est jamais fournie dans ce pipeline, quelle que soit sa plausibilité. Si aucune lettre DPE n'est fournie, n'aborde pas le sujet de la performance énergétique. Si aucune lettre GES n'est fournie alors qu'une lettre DPE l'est, mentionne uniquement le DPE, n'invente jamais une lettre GES pour compléter.
 
 === PRINCIPE FONDAMENTAL : ANALYSER AVANT DE RÉDIGER ===
 
@@ -972,14 +994,14 @@ const FORMULATIONS_INTERDITES = [
     // formulation exacte, contrairement à "sans référence contractuelle spécifique" (traité côté
     // prompt, voir PROMPT_SYSTEME_LMNP_V2) qui est trop variable pour un motif fiable.
     ['fuite de ton "documents/sources internes" (parenthèse)', /\([^)]*\b(plan|documents?|dossier|fiches?)\b[^)]*\)/i],
-    // DPE — repéré en conditions réelles (2026-09-10, lot Strasbourg) : le modèle invente une
-    // consommation chiffrée ("137 kWh/m²/an") et une lettre GES alors que ni l'une ni l'autre ne
-    // sont jamais fournies dans ce pipeline (seule la lettre DPE, A-G, est parfois connue). Toute
-    // occurrence de "kWh" ou "GES" dans le texte est donc nécessairement une invention, quel que
-    // soit son contexte — pas besoin de motif plus précis puisque ces données n'existent jamais
-    // côté source.
+    // Consommation chiffrée — repéré en conditions réelles (2026-09-10, lot Strasbourg) : le
+    // modèle invente une valeur ("137 kWh/m²/an") alors que cette donnée n'est jamais fournie dans
+    // ce pipeline. Toute occurrence de "kWh" est donc nécessairement une invention, quel que soit
+    // son contexte. La lettre GES, elle, EST parfois réellement fournie depuis le 2026-09-20 (voir
+    // extraireGesDepuisDescription) — son contrôle n'est donc plus un motif statique ici, voir
+    // plus bas dans detecterProblemesConformite (comparaison à la vraie valeur du lot, même
+    // principe que le contrôle "annexe réelle").
     ['DPE : consommation chiffrée inventée (kWh)', /kWh/i],
-    ['DPE : lettre GES inventée', /\bGES\b/i],
 ];
 
 // Filet de sécurité structurel — pas dans le prompt initial, ajouté après avoir constaté que
@@ -1083,6 +1105,18 @@ function detecterProblemesConformite(texte, lot) {
         hits.add(`texte mentionne "loggia" sans annexe réelle de ce type (réel : ${aBalconReel ? 'balcon' : aTerrasseReelle ? 'terrasse' : 'aucune'})`);
     }
 
+    // Lettre GES — même principe que le contrôle annexe ci-dessus plutôt qu'une interdiction
+    // statique du mot "GES" (retirée le 2026-09-20) : la lettre GES est désormais une vraie donnée
+    // parfois fournie (voir extraireGesDepuisDescription), donc son usage est légitime tant qu'il
+    // correspond à la vraie valeur du lot. Toute lettre GES mentionnée qui ne correspond pas
+    // exactement à celle extraite des données réelles (y compris son absence totale) reste une
+    // invention à corriger, exactement comme avant pour ce cas précis.
+    const gesReel = extraireGesDepuisDescription(lot?.description);
+    const gesMentionne = texte.match(/\bGES\b[^.\n]{0,20}?\b([A-G])\b/i);
+    if (gesMentionne && gesMentionne[1].toUpperCase() !== gesReel) {
+        hits.add(`lettre GES mentionnée ("${gesMentionne[1].toUpperCase()}") ne correspond pas à la vraie valeur du lot (réel : ${gesReel || 'aucune donnée GES connue'})`);
+    }
+
     // Intertitre du bloc 3 resté générique ("POURQUOI INVESTIR DANS CETTE CATÉGORIE ?" au lieu
     // de nommer réellement le type de résidence) — le format de sortie exige le type nommé.
     const residenceType = lot?.program?.residenceType;
@@ -1174,9 +1208,19 @@ function alternativesPourCorrection(hits, lot) {
             '- Pour "non communiqué"/"non fourni"/"non renseigné"/"non spécifié"/"non précisé"/"non disponible" appliqué à une donnée absente (loyer, rentabilité, annexe, balcon...) → supprime ENTIÈREMENT la ligne ou la mention concernée, ne la remplace par aucun texte, aucune formule d\'absence. L\'information disparaît simplement du texte comme si elle n\'avait jamais été envisagée.'
         );
     }
-    if (hits.some((h) => h.includes('DPE : consommation chiffrée inventée') || h.includes('DPE : lettre GES inventée'))) {
+    if (hits.some((h) => h.includes('DPE : consommation chiffrée inventée'))) {
         lignes.push(
-            '- Supprime toute mention d\'une consommation énergétique chiffrée (kWh/m²/an) et toute mention d\'une lettre GES — ces deux données ne sont jamais fournies et ne doivent jamais apparaître, inventées ou non. Si une lettre DPE (A-G) est connue, tu peux la garder seule ("DPE classe C" par exemple), mais sans aucun chiffre ni lettre GES à côté.'
+            '- Supprime toute mention d\'une consommation énergétique chiffrée (kWh/m²/an) — cette donnée n\'est jamais fournie et ne doit jamais apparaître, inventée ou non. Les lettres DPE et GES (si connues) peuvent rester, seule la valeur en kWh doit disparaître.'
+        );
+    }
+    const gesHit = hits.find((h) => h.startsWith('lettre GES mentionnée'));
+    if (gesHit) {
+        const gesReelMatch = gesHit.match(/réel : (aucune donnée GES connue|[A-G])/);
+        const gesReel = gesReelMatch ? gesReelMatch[1] : null;
+        lignes.push(
+            gesReel && gesReel !== 'aucune donnée GES connue'
+                ? `- La lettre GES mentionnée dans le texte est fausse. La vraie lettre GES de ce lot est "${gesReel}" — remplace-la partout où le texte mentionne une lettre GES.`
+                : '- Le texte mentionne une lettre GES alors qu\'aucune donnée GES n\'est connue pour ce lot — supprime entièrement cette mention (garde le DPE seul si sa lettre est connue).'
         );
     }
     if (hits.some((h) => h.includes('fuite de ton "documents/sources internes"'))) {
@@ -1226,10 +1270,18 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
     if (donneesFiables?.prix != null) blocDonneesConnues += `- Prix : ${donneesFiables.prix} €\n`;
     if (donneesFiables?.loyerMensuel != null) blocDonneesConnues += `- Loyer mensuel : ${donneesFiables.loyerMensuel} € (loyer annuel = x12)\n`;
     if (donneesFiables?.rentabilite != null) {
-        blocDonneesConnues += `- Rentabilité : ${donneesFiables.rentabilite}% (déjà calculée, méthode loyer HT x12/prix HT — utilise cette valeur telle quelle, ne recalcule jamais)\n`;
+        blocDonneesConnues += `- Rentabilité : ${donneesFiables.rentabilite}% (déjà calculée par la source — utilise cette valeur telle quelle, ne recalcule jamais)\n`;
     } else {
         blocDonneesConnues += `- Rentabilité : non disponible avec certitude — omets la ligne "Rentabilité" dans les chiffres clés.\n`;
     }
+
+    // Curatées explicitement ici plutôt que laissées à trouver dans le JSON brut du contexte
+    // (texte libre, deux formulations différentes selon le gestionnaire — voir
+    // extraireGesDepuisDescription) : plus fiable qu'espérer que le modèle les repère seul.
+    const dpeConnu = (typeof lot.energyClass === 'string' && lot.energyClass) || extraireDpeDepuisDescription(lot.description);
+    const gesConnu = extraireGesDepuisDescription(lot.description);
+    if (dpeConnu) blocDonneesConnues += `- DPE (classe énergétique) : ${dpeConnu}\n`;
+    if (gesConnu) blocDonneesConnues += `- GES (émissions de gaz à effet de serre) : ${gesConnu}\n`;
 
     const messageContent = [
         { type: 'text', text: blocDonneesConnues + '\n\nDonnées structurées complètes du lot :\n\n' + (textContext || '(Aucun texte, base-toi sur les images)') },
