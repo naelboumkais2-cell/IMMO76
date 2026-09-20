@@ -33,11 +33,41 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
+    enrichirLot,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
+
+// TEMPORAIRE — inspecte la structure brute de lot.images (métadonnées disponibles par photo :
+// type de pièce, ordre suggéré, photo principale...) sur quelques vrais lots enrichis, pour la
+// réflexion sur la sélection de la meilleure photo. À retirer une fois l'exploration terminée.
+scraperRouter.post('/diag-images-brutes', exigerConnexion, async (req, res) => {
+    try {
+        const { filters, nb } = req.body || {};
+        const { lots } = await rechercherLotsOtaree(filters || {});
+        const echantillon = lots.slice(0, nb || 3);
+        const resultats = [];
+        for (const lot of echantillon) {
+            const enrichi = await enrichirLot(structuredClone(lot));
+            resultats.push({
+                lotId: lot.id,
+                nbImages: (enrichi.images || []).length,
+                nbDocuments: (enrichi.documents || []).length,
+                plan: enrichi.plan ? { name: enrichi.plan.name, mimeType: enrichi.plan.mimeType } : null,
+                images: (enrichi.images || []).map((img) => {
+                    const { urls, ...reste } = img;
+                    return reste;
+                }),
+                documents: (enrichi.documents || []).map((doc) => ({ name: doc.file?.name || doc.name, type: doc.type, mimeType: doc.file?.mimeType || doc.mimeType })),
+            });
+        }
+        res.json({ resultats });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
 
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
