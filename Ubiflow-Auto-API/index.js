@@ -372,8 +372,17 @@ async function downloadOtareeImages(lot, imagesSelection) {
     const exclues = new Set((imagesSelection?.exclues || []).map((n) => (n || '').toLowerCase()));
     const premiere = (imagesSelection?.premiere || '').toLowerCase() || null;
 
+    // Exclut les plans qui se glissent parmi les photos — même motif que verifierDocumentsPlan
+    // (lot.documents), jamais branché jusqu'ici sur lot.images. Constaté en conditions réelles
+    // (programme "Lorine") : des plans 3D enregistrés en JPEG ("Lorine_Plan 3D_B209 T3.jpg")
+    // passaient tous les filtres existants (mimeType image/jpeg valide) et pouvaient se retrouver
+    // n'importe où dans l'ordre, y compris en première position, par pur hasard alphabétique.
+    // Inconditionnel, même si sélectionné manuellement comme "premiere" par erreur sur l'écran de
+    // confirmation (qui affiche encore ces images sans les identifier comme plans) : jamais publier
+    // un plan comme photo de couverture, même sur mauvaise manipulation humaine.
     const sorted = [...images]
         .filter((img) => !exclues.has((img.name || '').toLowerCase()))
+        .filter((img) => !/plan/i.test(img.name || ''))
         .sort((a, b) => {
             const an = (a.name || '').toLowerCase();
             const bn = (b.name || '').toLowerCase();
@@ -705,10 +714,11 @@ Vérifie silencieusement : ai-je inventé une information ? Ai-je confondu promo
 === FORMAT DE SORTIE ===
 
 Réponds UNIQUEMENT avec un objet JSON strictement conforme à cette structure, sans aucun markdown ni texte autour :
-{"titre": "...", "texte": "..."}
+{"titre": "...", "texte": "...", "photoPrincipale": "..."}
 
 "titre" : le titre (55-60 caractères).
 "texte" : la description complète prête à publier, avec les 5 blocs, intertitres en MAJUSCULES sur leur propre ligne, une ligne vide entre chaque paragraphe et avant/après chaque intertitre, paragraphes courts (2-3 phrases max).
+"photoPrincipale" : le nom exact du fichier (recopié tel quel depuis la liste "PHOTOS DISPONIBLES" fournie dans le message, jamais un nom inventé ou approximatif) qui ferait la meilleure photo de couverture — la plus représentative et attractive du bien, celle qui donne le plus envie de cliquer sur l'annonce. Privilégie une pièce de vie, une belle vue, la façade extérieure ou un espace extérieur ; évite une photo insignifiante (porte, couloir vide, rangement, détail sans intérêt) même si elle est techniquement correcte. Si aucune photo n'est fournie, ou si aucune ne se distingue clairement des autres, renvoie null.
 
 Ne retourne rien d'autre : pas ton analyse, pas les informations écartées, pas tes raisonnements, pas de commentaire sur la qualité du dossier.`;
 
@@ -901,10 +911,11 @@ Avant de répondre, vérifier silencieusement :
 
 15. FORMAT DE SORTIE ET PRIORITÉS ABSOLUES
 Réponds UNIQUEMENT avec un objet JSON strictement conforme à cette structure, sans aucun markdown ni texte autour :
-{"titre": "...", "texte": "..."}
+{"titre": "...", "texte": "...", "photoPrincipale": "..."}
 
 "titre" : titre court, accrocheur et factuel — idéalement 55 à 60 caractères maximum.
 "texte" : description complète prête à être publiée, paragraphes courts de 2 à 3 phrases maximum. Intertitres possibles : LES CARACTÉRISTIQUES CLÉS ; LE LOGEMENT ; L'ENVIRONNEMENT — en MAJUSCULES sur leur propre ligne. Une donnée par ligne dans les caractéristiques clés. Ligne vide entre les blocs. Terminer par un appel à l'action court invitant à demander le dossier ou à échanger avec un conseiller.
+"photoPrincipale" : le nom exact du fichier (recopié tel quel depuis la liste "PHOTOS DISPONIBLES" fournie dans le message, jamais un nom inventé ou approximatif) qui ferait la meilleure photo de couverture — la plus représentative et attractive du bien. Privilégie une pièce de vie, une belle vue, la façade extérieure ou un espace extérieur ; évite une photo insignifiante (porte, couloir vide, rangement, détail sans intérêt) même si elle est techniquement correcte. Si aucune photo n'est fournie, ou si aucune ne se distingue clairement des autres, renvoie null.
 
 Ne retourne jamais ton analyse, les informations écartées, tes raisonnements, les sources, les
 contradictions ou des recommandations internes.
@@ -1254,7 +1265,32 @@ function alternativesPourCorrection(hits, lot) {
     return lignes.join('\n');
 }
 
-async function callOpenAILmnp(textContext, base64Images, lot) {
+// Construit le bloc "PHOTOS DISPONIBLES" (liste des noms, dans l'ordre où les images suivent
+// juste après dans le message) + les blocs image eux-mêmes — partagé entre callOpenAILmnp et
+// callOpenAINeuf. Sans cette liste de noms en préambule, le modèle voit une suite de photos sans
+// pouvoir les désigner par leur nom réel (les blocs image n'ont pas de nom attaché) — il ne
+// pourrait renvoyer qu'un numéro d'ordre, plus fragile à valider après coup qu'un nom exact.
+function construireBlocPhotos(lotImageData) {
+    if (!lotImageData?.length) return { texte: '', blocsImage: [] };
+    const texte =
+        '\n\nPHOTOS DISPONIBLES (dans cet ordre, pour référence — reprends le nom EXACT pour "photoPrincipale") :\n' +
+        lotImageData.map((img, i) => `${i + 1}. ${img.name}`).join('\n');
+    const blocsImage = lotImageData.map((img) => ({ type: 'image_url', image_url: { url: img.data } }));
+    return { texte, blocsImage };
+}
+
+// Vérifie que le nom renvoyé par le modèle correspond bien à une vraie photo de ce lot — jamais
+// un nom inventé ou approximatif transmis tel quel (même principe que les autres contrôles
+// "donnée réelle" de ce pipeline : DPE/GES, annexes, promoteur). Comparaison insensible à la
+// casse (le modèle recopie parfois avec une casse légèrement différente), mais jamais une
+// correspondance partielle/floue — en cas de doute, repli sur null plutôt que de deviner.
+function validerPhotoPrincipale(nomPropose, lotImageData) {
+    if (!nomPropose || typeof nomPropose !== 'string') return null;
+    const trouve = (lotImageData || []).find((img) => (img.name || '').toLowerCase() === nomPropose.toLowerCase());
+    return trouve ? trouve.name : null;
+}
+
+async function callOpenAILmnp(textContext, lotImageData, lot) {
     const donneesFiables = donneesFinancieresFiablesDepuisLot(lot);
     const residenceType = lot.program?.residenceType || null;
     const libelleCategorie = residenceType ? LIBELLES_CATEGORIE_RESIDENCE[residenceType] || null : null;
@@ -1283,12 +1319,11 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
     if (dpeConnu) blocDonneesConnues += `- DPE (classe énergétique) : ${dpeConnu}\n`;
     if (gesConnu) blocDonneesConnues += `- GES (émissions de gaz à effet de serre) : ${gesConnu}\n`;
 
+    const { texte: blocPhotos, blocsImage } = construireBlocPhotos(lotImageData);
     const messageContent = [
-        { type: 'text', text: blocDonneesConnues + '\n\nDonnées structurées complètes du lot :\n\n' + (textContext || '(Aucun texte, base-toi sur les images)') },
+        { type: 'text', text: blocDonneesConnues + '\n\nDonnées structurées complètes du lot :\n\n' + (textContext || '(Aucun texte, base-toi sur les images)') + blocPhotos },
+        ...blocsImage,
     ];
-    for (const img of base64Images) {
-        messageContent.push({ type: 'image_url', image_url: { url: img } });
-    }
 
     const messages = [{ role: 'system', content: PROMPT_SYSTEME_LMNP_V2 + PROMPT_ADDENDUM_GPT5 }, { role: 'user', content: messageContent }];
 
@@ -1349,7 +1384,7 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
             messages.push({ role: 'assistant', content: JSON.stringify(resultat) });
             messages.push({
                 role: 'user',
-                content: `Ta réponse précédente contient un problème détecté par notre vérification automatique : ${hits.join(', ')}.\n\nCorrige en appliquant EXACTEMENT l'une de ces substitutions (ne réinvente pas une reformulation différente) :\n${alternativesPourCorrection(hits, lot)}\n\nNe change rien d'autre au fond ni à la structure. Réponds à nouveau uniquement avec le JSON {"titre": "...", "texte": "..."}.`,
+                content: `Ta réponse précédente contient un problème détecté par notre vérification automatique : ${hits.join(', ')}.\n\nCorrige en appliquant EXACTEMENT l'une de ces substitutions (ne réinvente pas une reformulation différente) :\n${alternativesPourCorrection(hits, lot)}\n\nNe change rien d'autre au fond ni à la structure. Réponds à nouveau uniquement avec le JSON {"titre": "...", "texte": "...", "photoPrincipale": "..."} (garde la même valeur de photoPrincipale qu'avant, elle n'est pas concernée par cette correction).`,
             });
         }
     }
@@ -1358,7 +1393,12 @@ async function callOpenAILmnp(textContext, base64Images, lot) {
     // tentative — le texte est quand même renvoyé (mieux vaut une annonce à corriger à la main
     // qu'aucune), mais orchestrator.js bloque la publication automatique de ce lot précis tant
     // qu'un humain n'a pas vérifié (voir executerTraitement).
-    return { titre: resultat.titre, texte: resultat.texte, alerteConformite: hits.length > 0 ? hits : null };
+    return {
+        titre: resultat.titre,
+        texte: resultat.texte,
+        photoPrincipale: validerPhotoPrincipale(resultat.photoPrincipale, lotImageData),
+        alerteConformite: hits.length > 0 ? hits : null,
+    };
 }
 
 // Prompt V1 Neuf (client, 2026-09-12, voir PROMPT_SYSTEME_NEUF_V1) — branché sur le chemin
@@ -1423,13 +1463,12 @@ RENTABILITÉ : même si un pourcentage de rentabilité ou de rendement locatif a
 
 PROXIMITÉ (transports, commerces, écoles) : ce pipeline ne fournit JAMAIS de distance ou de point d'intérêt vérifié. Ne mentionne la proximité des transports, commerces ou écoles QUE si cette information apparaît explicitement dans le descriptif fourni pour CE bien — jamais comme supposition générale liée à la ville ou au quartier. En l'absence de cette donnée (le cas le plus fréquent), omets entièrement le sujet dans le bloc ENVIRONNEMENT plutôt que d'affirmer une proximité non vérifiée.`;
 
-async function callOpenAINeuf(textContext, base64Images, lot) {
+async function callOpenAINeuf(textContext, lotImageData, lot) {
+    const { texte: blocPhotos, blocsImage } = construireBlocPhotos(lotImageData);
     const messageContent = [
-        { type: 'text', text: 'Données structurées complètes du lot :\n\n' + (textContext || '(Aucun texte, base-toi sur les images)') },
+        { type: 'text', text: 'Données structurées complètes du lot :\n\n' + (textContext || '(Aucun texte, base-toi sur les images)') + blocPhotos },
+        ...blocsImage,
     ];
-    for (const img of base64Images) {
-        messageContent.push({ type: 'image_url', image_url: { url: img } });
-    }
 
     const messages = [{ role: 'system', content: PROMPT_SYSTEME_NEUF_V1 + ADDENDUM_NEUF_GARDE_FOUS }, { role: 'user', content: messageContent }];
 
@@ -1488,12 +1527,17 @@ async function callOpenAINeuf(textContext, base64Images, lot) {
             messages.push({ role: 'assistant', content: JSON.stringify(resultat) });
             messages.push({
                 role: 'user',
-                content: `Ta réponse précédente contient un problème détecté par notre vérification automatique : ${hits.join(', ')}.\n\nCorrige en appliquant EXACTEMENT l'une de ces substitutions (ne réinvente pas une reformulation différente) :\n${alternativesPourCorrection(hits, lot)}\n\nNe change rien d'autre au fond ni à la structure. Réponds à nouveau uniquement avec le JSON {"titre": "...", "texte": "..."}.`,
+                content: `Ta réponse précédente contient un problème détecté par notre vérification automatique : ${hits.join(', ')}.\n\nCorrige en appliquant EXACTEMENT l'une de ces substitutions (ne réinvente pas une reformulation différente) :\n${alternativesPourCorrection(hits, lot)}\n\nNe change rien d'autre au fond ni à la structure. Réponds à nouveau uniquement avec le JSON {"titre": "...", "texte": "...", "photoPrincipale": "..."} (garde la même valeur de photoPrincipale qu'avant, elle n'est pas concernée par cette correction).`,
             });
         }
     }
 
-    return { titre: resultat.titre, texte: resultat.texte, alerteConformite: hits.length > 0 ? hits : null };
+    return {
+        titre: resultat.titre,
+        texte: resultat.texte,
+        photoPrincipale: validerPhotoPrincipale(resultat.photoPrincipale, lotImageData),
+        alerteConformite: hits.length > 0 ? hits : null,
+    };
 }
 
 // Garde-fou "document ne correspond pas au lot" (ex: plan d'un autre appartement) — PUREMENT
@@ -1620,7 +1664,6 @@ app.post('/api/generate', async (req, res) => {
         if (!lot || typeof lot !== 'object') return res.status(400).json({ success: false, error: 'lot requis' });
 
         const lotImageData = await downloadOtareeImages(lot, imagesSelection);
-        const lotImages = lotImageData.map(img => img.data);
         const villeConnue = lot.program?.address?.city?.name || null;
         const codePostalConnu = lot.program?.address?.zipCode || null;
 
@@ -1638,18 +1681,31 @@ app.post('/api/generate', async (req, res) => {
         // vérifié quand ce fait existe, jamais l'inverse.
         let aiData;
         let alerteConformite = null;
+        let photoPrincipale = null;
         const chemin = choisirCheminGeneration(lot, portailLogins);
         if (chemin === 'lmnp') {
-            const { titre, texte, alerteConformite: alerte } = await callOpenAILmnp(buildTextContext(lot), lotImages, lot);
+            const { titre, texte, photoPrincipale: photo, alerteConformite: alerte } = await callOpenAILmnp(buildTextContext(lot), lotImageData, lot);
             aiData = { ...champsConnusDepuisLot(lot), titre, texte };
             alerteConformite = alerte;
+            photoPrincipale = photo;
         } else {
             // 'neuf' — prompt V1 dédié du client (voir PROMPT_SYSTEME_NEUF_V1, callOpenAINeuf),
             // remplace l'ancien chemin générique callOpenAI pour ce portail (2026-09-12).
-            const { titre, texte, alerteConformite: alerte } = await callOpenAINeuf(buildTextContext(lot), lotImages, lot);
+            const { titre, texte, photoPrincipale: photo, alerteConformite: alerte } = await callOpenAINeuf(buildTextContext(lot), lotImageData, lot);
             aiData = { ...champsConnusDepuisLot(lot), titre, texte };
             alerteConformite = alerte;
+            photoPrincipale = photo;
         }
+
+        // Réordonne pour que la photo choisie par l'IA passe en premier — repli silencieux sur
+        // l'ordre existant (déjà filtré/trié par downloadOtareeImages) si photoPrincipale est
+        // null (aucune photo fournie, aucune ne s'est distinguée, ou nom invalide déjà écarté par
+        // validerPhotoPrincipale) : jamais de réordonnancement sur une valeur non vérifiée.
+        const imagesOrdonnees = photoPrincipale
+            ? [...lotImageData].sort((a, b) => (a.name === photoPrincipale ? -1 : b.name === photoPrincipale ? 1 : 0))
+            : lotImageData;
+        const lotImages = imagesOrdonnees.map((img) => img.data);
+
         res.json({ success: true, aiData, images: lotImages, villeConnue, codePostalConnu, alerteConformite });
     } catch (error) {
         let errorMsg = error.message;
