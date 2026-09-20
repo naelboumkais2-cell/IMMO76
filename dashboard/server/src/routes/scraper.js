@@ -67,6 +67,25 @@ scraperRouter.post('/diag-cherche-photo-banale', exigerConnexion, async (req, re
     }
 });
 
+// TEMPORAIRE — renvoie le lot complet enrichi (images avec urls incluses) pour des ids précis,
+// pour rejouer localement le pipeline de sélection de photo sur de vrais lots ciblés. À retirer
+// une fois l'exploration terminée.
+scraperRouter.post('/diag-lots-complets-par-id', exigerConnexion, async (req, res) => {
+    try {
+        const { filters, ids } = req.body || {};
+        const idsSet = new Set(ids || []);
+        const { lots } = await rechercherLotsOtaree(filters || {});
+        const cibles = lots.filter((l) => idsSet.has(l.id));
+        const resultats = [];
+        for (const lot of cibles) {
+            resultats.push(await enrichirLot(structuredClone(lot)));
+        }
+        res.json({ resultats });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
