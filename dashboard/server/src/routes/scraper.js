@@ -39,19 +39,6 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — dump complet d'un lot brut pour vérifier l'existence d'un champ structuré GES
-// équivalent à energyClass. À retirer une fois la vérification terminée.
-scraperRouter.post('/diag-lot-brut-complet', exigerConnexion, async (req, res) => {
-    try {
-        const { filters } = req.body || {};
-        const { lots } = await rechercherLotsOtaree(filters || {});
-        const avecGes = lots.filter((l) => /\bGES\b|classe\s+climat/i.test(l.description || ''));
-        res.json({ nb: lots.length, lotsAvecGes: avecGes.slice(0, 6) });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
