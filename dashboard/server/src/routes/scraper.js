@@ -39,34 +39,51 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — diagnostic rentabilité (vatRate) + recherche GES/climat dans la description, sur
-// les vraies annonces en base, sans rien modifier. À retirer une fois la vérification terminée.
+// TEMPORAIRE — diagnostic rentabilité (vatRate) + recherche GES/climat dans la description. À
+// retirer une fois la vérification terminée.
+function diagnostiquerLot(lot, meta) {
+    const p = lot.prices?.[0] || {};
+    const description = lot.description || null;
+    const dpeMatch = description ? description.match(/(?:classe\s+[ée]nerg[ée]tique|\bDPE)\s*:?\s*(?:<[^>]+>\s*)?([A-G])\b/i) : null;
+    const gesMatch = description ? description.match(/\bGES\s*:?\s*(?:<[^>]+>\s*)?([A-G])\b/i) : null;
+    const climatMatch = description ? description.match(/classe\s+climat\s*:?\s*(?:<[^>]+>\s*)?([A-G])\b/i) : null;
+    return {
+        ...meta,
+        lawsKeys: lot.lawsKeys || null,
+        prix: p.price ?? null,
+        loyerMensuel: p.monthlyRent ?? null,
+        vatRate: p.vatRate ?? null,
+        profitability: p.profitability ?? null,
+        energyClass: lot.energyClass ?? null,
+        dpeDansDescription: dpeMatch ? dpeMatch[1].toUpperCase() : null,
+        gesDansDescription: gesMatch ? gesMatch[1].toUpperCase() : null,
+        classeClimatDansDescription: climatMatch ? climatMatch[1].toUpperCase() : null,
+        extraitDescription: description ? description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 500) : null,
+    };
+}
+
 scraperRouter.get('/diag-lots-financier-ges', exigerConnexion, async (req, res) => {
     try {
         const rows = await db.prepare(`SELECT id, ville, type_bien, raw_data FROM annonces ORDER BY id DESC`).all();
         const resultats = rows.map((r) => {
             let lot = {};
             try { lot = JSON.parse(r.raw_data || '{}'); } catch { /* ignore */ }
-            const p = lot.prices?.[0] || {};
-            const description = lot.description || null;
-            const dpeMatch = description ? description.match(/(?:classe\s+[ée]nerg[ée]tique|\bDPE)\s*:?\s*(?:<[^>]+>\s*)?([A-G])\b/i) : null;
-            const gesMatch = description ? description.match(/\bGES\s*:?\s*(?:<[^>]+>\s*)?([A-G])\b/i) : null;
-            const climatMatch = description ? description.match(/classe\s+climat\s*:?\s*(?:<[^>]+>\s*)?([A-G])\b/i) : null;
-            return {
-                id: r.id,
-                ville: r.ville,
-                lawsKeys: lot.lawsKeys || null,
-                prix: p.price ?? null,
-                loyerMensuel: p.monthlyRent ?? null,
-                vatRate: p.vatRate ?? null,
-                profitability: p.profitability ?? null,
-                energyClass: lot.energyClass ?? null,
-                dpeDansDescription: dpeMatch ? dpeMatch[1].toUpperCase() : null,
-                gesDansDescription: gesMatch ? gesMatch[1].toUpperCase() : null,
-                classeClimatDansDescription: climatMatch ? climatMatch[1].toUpperCase() : null,
-                extraitDescription: description ? description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 400) : null,
-            };
+            return diagnostiquerLot(lot, { id: r.id, ville: r.ville });
         });
+        res.json({ nb: resultats.length, resultats });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+// Variante live (sans import en base) — filters passés tels quels à rechercherLotsOtaree, ex.
+// {"law": [2,21,30,32]} pour ne cibler que les lots LMNP. Utile pour un échantillon plus large et
+// plus varié que le contenu actuel de la base (24 annonces seulement).
+scraperRouter.post('/diag-lots-financier-ges-live', exigerConnexion, async (req, res) => {
+    try {
+        const { filters } = req.body || {};
+        const { lots } = await rechercherLotsOtaree(filters || {});
+        const resultats = lots.map((lot) => diagnostiquerLot(lot, { id: lot.id, ville: lot.program?.address?.city?.name || null }));
         res.json({ nb: resultats.length, resultats });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
