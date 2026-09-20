@@ -39,6 +39,40 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
+// TEMPORAIRE — diagnostic rentabilité (vatRate) + recherche GES/climat dans la description, sur
+// les vraies annonces en base, sans rien modifier. À retirer une fois la vérification terminée.
+scraperRouter.get('/diag-lots-financier-ges', exigerConnexion, async (req, res) => {
+    try {
+        const rows = await db.prepare(`SELECT id, ville, type_bien, raw_data FROM annonces ORDER BY id DESC`).all();
+        const resultats = rows.map((r) => {
+            let lot = {};
+            try { lot = JSON.parse(r.raw_data || '{}'); } catch { /* ignore */ }
+            const p = lot.prices?.[0] || {};
+            const description = lot.description || null;
+            const dpeMatch = description ? description.match(/(?:classe\s+[ée]nerg[ée]tique|\bDPE)\s*:?\s*(?:<[^>]+>\s*)?([A-G])\b/i) : null;
+            const gesMatch = description ? description.match(/\bGES\s*:?\s*(?:<[^>]+>\s*)?([A-G])\b/i) : null;
+            const climatMatch = description ? description.match(/classe\s+climat\s*:?\s*(?:<[^>]+>\s*)?([A-G])\b/i) : null;
+            return {
+                id: r.id,
+                ville: r.ville,
+                lawsKeys: lot.lawsKeys || null,
+                prix: p.price ?? null,
+                loyerMensuel: p.monthlyRent ?? null,
+                vatRate: p.vatRate ?? null,
+                profitability: p.profitability ?? null,
+                energyClass: lot.energyClass ?? null,
+                dpeDansDescription: dpeMatch ? dpeMatch[1].toUpperCase() : null,
+                gesDansDescription: gesMatch ? gesMatch[1].toUpperCase() : null,
+                classeClimatDansDescription: climatMatch ? climatMatch[1].toUpperCase() : null,
+                extraitDescription: description ? description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 400) : null,
+            };
+        });
+        res.json({ nb: resultats.length, resultats });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
