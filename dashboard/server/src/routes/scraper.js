@@ -33,11 +33,39 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
+    enrichirLot,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
+
+// TEMPORAIRE — cherche des lots réels avec une photo au nom évocateur "porte"/"toilette"/etc.
+// mélangée à des photos plus attractives, pour constituer un cas de test réaliste (sélection de
+// la meilleure photo). À retirer une fois l'exploration terminée.
+scraperRouter.post('/diag-cherche-photo-banale', exigerConnexion, async (req, res) => {
+    try {
+        const { filters, limite } = req.body || {};
+        const { lots } = await rechercherLotsOtaree(filters || {});
+        const echantillon = lots.slice(0, limite || 30);
+        const trouves = [];
+        for (const lot of echantillon) {
+            const enrichi = await enrichirLot(structuredClone(lot));
+            const imgs = enrichi.images || [];
+            const aBanale = imgs.some((img) => /porte|entree|entr[ée]e|toilette|wc\b|placard|couloir/i.test(img.name || ''));
+            if (aBanale && imgs.length >= 3) {
+                trouves.push({
+                    lotId: lot.id,
+                    images: imgs.map((img) => ({ name: img.name, size: img.size, mimeType: img.mimeType })),
+                });
+            }
+            if (trouves.length >= 5) break;
+        }
+        res.json({ nbTestes: echantillon.length, trouves });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
 
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
