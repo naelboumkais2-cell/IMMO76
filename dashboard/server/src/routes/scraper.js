@@ -45,8 +45,8 @@ scraperRouter.post('/diag-lot-brut-complet', exigerConnexion, async (req, res) =
     try {
         const { filters } = req.body || {};
         const { lots } = await rechercherLotsOtaree(filters || {});
-        const avecGes = lots.find((l) => /\bGES\b|classe\s+climat/i.test(l.description || ''));
-        res.json({ nb: lots.length, lotAvecGes: avecGes || null });
+        const avecGes = lots.filter((l) => /\bGES\b|classe\s+climat/i.test(l.description || ''));
+        res.json({ nb: lots.length, lotsAvecGes: avecGes.slice(0, 6) });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
