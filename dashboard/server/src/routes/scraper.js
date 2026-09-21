@@ -39,30 +39,6 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — inspecte reference_generee + raw_data (promoteur) pour diagnostiquer une erreur
-// Hubiflow "Cette référence existe déjà" sur un lot réel. À retirer une fois le diagnostic
-// terminé.
-scraperRouter.get('/diag-references', exigerConnexion, async (req, res) => {
-    try {
-        const rows = await db.prepare(`SELECT id, titre, reference, reference_generee, raw_data FROM annonces WHERE ville = 'Serris'`).all();
-        const resultats = rows.map((r) => {
-            let lot = {};
-            try { lot = JSON.parse(r.raw_data || '{}'); } catch { /* ignore */ }
-            return {
-                id: r.id,
-                titre: r.titre,
-                referenceOtaree: r.reference,
-                referenceGeneree: r.reference_generee,
-                promoteur: lot.program?.developer?.name || null,
-                programId: lot.program?.id || null,
-            };
-        });
-        res.json(resultats);
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
