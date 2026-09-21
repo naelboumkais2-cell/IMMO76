@@ -64,7 +64,14 @@ export async function publish(annonce, portail, mode, opts = {}) {
             // vraie publication complète (voir orchestrator.publierInstance).
             return { success: true, adId: data.adId, actif: data.actif, erreurActivation: data.erreurActivation };
         }
-        return { success: false, error: data.error || `Erreur HTTP ${res.status}` };
+        // Bug trouvé le 2026-09-21 : envoyerAUbiflow (Ubiflow-Auto-API) capture bien le détail
+        // réel de l'erreur Hubiflow dans `data.details` (le corps de sa réponse HTTP), mais ce
+        // champ était silencieusement ignoré ici — seul `data.error`, le message générique
+        // d'axios ("Request failed with status code 400"), remontait jusqu'aux logs. Impossible
+        // de diagnostiquer un vrai rejet Hubiflow sans ça (constaté sur un lot réel, Serris,
+        // échec 400 sans aucune indication de la cause).
+        const detail = data.details ? ` — détail Hubiflow : ${JSON.stringify(data.details).slice(0, 500)}` : '';
+        return { success: false, error: (data.error || `Erreur HTTP ${res.status}`) + detail };
     } catch (e) {
         return { success: false, error: `Ubiflow-Auto-API injoignable (${SERVER_URL}) : ${e.message}` };
     }
