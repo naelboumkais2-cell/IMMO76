@@ -39,31 +39,6 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — mesure le coût réel en temps d'un comptage exact (pagination complète) comparé au
-// comptage rapide actuel, sur le même filtre. À retirer une fois le diagnostic terminé.
-scraperRouter.post('/diag-cout-comptage-exact', exigerConnexion, async (req, res) => {
-    try {
-        const { filters } = req.body || {};
-        const t0 = Date.now();
-        const rapide = await compterLotsOtaree(filters || {});
-        const dureeRapideMs = Date.now() - t0;
-
-        const t1 = Date.now();
-        const { lots, tronque } = await rechercherLotsOtaree(filters || {});
-        const dureeExacteMs = Date.now() - t1;
-
-        res.json({
-            rapide,
-            dureeRapideMs,
-            compteExact: lots.length,
-            tronque,
-            dureeExacteMs,
-        });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
