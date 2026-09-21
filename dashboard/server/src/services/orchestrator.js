@@ -16,7 +16,7 @@ import {
 } from './autoPublishStatus.js';
 import { utilisateurActuelId } from './requestContext.js';
 import { estEnPause, obtenirEtatPause } from './depenseMonitor.js';
-import { genererReferenceLmnp, genererReferenceNeuf, promoteurLmnpExclu } from './referenceGenerator.js';
+import { genererReferenceLmnp, genererReferenceNeuf, promoteurLmnpExclu, forcerNouveauSuffixeReference } from './referenceGenerator.js';
 import { estLotLmnp } from './dispositifFiscal.js';
 
 // utilisateur_id vient du contexte de requête (voir requestContext.js/index.js), jamais passé
@@ -79,7 +79,34 @@ export async function publierInstance(annonceId, portailId, options = {}) {
         `UPDATE annonce_portails SET statut = 'envoyee', maj_le = CURRENT_TIMESTAMP WHERE id = ?`
     ).run(instance.id);
 
-    const result = await hubiflowClient.publish(annonce, portail, instance.mode, options);
+    let result = await hubiflowClient.publish(annonce, portail, instance.mode, options);
+
+    // Rejet Hubiflow "Cette référence existe déjà" (2026-09-21, cas réel Serris) : notre
+    // vérification d'unicité ne couvre que notre propre base, jamais l'inventaire réel de
+    // Hubiflow (voir forcerNouveauSuffixeReference) — retry automatique avec un suffixe
+    // incrémenté, borné à 3 tentatives. Match sur ce message PRÉCIS uniquement (jamais sur un
+    // 400 générique pour une autre raison — un problème de données ou d'auth, par exemple, ne
+    // serait pas résolu par un changement de référence et retenterait indéfiniment pour rien).
+    const MAX_TENTATIVES_REFERENCE = 3;
+    let tentativesReference = 0;
+    while (
+        !result.success &&
+        annonce.reference_generee &&
+        result.error?.includes('Cette référence existe déjà') &&
+        tentativesReference < MAX_TENTATIVES_REFERENCE
+    ) {
+        tentativesReference++;
+        const nouvelleReference = await forcerNouveauSuffixeReference(annonce.reference_generee, annonce.id);
+        await db.prepare(`UPDATE annonces SET reference_generee = ? WHERE id = ?`).run(nouvelleReference, annonce.id);
+        await log('hubiflow_publish', {
+            annonceId,
+            portailId,
+            succes: true,
+            message: `Référence "${annonce.reference_generee}" déjà utilisée sur Hubiflow (hors de notre base) — nouvelle tentative avec "${nouvelleReference}".`,
+        });
+        annonce.reference_generee = nouvelleReference;
+        result = await hubiflowClient.publish(annonce, portail, instance.mode, options);
+    }
 
     if (result.success) {
         const activationEchouee = result.actif === false && !!result.erreurActivation;

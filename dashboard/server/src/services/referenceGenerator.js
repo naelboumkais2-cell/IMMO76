@@ -75,6 +75,26 @@ export function promoteurLmnpExclu(lot) {
     return !promoteurDepuisLot(lot);
 }
 
+// Récupération après un rejet Hubiflow "Cette référence existe déjà" (2026-09-21) : notre
+// vérification d'unicité (referenceDejaUtilisee) ne regarde que NOTRE base, jamais l'inventaire
+// réel de Hubiflow — une référence peut donc y être déjà prise par une annonce qu'on ne suit plus
+// (ex. un programme déjà testé puis supprimé de notre base sans garantie de dépublication réussie
+// côté Hubiflow). Contrairement à rendreUnique (appelée à la génération initiale, quand la
+// référence de base n'existe encore nulle part chez nous), on force ici un suffixe strictement
+// supérieur à celui déjà présent — sinon rendreUnique(base, id) renverrait la même référence que
+// celle qui vient d'être rejetée, puisqu'elle est déjà "unique" du point de vue de notre seule base.
+export async function forcerNouveauSuffixeReference(referenceActuelle, annonceId) {
+    const m = referenceActuelle.match(/^(.*)-(\d+)$/);
+    const base = m ? m[1] : referenceActuelle;
+    let suffixe = m ? parseInt(m[2], 10) + 1 : 2;
+    let candidate = `${base}-${suffixe}`;
+    while (await referenceDejaUtilisee(candidate, annonceId)) {
+        suffixe += 1;
+        candidate = `${base}-${suffixe}`;
+    }
+    return candidate;
+}
+
 // Génère la référence Neuf ({référence de programme}-{n°lot}) pour une annonce, ou null si le
 // programme du lot n'a pas encore de référence connue (voir programmes_reference, table saisie
 // manuellement par l'agence — table de routes/parametres.js) — dans ce cas la référence reste à
