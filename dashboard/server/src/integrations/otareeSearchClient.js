@@ -227,27 +227,28 @@ export async function rechercherZoneAvecRepli(nomRegion, departementsRegion, fil
     return { zones };
 }
 
-// Comptage rapide (avant de lancer une vraie recherche) : une seule page, pas de pagination
-// complète — Otaree n'expose aucun total exact (pas de hydra:totalItems dans la réponse), donc
-// un vrai compte pour une recherche large obligerait à tout paginer (potentiellement plusieurs
-// minutes). Ici : nombre exact si tout tient sur la 1ère page, sinon minimum connu ("30+") avec
-// approximatif: true — rapide et honnête plutôt que précis et lent.
+// Comptage exact et rapide — endpoint dédié `estate/counters.json`, découvert le 2026-09-21 par
+// capture DevTools de l'interface web Otaree elle-même (celle-ci affiche un total exact
+// instantané, ce qui a motivé à chercher au-delà de estate/properties.jsonld qui ne renvoie
+// jamais de total). Même forme de `filters` que rechercherLotsOtaree, mêmes headers/auth —
+// confirmé fonctionnel avec nos propres identifiants. Remplace l'ancien comptage approximatif
+// "30+" (limité à la 1ère page de properties.jsonld, qui n'expose pas de total) : celui-ci est
+// désormais inutile, ce vrai endpoint de comptage rend une pagination complète superflue pour
+// ce besoin.
 export async function compterLotsOtaree(filters) {
     const { jwt, credentials } = await obtenirJwtFrais();
-    const headers = buildHeaders(credentials.device, credentials.instanceId, jwt);
-    const res = await fetch(`${API_BASE}/estate/properties.jsonld`, {
+    const headers = buildHeaders(credentials.device, credentials.instanceId, jwt, 'application/json');
+    const res = await fetch(`${API_BASE}/estate/counters.json`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ filters, page: 1, partial: true }),
+        body: JSON.stringify({ filters }),
     });
     if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(`Recherche Otaree refusée (HTTP ${res.status}) : ${body.message || 'raison inconnue'}`);
+        throw new Error(`Comptage Otaree refusé (HTTP ${res.status}) : ${body.message || 'raison inconnue'}`);
     }
     const data = await res.json();
-    const membres = data['hydra:member'] || [];
-    const suite = !!(data['hydra:view'] && data['hydra:view']['hydra:next']);
-    return { count: membres.length, approximatif: suite };
+    return { count: data.countProperties ?? 0, approximatif: false };
 }
 
 // Autocomplétion de ville (locations.json) — même mécanisme d'auth. `code` est directement
