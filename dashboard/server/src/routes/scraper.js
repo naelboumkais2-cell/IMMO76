@@ -39,6 +39,20 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
+// TEMPORAIRE — corrige ponctuellement reference_generee remise à une valeur propre après le bug
+// de suffixe (2026-09-21, lot Serris 73933) — "PS-SERRIS-329" (issue d'une regex bugguée) reset
+// à "PS-SERRIS-328" avant de relancer une publication propre. À retirer une fois fait.
+scraperRouter.post('/diag-fix-reference-ponctuel', exigerConnexion, async (req, res) => {
+    try {
+        const { annonceId, nouvelleReference } = req.body || {};
+        await db.prepare(`UPDATE annonces SET reference_generee = ? WHERE id = ?`).run(nouvelleReference, annonceId);
+        const row = await db.prepare(`SELECT id, reference_generee FROM annonces WHERE id = ?`).get(annonceId);
+        res.json(row);
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
