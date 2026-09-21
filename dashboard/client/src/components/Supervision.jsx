@@ -135,9 +135,10 @@ export function Supervision({ actif }) {
         }
     }
 
-    // Dans la réalité, un seul espace Hubiflow a un token actif côté serveur à la fois —
-    // publier vers un portail qui n'est pas l'espace actif échouerait (ou publierait au
-    // mauvais endroit) une fois la vraie intégration branchée.
+    // Chaque espace Hubiflow a son propre token, valide indépendamment des autres (voir
+    // tokenState.js, corrigé le 2026-09-21 — l'ancienne hypothèse "un seul espace actif à la
+    // fois" était fausse : Chrome garde plusieurs sessions valides simultanément). Un portail
+    // sans token connu/valide bloquerait toute publication réelle vers lui précisément.
     const portailsNonActifs = new Set(portails.filter((p) => !p.est_espace_actif).map((p) => p.id));
 
     // Debounce léger : évite une requête par frappe pendant la saisie de la recherche. Gated par
@@ -396,7 +397,7 @@ export function Supervision({ actif }) {
                                                             {espaceInactif && (
                                                                 <span
                                                                     className="espace-inactif-warning"
-                                                                    title="Ce portail n'est pas l'espace Hubiflow actuellement actif côté serveur — la publication échouerait ou irait au mauvais espace."
+                                                                    title="Aucun token Hubiflow valide connu pour cet espace — reconnecte-toi dessus dans Chrome avant de publier ici."
                                                                 >
                                                                     <IconAlert width={13} height={13} />
                                                                     espace non actif

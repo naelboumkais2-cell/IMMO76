@@ -1,19 +1,19 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { exigerConnexion } from '../middleware/auth.js';
-import { getEspaceActif } from '../integrations/tokenState.js';
+import { getEtatsEspaces } from '../integrations/tokenState.js';
 
 export const portailsRouter = Router();
 
 portailsRouter.get('/', exigerConnexion, async (req, res) => {
     try {
-        const { espaceLogin, expire } = await getEspaceActif();
+        const etats = await getEtatsEspaces();
         const rows = await db.prepare(`SELECT * FROM portails ORDER BY nom`).all();
         res.json(
-            rows.map((p) => ({
-                ...p,
-                est_espace_actif: p.login != null && p.login === espaceLogin && !expire ? 1 : 0,
-            }))
+            rows.map((p) => {
+                const etat = p.login != null ? etats[p.login] : null;
+                return { ...p, est_espace_actif: etat?.tokenPresent && !etat.expire ? 1 : 0 };
+            })
         );
     } catch (e) {
         res.status(500).json({ erreur: e.message });
