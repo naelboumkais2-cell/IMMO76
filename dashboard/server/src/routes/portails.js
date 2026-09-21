@@ -7,12 +7,12 @@ export const portailsRouter = Router();
 
 portailsRouter.get('/', exigerConnexion, async (req, res) => {
     try {
-        const { espaceLogin } = getEspaceActif();
+        const { espaceLogin, expire } = await getEspaceActif();
         const rows = await db.prepare(`SELECT * FROM portails ORDER BY nom`).all();
         res.json(
             rows.map((p) => ({
                 ...p,
-                est_espace_actif: p.login != null && p.login === espaceLogin ? 1 : 0,
+                est_espace_actif: p.login != null && p.login === espaceLogin && !expire ? 1 : 0,
             }))
         );
     } catch (e) {
