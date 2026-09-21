@@ -39,18 +39,6 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — renvoie la 1ère image stockée pour une annonce (vérification visuelle du choix
-// photoPrincipale sur un lot réel). À retirer une fois la vérification terminée.
-scraperRouter.get('/diag-premiere-image/:id', exigerConnexion, async (req, res) => {
-    try {
-        const row = await db.prepare(`SELECT images FROM annonces WHERE id = ?`).get(req.params.id);
-        const images = row?.images ? JSON.parse(row.images) : [];
-        res.json({ nb: images.length, premiere: images[0] || null });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
