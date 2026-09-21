@@ -88,21 +88,23 @@ export async function publierInstance(annonceId, portailId, options = {}) {
     // 400 générique pour une autre raison — un problème de données ou d'auth, par exemple, ne
     // serait pas résolu par un changement de référence et retenterait indéfiniment pour rien).
     const MAX_TENTATIVES_REFERENCE = 3;
+    const referenceOriginale = annonce.reference_generee;
     let tentativesReference = 0;
     while (
         !result.success &&
-        annonce.reference_generee &&
+        referenceOriginale &&
         result.error?.includes('Cette référence existe déjà') &&
         tentativesReference < MAX_TENTATIVES_REFERENCE
     ) {
         tentativesReference++;
-        const nouvelleReference = await forcerNouveauSuffixeReference(annonce.reference_generee, annonce.id);
+        const referenceAvant = annonce.reference_generee;
+        const nouvelleReference = await forcerNouveauSuffixeReference(referenceOriginale, tentativesReference + 1, annonce.id);
         await db.prepare(`UPDATE annonces SET reference_generee = ? WHERE id = ?`).run(nouvelleReference, annonce.id);
         await log('hubiflow_publish', {
             annonceId,
             portailId,
             succes: true,
-            message: `Référence "${annonce.reference_generee}" déjà utilisée sur Hubiflow (hors de notre base) — nouvelle tentative avec "${nouvelleReference}".`,
+            message: `Référence "${referenceAvant}" déjà utilisée sur Hubiflow (hors de notre base) — nouvelle tentative avec "${nouvelleReference}".`,
         });
         annonce.reference_generee = nouvelleReference;
         result = await hubiflowClient.publish(annonce, portail, instance.mode, options);

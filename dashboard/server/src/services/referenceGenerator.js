@@ -79,18 +79,22 @@ export function promoteurLmnpExclu(lot) {
 // vérification d'unicité (referenceDejaUtilisee) ne regarde que NOTRE base, jamais l'inventaire
 // réel de Hubiflow — une référence peut donc y être déjà prise par une annonce qu'on ne suit plus
 // (ex. un programme déjà testé puis supprimé de notre base sans garantie de dépublication réussie
-// côté Hubiflow). Contrairement à rendreUnique (appelée à la génération initiale, quand la
-// référence de base n'existe encore nulle part chez nous), on force ici un suffixe strictement
-// supérieur à celui déjà présent — sinon rendreUnique(base, id) renverrait la même référence que
-// celle qui vient d'être rejetée, puisqu'elle est déjà "unique" du point de vue de notre seule base.
-export async function forcerNouveauSuffixeReference(referenceActuelle, annonceId) {
-    const m = referenceActuelle.match(/^(.*)-(\d+)$/);
-    const base = m ? m[1] : referenceActuelle;
-    let suffixe = m ? parseInt(m[2], 10) + 1 : 2;
-    let candidate = `${base}-${suffixe}`;
+// côté Hubiflow).
+//
+// `referenceOriginale` (jamais reparsée d'une tentative précédente) + `tentative` (1, 2, 3...)
+// explicites, plutôt que d'extraire un suffixe depuis la référence courante par regex — piège
+// réel rencontré : la référence se termine déjà par -{n°lot} (ex. "PS-SERRIS-328"), indiscernable
+// d'un vrai suffixe de collision pour une regex générique. Une première version bugguée a ainsi
+// produit "PS-SERRIS-329" (lu comme suffixe 328+1) au lieu d'un vrai marqueur de nouvelle
+// tentative — une référence qui ressemble à tort au lot 329. Préfixe "-r" (jamais un simple
+// nombre) pour ne jamais pouvoir être confondu avec un numéro de lot ni avec le suffixe -2/-3
+// de rendreUnique (collision interne, cas différent).
+export async function forcerNouveauSuffixeReference(referenceOriginale, tentative, annonceId) {
+    let candidate = `${referenceOriginale}-r${tentative}`;
+    let n = tentative;
     while (await referenceDejaUtilisee(candidate, annonceId)) {
-        suffixe += 1;
-        candidate = `${base}-${suffixe}`;
+        n += 1;
+        candidate = `${referenceOriginale}-r${n}`;
     }
     return candidate;
 }
