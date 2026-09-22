@@ -607,25 +607,6 @@ scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
     }
 });
 
-// TEMPORAIRE — diagnostic en LECTURE SEULE pour vérifier si un découpage géographique (région)
-// suffit à éviter les 504 Otaree observés sur une recherche promoteur volumineuse non scopée
-// (Vinci Immobilier, ~1877 lots). À retirer une fois le diagnostic terminé.
-scraperRouter.post('/diag-recherche-scopee', exigerConnexion, async (req, res) => {
-    try {
-        const { filters } = req.body || {};
-        const debut = Date.now();
-        let lots = [];
-        const { tronque } = await rechercherLotsOtaree(
-            filters,
-            (lotsSoFar) => { lots = lotsSoFar; },
-            () => lots.length >= 5
-        );
-        res.json({ nbLotsTrouves: lots.length, tronque, dureeMs: Date.now() - debut });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
