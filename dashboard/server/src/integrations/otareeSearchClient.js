@@ -251,6 +251,33 @@ export async function compterLotsOtaree(filters) {
     return { count: data.countProperties ?? 0, approximatif: false };
 }
 
+// TEMPORAIRE — teste plusieurs endpoints candidats pour une recherche de promoteur par nom
+// (équivalent developers de locations.json), pour vérifier si un tel mécanisme existe avant de
+// concevoir l'architecture "filtre construit depuis promoteurs_neuf". À retirer une fois vérifié.
+export async function diagRechercherDeveloppeurs(q) {
+    const { jwt, credentials } = await obtenirJwtFrais();
+    const headers = buildHeaders(credentials.device, credentials.instanceId, jwt, 'application/json');
+    const candidats = [
+        `${API_BASE}/developers.json?order[name]=asc&slug=${encodeURIComponent(q)}`,
+        `${API_BASE}/developers.json?name=${encodeURIComponent(q)}`,
+        `${API_BASE}/developers.json?search=${encodeURIComponent(q)}`,
+        `${API_BASE}/estate/developers.json?name=${encodeURIComponent(q)}`,
+    ];
+    const resultats = [];
+    for (const url of candidats) {
+        try {
+            const res = await fetch(url, { method: 'GET', headers });
+            const texte = await res.text();
+            let corps;
+            try { corps = JSON.parse(texte); } catch { corps = texte.slice(0, 300); }
+            resultats.push({ url, status: res.status, corps });
+        } catch (e) {
+            resultats.push({ url, erreur: e.message });
+        }
+    }
+    return resultats;
+}
+
 // Autocomplétion de ville (locations.json) — même mécanisme d'auth. `code` est directement
 // réutilisable comme key/value dans le filtre `where` de rechercherLotsOtaree (format
 // confirmé par capture réelle : `${type}_${id}`, ex. city_29781 pour Rouen).

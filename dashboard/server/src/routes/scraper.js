@@ -33,11 +33,22 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
+    diagRechercherDeveloppeurs,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
+
+// TEMPORAIRE — teste s'il existe un endpoint de recherche de promoteur par nom côté Otaree. À
+// retirer une fois la vérification terminée.
+scraperRouter.get('/diag-recherche-developpeur', exigerConnexion, async (req, res) => {
+    try {
+        res.json(await diagRechercherDeveloppeurs(req.query.q || 'Nexity'));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
 
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
