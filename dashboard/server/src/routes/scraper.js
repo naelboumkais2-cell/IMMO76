@@ -39,6 +39,19 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
+// TEMPORAIRE — échantillonne des lots Neuf réels variés (exposition, parking) pour tester le
+// nouveau format de titre du prompt V1 Neuf. À retirer une fois le test terminé.
+scraperRouter.post('/diag-lots-neuf-varies', exigerConnexion, async (req, res) => {
+    try {
+        const { filters, limite } = req.body || {};
+        const { lots } = await rechercherLotsOtaree(filters || {});
+        const nonLmnp = lots.filter((l) => !(l.lawsKeys || []).some((k) => [2, 21, 30, 32].includes(k)));
+        res.json({ nbTotal: lots.length, nbNonLmnp: nonLmnp.length, lots: nonLmnp.slice(0, limite || 300) });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
