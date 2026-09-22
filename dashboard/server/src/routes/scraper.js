@@ -33,9 +33,6 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
-    enrichirLot,
-    obtenirJwtFrais,
-    buildHeaders,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -605,39 +602,6 @@ scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
     try {
         const result = await db.prepare(`DELETE FROM annonces WHERE donnees_ia IS NULL`).run();
         res.json({ supprimees: result.changes });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
-// TEMPORAIRE — diagnostic pour tester le nouveau prompt Neuf V2 (document client "NIRA -
-// DESCRIPTION NEUF") en local, sans passer par le moteur IA en prod. Récupère le lot Otaree brut
-// complet (avec program, exposition, annexes...) pour une annonce déjà connue, à partir de son
-// external_id "OTAREE-<atId>". À retirer une fois les tests terminés.
-scraperRouter.get('/diag-lot-brut/:annonceId', exigerConnexion, async (req, res) => {
-    try {
-        const annonce = await db.prepare(`SELECT external_id FROM annonces WHERE id = ?`).get(req.params.annonceId);
-        if (!annonce) return res.status(404).json({ erreur: 'annonce introuvable' });
-        const m = String(annonce.external_id || '').match(/^OTAREE-(.+)$/);
-        if (!m) return res.status(400).json({ erreur: `external_id inattendu : ${annonce.external_id}` });
-        const atId = m[1];
-        const jetonPartage = await obtenirJwtFrais();
-        const lot = { '@id': `/properties/${atId}`, id: atId };
-        await enrichirLot(lot, jetonPartage);
-        // Récupère aussi les champs structurés + program (exposition, description, RE2020...) via
-        // le même détail lot, pas seulement documents/images (voir enrichirLot, qui ne recopie que
-        // documents/images/plan sur l'objet lot passé en paramètre).
-        const { jwt, credentials } = jetonPartage;
-        const API_BASE = 'https://api.link-app.immo';
-        const headers = buildHeaders(credentials.device, credentials.instanceId, jwt);
-        const detailRes = await fetch(`${API_BASE}/properties/${atId}`, { headers });
-        const detail = detailRes.ok ? await detailRes.json() : null;
-        let program = null;
-        if (detail?.program?.['@id']) {
-            const progRes = await fetch(`${API_BASE}${detail.program['@id']}`, { headers });
-            program = progRes.ok ? await progRes.json() : null;
-        }
-        res.json({ lotComplet: { ...detail, program: program || detail?.program, images: lot.images, documents: lot.documents } });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }

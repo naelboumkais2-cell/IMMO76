@@ -14,7 +14,7 @@ const SEARCH_PAGE_REFERER = 'https://plusimmo76.link-app.immo/estate/search/prop
 // pour coller exactement à ce qui a été testé avec succès.
 const TIMEZONE = 'Asia/Singapore';
 
-export function buildHeaders(device, instanceId, jwt, accept = 'application/ld+json') {
+function buildHeaders(device, instanceId, jwt, accept = 'application/ld+json') {
     const headers = {
         Origin: ORIGIN,
         Referer: REFERER,
