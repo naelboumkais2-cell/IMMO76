@@ -258,10 +258,11 @@ export async function diagRechercherDeveloppeurs(q) {
     const { jwt, credentials } = await obtenirJwtFrais();
     const headers = buildHeaders(credentials.device, credentials.instanceId, jwt, 'application/json');
     const candidats = [
-        `${API_BASE}/developers.json?order[name]=asc&slug=${encodeURIComponent(q)}`,
         `${API_BASE}/developers.json?name=${encodeURIComponent(q)}`,
-        `${API_BASE}/developers.json?search=${encodeURIComponent(q)}`,
-        `${API_BASE}/estate/developers.json?name=${encodeURIComponent(q)}`,
+        `${API_BASE}/developers.json?name=${encodeURIComponent(q.toLowerCase())}`,
+        `${API_BASE}/developers.json?name=${encodeURIComponent(q.toUpperCase())}`,
+        `${API_BASE}/developers.json?name=${encodeURIComponent(q.slice(0, 4))}`,
+        `${API_BASE}/developers.json?name=${encodeURIComponent(' ' + q + ' ')}`,
     ];
     const resultats = [];
     for (const url of candidats) {
