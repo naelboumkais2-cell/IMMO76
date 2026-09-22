@@ -36,8 +36,35 @@ import {
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
+import { genererReferenceNeuf, promoteurNeufExclu } from '../services/referenceGenerator.js';
 
 export const scraperRouter = Router();
+
+// TEMPORAIRE — vérifie la référence Neuf générée pour de vrais lots d'un promoteur donné, sans
+// rien écrire en base (annonce synthétique, comme les vérifications similaires précédentes). À
+// retirer une fois la vérification terminée.
+scraperRouter.post('/diag-reference-promoteur', exigerConnexion, async (req, res) => {
+    try {
+        const { filters, limite } = req.body || {};
+        const { lots } = await rechercherLotsOtaree(filters || {});
+        const resultats = [];
+        for (const lot of lots.slice(0, limite || 5)) {
+            const ville = lot.program?.address?.city?.name || null;
+            const annonceSynthetique = { id: 0, ville, reference: lot.number != null ? String(lot.number) : null };
+            resultats.push({
+                lotId: lot.id,
+                promoteur: lot.program?.developer?.name || null,
+                ville,
+                numeroLot: annonceSynthetique.reference,
+                referenceGeneree: await genererReferenceNeuf(annonceSynthetique, lot),
+                exclu: await promoteurNeufExclu(lot),
+            });
+        }
+        res.json({ nbTotal: lots.length, resultats });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
 
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
