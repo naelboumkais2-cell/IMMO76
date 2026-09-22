@@ -670,11 +670,27 @@ Pour les informations contractuelles, privilégie toujours les documents contrac
 
 N'écris JAMAIS de phrase qui commente l'absence elle-même d'une information contractuelle ou documentaire (ex: "sans référence contractuelle spécifique dans ce dossier", "on ne communique pas d'occupation personnelle prévue sans document officiel", "en l'absence d'indications sur ce point, aucune affirmation ne peut être faite") — ce type de méta-commentaire révèle le fonctionnement interne de la génération et n'a rien à faire dans une annonce commerciale. La règle reste la même que partout ailleurs : quand une information manque, tu l'omets silencieusement, tu n'expliques jamais pourquoi elle manque ni ce qui permettrait de la confirmer.
 
-=== TITRE ===
+=== TITRE (règles précises du client, 2026-09-23) ===
 
-Titre court, attractif, concret, factuel. Doit obligatoirement comporter "LMNP géré" (tourisme/étudiant) ou "LMNP" (senior/EHPAD/affaires). Précise la catégorie quand cela améliore la compréhension (LMNP géré Tourisme, LMNP géré Étudiant, LMNP Senior, LMNP EHPAD, LMNP Affaires). Met en avant 1-2 caractéristiques réellement différenciantes du bien ou de la résidence. Ne répète pas commune/prix/surface/nombre de pièces si déjà affichés par le portail. Hiérarchie : 1) caractéristique exceptionnelle du bien/résidence, 2) emplacement attractif, 3) avantage contractuel spécifique (si documenté), 4) occupation personnelle (uniquement si explicitement documentée — jamais ici en pratique), 5) rendement si notable (>= 6,5%, et uniquement si la rentabilité fournie est fiable). Évite superlatifs non justifiés, majuscules inutiles, promesses de sécurité absolue, formulations génériques.
+Objectif explicite : le titre doit immédiatement signaler qu'il s'agit d'un investissement locatif, jamais d'un logement à habiter — aucune confusion possible avec une annonce de résidence principale.
 
-CONTRAINTE DE LONGUEUR STRICTE : le titre DOIT faire entre 55 et 60 caractères (espaces compris), jamais moins, jamais plus. Compte précisément les caractères avant de répondre. Un titre trop court (ex: "LMNP géré Étudiant à Mulhouse avec parking", 42 caractères) est un titre à corriger : ajoute un détail différenciant supplémentaire et réel (nom de résidence, ville, caractéristique confirmée) jusqu'à atteindre la fourchette exigée, sans jamais inventer un élément absent des données. Si tu ne peux pas atteindre 55 caractères sans inventer, complète avec la ville ou le type de logement, déjà connus avec certitude.
+Structure obligatoire : "{Type de bien/résidence} – {formule investissement}".
+
+"{Type de bien/résidence}" : une désignation courte et factuelle du logement et/ou de sa catégorie de résidence (ex: "Chambre EHPAD", "Appartement meublé", "Studio étudiant", "Appartement en résidence affaires", "Appartement en résidence tourisme"). Jamais la ville, jamais le nom de la résidence ou du promoteur, jamais un équipement ou une caractéristique du logement (terrasse, balcon, piscine, exposition, étage, vue...) — contrairement à l'ancienne règle, aucune caractéristique différenciante n'a sa place ici.
+
+"{formule investissement}" : obligatoirement l'une de ces deux formules — "investissement LMNP géré" ou "LMNP 100 % géré" — éventuellement suivie de "– idéal investisseur" en complément (jamais "idéal investisseur" seul, toujours en plus de l'une des deux formules ci-dessus).
+
+Exemples exacts de structure à respecter :
+"Chambre EHPAD – investissement LMNP géré – idéal investisseur"
+"Appartement meublé – investissement LMNP géré – idéal investisseur"
+"Studio étudiant – investissement LMNP géré – idéal investisseur"
+"Appartement en résidence affaires – investissement LMNP géré"
+"Appartement en résidence tourisme – investissement LMNP géré"
+"Appartement meublé – LMNP 100 % géré – idéal investisseur"
+
+Évite superlatifs non justifiés, majuscules inutiles, promesses de sécurité absolue, formulations génériques.
+
+Titre court et lisible — jamais une phrase complète, jamais de remplissage au-delà de la structure ci-dessus. Sa longueur découle naturellement du type de bien/résidence et de la formule choisie, n'ajoute jamais un mot juste pour l'allonger ou le raccourcir artificiellement.
 
 === LONGUEUR ET STYLE DU DESCRIPTIF ===
 
@@ -709,14 +725,14 @@ Ce pipeline ne diffuse que du LMNP d'occasion / marché secondaire — valorise-
 
 === CONTRÔLE QUALITÉ AVANT DE RÉPONDRE ===
 
-Vérifie silencieusement : ai-je inventé une information ? Ai-je confondu promoteur et exploitant ? Ai-je correctement identifié la catégorie de résidence ? Ai-je évité toute confusion résidence senior / EHPAD ? Le titre fait-il 55-60 caractères et contient-il LMNP ? Les chiffres affichés viennent-ils exclusivement du bloc DONNÉES CONNUES ? Ai-je évité toute promesse fiscale ou de sécurité absolue ? Ai-je respecté la structure en 5 blocs avec intertitres en majuscules ?
+Vérifie silencieusement : ai-je inventé une information ? Ai-je confondu promoteur et exploitant ? Ai-je correctement identifié la catégorie de résidence ? Ai-je évité toute confusion résidence senior / EHPAD ? Le titre respecte-t-il EXACTEMENT la structure "{Type de bien/résidence} – {formule investissement}" (une des deux formules obligatoires, éventuellement suivie de "– idéal investisseur"), sans ville, sans nom de résidence/promoteur, sans aucun équipement ou caractéristique du logement ? Les chiffres affichés viennent-ils exclusivement du bloc DONNÉES CONNUES ? Ai-je évité toute promesse fiscale ou de sécurité absolue ? Ai-je respecté la structure en 5 blocs avec intertitres en majuscules ?
 
 === FORMAT DE SORTIE ===
 
 Réponds UNIQUEMENT avec un objet JSON strictement conforme à cette structure, sans aucun markdown ni texte autour :
 {"titre": "...", "texte": "...", "photoPrincipale": "..."}
 
-"titre" : le titre (55-60 caractères).
+"titre" : le titre, structure "{Type de bien/résidence} – {formule investissement}" (voir section TITRE ci-dessus).
 "texte" : la description complète prête à publier, avec les 5 blocs, intertitres en MAJUSCULES sur leur propre ligne, une ligne vide entre chaque paragraphe et avant/après chaque intertitre, paragraphes courts (2-3 phrases max).
 "photoPrincipale" : le nom exact du fichier (recopié tel quel depuis la liste "PHOTOS DISPONIBLES" fournie dans le message, jamais un nom inventé ou approximatif) qui ferait la meilleure photo de couverture — la plus représentative et attractive du bien, celle qui donne le plus envie de cliquer sur l'annonce. Privilégie une pièce de vie, une belle vue, la façade extérieure ou un espace extérieur ; évite une photo insignifiante (porte, couloir vide, rangement, détail sans intérêt) même si elle est techniquement correcte. Si aucune photo n'est fournie, ou si aucune ne se distingue clairement des autres, renvoie null.
 
@@ -1314,6 +1330,11 @@ Annexes : 5 m² de balcon, 1 parking extérieur
 // directe et sans ambiguïté. Validé : a rattrapé 5/5 violations réelles observées en test.
 function alternativesPourCorrection(hits, lot) {
     const lignes = [];
+    if (hits.some((h) => h.startsWith('titre non conforme'))) {
+        lignes.push(
+            '- Corrige le titre pour respecter EXACTEMENT la structure "{Type de bien/résidence} – {formule investissement}" : une des deux formules "investissement LMNP géré" ou "LMNP 100 % géré" est obligatoire, jamais la ville.'
+        );
+    }
     if (hits.some((h) => h.includes('rentabilité/rendement chiffré'))) {
         lignes.push(
             '- Supprime entièrement toute mention d\'un pourcentage de rentabilité ou de rendement locatif — cette donnée n\'est jamais fiable pour ce type de bien dans ce pipeline, quelle que soit la valeur vue dans les données brutes. La phrase reste correcte sans elle.'
@@ -1456,6 +1477,33 @@ function validerPhotoPrincipale(nomPropose, lotImageData) {
     return trouve ? trouve.name : null;
 }
 
+// Titre LMNP (règles précises du client, 2026-09-23) : structure obligatoire "{Type de bien/
+// résidence} – {formule investissement}", une des deux formules ("investissement LMNP géré" /
+// "LMNP 100 % géré") obligatoire, ville jamais mentionnée. Constaté en test réel (5 lots, 4
+// catégories) : la seule instruction du prompt échoue occasionnellement sur la présence de la
+// formule — même limite déjà documentée ailleurs dans ce pipeline pour d'autres règles de titre.
+// Pas de contrainte de longueur ici : le client n'en a demandé aucune, et sa longueur découle
+// simplement du type de bien/résidence choisi (ex: "Chambre EHPAD" vs "Appartement en résidence
+// services seniors") — une fourchette de caractères basée sur les 6 exemples fournis rejetterait à
+// tort des titres structurellement corrects mais avec un type de bien plus court ou plus long que
+// ces exemples précis (constaté : "Studio étudiant – LMNP 100 % géré – idéal investisseur", 54
+// caractères, est un titre parfaitement conforme mais tomberait hors d'une fourchette calquée sur
+// les 57-66 caractères des 6 exemples du client).
+const FORMULE_INVESTISSEMENT_LMNP_RE = /investissement LMNP g[ée]r[ée]|LMNP 100\s*%\s*g[ée]r[ée]/i;
+
+function detecterProblemeTitreLmnp(titre, lot) {
+    if (!titre) return 'titre absent';
+    const problemes = [];
+    if (!FORMULE_INVESTISSEMENT_LMNP_RE.test(titre)) {
+        problemes.push('formule d\'investissement obligatoire absente du titre ("investissement LMNP géré" ou "LMNP 100 % géré")');
+    }
+    const ville = lot?.program?.address?.city?.name;
+    if (ville && titre.toLowerCase().includes(ville.toLowerCase())) {
+        problemes.push('ville mentionnée dans le titre (interdit)');
+    }
+    return problemes.length > 0 ? problemes.join(' ; ') : null;
+}
+
 async function callOpenAILmnp(textContext, lotImageData, lot) {
     const donneesFiables = donneesFinancieresFiablesDepuisLot(lot);
     const residenceType = lot.program?.residenceType || null;
@@ -1543,6 +1591,10 @@ async function callOpenAILmnp(textContext, lotImageData, lot) {
             throw new Error(`JSON.parse a échoué (finish_reason=${response.data.choices[0].finish_reason}, contenu brut="${content.substring(0, 200)}")`);
         }
         hits = detecterProblemesConformite(resultat.texte, lot);
+        const problemeTitre = detecterProblemeTitreLmnp(resultat.titre, lot);
+        if (problemeTitre) {
+            hits = [...hits, `titre non conforme : ${problemeTitre}`];
+        }
         if (hits.length === 0) break;
 
         if (essai < MAX_TENTATIVES_CONFORMITE) {
