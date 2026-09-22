@@ -73,6 +73,14 @@ export const api = {
         request(`/portails/programmes-reference/${id}`, { method: 'PUT', body: JSON.stringify({ reference, program_nom }) }),
     supprimerProgrammeReference: (id) => request(`/portails/programmes-reference/${id}`, { method: 'DELETE' }),
 
+    // Promoteurs Neuf reconnus (voir genererReferenceNeuf/promoteurNeufExclu côté serveur)
+    getPromoteursNeuf: () => request('/portails/promoteurs-neuf'),
+    creerPromoteurNeuf: (promoteur_nom, initiales) =>
+        request('/portails/promoteurs-neuf', { method: 'POST', body: JSON.stringify({ promoteur_nom, initiales }) }),
+    modifierPromoteurNeuf: (id, patch) =>
+        request(`/portails/promoteurs-neuf/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    supprimerPromoteurNeuf: (id) => request(`/portails/promoteurs-neuf/${id}`, { method: 'DELETE' }),
+
     // Annonces / supervision — q optionnel : recherche par id/titre/ville, sans se limiter
     // aux 200 plus récentes (utile une fois la base à plusieurs milliers de lignes).
     getAnnonces: (q) => request(`/annonces${q ? `?q=${encodeURIComponent(q)}` : ''}`),

@@ -165,3 +165,63 @@ portailsRouter.delete('/programmes-reference/:id', exigerConnexion, async (req, 
         res.status(500).json({ erreur: e.message });
     }
 });
+
+// Promoteurs Neuf reconnus (voir genererReferenceNeuf/promoteurNeufExclu, referenceGenerator.js)
+// — éditable par l'agence elle-même (demande client 2026-09-22), même principe que promoteurs.js
+// pour le LMNP mais en table plutôt qu'en mapping en dur. Clé sur le nom du promoteur (voir db.js
+// pour le détail du choix), jamais un identifiant Otaree technique.
+portailsRouter.get('/promoteurs-neuf', exigerConnexion, async (req, res) => {
+    try {
+        res.json(await db.prepare(`SELECT * FROM promoteurs_neuf ORDER BY promoteur_nom ASC`).all());
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+portailsRouter.post('/promoteurs-neuf', exigerConnexion, async (req, res) => {
+    try {
+        const { promoteur_nom, initiales } = req.body || {};
+        if (!promoteur_nom?.trim() || !initiales?.trim()) {
+            return res.status(400).json({ erreur: 'promoteur_nom et initiales requis' });
+        }
+        const info = await db
+            .prepare(
+                `INSERT INTO promoteurs_neuf (promoteur_nom, initiales)
+                 VALUES (?, ?)
+                 ON CONFLICT (promoteur_nom) DO UPDATE SET initiales = EXCLUDED.initiales, actif = 1, maj_le = CURRENT_TIMESTAMP
+                 RETURNING id`
+            )
+            .run(promoteur_nom.trim(), initiales.trim());
+        res.status(201).json(await db.prepare(`SELECT * FROM promoteurs_neuf WHERE id = ?`).get(info.lastInsertRowid));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+portailsRouter.put('/promoteurs-neuf/:id', exigerConnexion, async (req, res) => {
+    try {
+        const { initiales, actif } = req.body || {};
+        if (initiales !== undefined && !initiales.trim()) {
+            return res.status(400).json({ erreur: 'initiales requises' });
+        }
+        await db
+            .prepare(
+                `UPDATE promoteurs_neuf
+                 SET initiales = COALESCE(?, initiales), actif = COALESCE(?, actif), maj_le = CURRENT_TIMESTAMP
+                 WHERE id = ?`
+            )
+            .run(initiales?.trim() || null, actif === undefined ? null : (actif ? 1 : 0), req.params.id);
+        res.json(await db.prepare(`SELECT * FROM promoteurs_neuf WHERE id = ?`).get(req.params.id));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+portailsRouter.delete('/promoteurs-neuf/:id', exigerConnexion, async (req, res) => {
+    try {
+        await db.prepare(`DELETE FROM promoteurs_neuf WHERE id = ?`).run(req.params.id);
+        res.status(204).end();
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});

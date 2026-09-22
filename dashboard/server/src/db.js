@@ -241,6 +241,25 @@ export async function initDb() {
     cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     maj_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- Promoteurs Neuf reconnus, éditables par l'agence elle-même (demande client, 2026-09-22) —
+  -- même principe que promoteurs.js pour le LMNP (seuls les promoteurs reconnus permettent la
+  -- diffusion automatique), mais en table plutôt qu'en mapping en dur : la liste évolue au fil
+  -- des partenariats de l'agence, jamais figée dans le code, jamais un nouveau déploiement requis
+  -- pour un nouveau promoteur. Clé sur le NOM du promoteur (program.developer.name, comparaison
+  -- insensible à la casse/espaces dans genererReferenceNeuf) plutôt que sur un identifiant Otaree
+  -- interne — contrairement à programmes_reference (program_id opaque, ex. "e470fdf6dfc2"),
+  -- l'agence connaît et reconnaît un nom de promoteur, jamais un id technique : c'est précisément
+  -- ce qui rend cette table saisissable sans notre aide. La colonne actif permet de désactiver un promoteur
+  -- (ex. partenariat suspendu) sans perdre ses initiales déjà saisies.
+  CREATE TABLE IF NOT EXISTS promoteurs_neuf (
+    id SERIAL PRIMARY KEY,
+    promoteur_nom TEXT NOT NULL UNIQUE,
+    initiales TEXT NOT NULL,
+    actif INTEGER NOT NULL DEFAULT 1,
+    cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    maj_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
   `);
 
   await db.exec(`INSERT INTO parametres_depense (id) VALUES (1) ON CONFLICT (id) DO NOTHING`);

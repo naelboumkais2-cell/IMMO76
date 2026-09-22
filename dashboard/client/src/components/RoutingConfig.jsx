@@ -6,6 +6,7 @@ import { Overlay } from './Overlay.jsx';
 import { DepenseConfig } from './DepenseConfig.jsx';
 import { ComptesConfig } from './ComptesConfig.jsx';
 import { ProgrammesReferenceConfig } from './ProgrammesReferenceConfig.jsx';
+import { PromoteursNeufConfig } from './PromoteursNeufConfig.jsx';
 
 const TYPES_BIEN = ['Studio', 'T1', 'T2', 'T3', 'Maison'];
 
@@ -334,6 +335,10 @@ export function RoutingConfig({ utilisateur, actif }) {
                 <hr className="divider" />
 
                 <ProgrammesReferenceConfig actif={actif} />
+
+                <hr className="divider" />
+
+                <PromoteursNeufConfig actif={actif} />
 
                 {utilisateur?.role === 'admin' && (
                     <>

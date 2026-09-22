@@ -16,7 +16,7 @@ import {
 } from './autoPublishStatus.js';
 import { utilisateurActuelId } from './requestContext.js';
 import { estEnPause, obtenirEtatPause } from './depenseMonitor.js';
-import { genererReferenceLmnp, genererReferenceNeuf, promoteurLmnpExclu, forcerNouveauSuffixeReference } from './referenceGenerator.js';
+import { genererReferenceLmnp, genererReferenceNeuf, promoteurLmnpExclu, promoteurNeufExclu, forcerNouveauSuffixeReference } from './referenceGenerator.js';
 import { estLotLmnp } from './dispositifFiscal.js';
 
 // utilisateur_id vient du contexte de requête (voir requestContext.js/index.js), jamais passé
@@ -590,16 +590,20 @@ export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null)
         mode === 'test' ? !!annonce.est_annonce_test : estNouvelle
     );
 
-    // DÉSACTIVÉ TEMPORAIREMENT (2026-09-18, urgence démo client) : l'exclusion automatique des
-    // promoteurs LMNP tiers non reconnus (ci-dessous) bloquait TOUTE recherche filtrée "LMNP" dès
-    // lors qu'aucun lot ne venait des 4 partenaires connus ni de "La Centrale du LMNP" — candidats
-    // tombait alors à 0 et l'écran de confirmation ne s'ouvrait plus du tout, sans message clair
-    // pour l'utilisateur (voir autoPublishStatus/onTraiterLotsEnAttente). Le log de visibilité est
-    // conservé (utile pour identifier ces lots après coup) mais ne retire plus rien des candidats
-    // — comportement redevenu celui d'avant le 2026-09-14 : promoteur non reconnu = référence vide
-    // à saisir manuellement sur l'écran de confirmation, jamais exclu d'office. À rediscuter avec
-    // le client avant de réactiver (ex. exclusion visible/décochée par défaut plutôt qu'invisible).
-    const candidats = candidatsBruts;
+    // LMNP : exclusion automatique DÉSACTIVÉE TEMPORAIREMENT (2026-09-18, urgence démo client) —
+    // bloquait TOUTE recherche filtrée "LMNP" dès lors qu'aucun lot ne venait des 4 partenaires
+    // connus ni de "La Centrale du LMNP" — candidats tombait alors à 0 et l'écran de confirmation
+    // ne s'ouvrait plus du tout, sans message clair pour l'utilisateur. Le log de visibilité est
+    // conservé (utile pour identifier ces lots après coup) mais ne retire plus rien des candidats.
+    // À rediscuter avec le client avant de réactiver (ex. exclusion visible/décochée par défaut
+    // plutôt qu'invisible).
+    //
+    // Neuf : exclusion automatique ACTIVE dès le départ (demande client 2026-09-22, table
+    // promoteurs_neuf éditable par l'agence — voir referenceGenerator.js, promoteurNeufExclu).
+    // Contrairement au cas LMNP ci-dessus, appliquée volontairement dès la mise en place — le
+    // client connaît déjà le risque "0 candidat si aucun promoteur reconnu" en la demandant
+    // explicitement "même logique que promoteurLmnpExclu".
+    const candidats = [];
     for (const c of candidatsBruts) {
         if (promoteurLmnpExclu(c.lotBrut)) {
             await log('auto_publish', {
@@ -608,6 +612,15 @@ export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null)
                 message: `Promoteur LMNP non reconnu (${c.lotBrut?.program?.developer?.name || 'nom inconnu'}) — ni partenaire connu, ni "La Centrale du LMNP". Référence à saisir manuellement (exclusion automatique désactivée temporairement).`,
             });
         }
+        if (await promoteurNeufExclu(c.lotBrut)) {
+            await log('auto_publish', {
+                annonceId: c.annonce.id,
+                succes: true,
+                message: `Lot Neuf exclu de l'auto-publication : promoteur non reconnu (${c.lotBrut?.program?.developer?.name || 'nom inconnu'}) — ni dans la table des promoteurs reconnus, ni couvert par une référence de programme déjà configurée.`,
+            });
+            continue;
+        }
+        candidats.push(c);
     }
 
     // Plafond de dépense (voir services/depenseMonitor.js) : vérifié ici aussi, avant même un

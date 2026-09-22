@@ -99,20 +99,65 @@ export async function forcerNouveauSuffixeReference(referenceOriginale, tentativ
     return candidate;
 }
 
-// Génère la référence Neuf ({référence de programme}-{n°lot}) pour une annonce, ou null si le
-// programme du lot n'a pas encore de référence connue (voir programmes_reference, table saisie
-// manuellement par l'agence — table de routes/parametres.js) — dans ce cas la référence reste à
-// saisir manuellement sur l'écran de confirmation, exactement comme pour un lot LMNP sans
-// promoteur reconnu. Clé program.id (voir champsConnusDepuisLot pour d'autres usages de cet
-// identifiant Otaree stable) : tous les lots d'une même résidence partagent la même référence
-// automatiquement, y compris sur une future recherche qui retrouve ce même programme.
+// Lit le promoteur Neuf reconnu depuis la table promoteurs_neuf (éditable par l'agence, voir
+// db.js) — comparaison insensible à la casse/espaces (TRIM+LOWER des deux côtés) : contrairement
+// au mapping en dur promoteurs.js (LMNP, comparaison stricte sur un id Otaree), une table saisie
+// à la main par l'agence doit tolérer une variation de casse/espace sans provoquer une exclusion
+// à tort. `actif = 1` uniquement : un promoteur désactivé se comporte comme non reconnu.
+async function promoteurNeufDepuisLot(lot) {
+    const nom = (lot?.program?.developer?.name || '').trim();
+    if (!nom) return null;
+    return await db
+        .prepare(`SELECT * FROM promoteurs_neuf WHERE actif = 1 AND LOWER(TRIM(promoteur_nom)) = LOWER(?)`)
+        .get(nom);
+}
+
+// Génère la référence Neuf pour une annonce, ou null si aucune des deux sources connues ne
+// s'applique (référence reste à saisir manuellement sur l'écran de confirmation, jamais devinée) :
+//
+// 1. Promoteur reconnu (table promoteurs_neuf, éditable par l'agence — demande client 2026-09-22,
+//    même principe que promoteurLmnpExclu pour le LMNP) : {Initiales}-{VILLE}-{n°lot}, même format
+//    que le LMNP.
+// 2. Sinon, référence de programme déjà configurée manuellement (programmes_reference,
+//    mécanisme précédent, conservé comme filet de sécurité) : {référence}-{n°lot} — un programme
+//    explicitement configuré par l'agence reste diffusé même si son promoteur n'est pas (encore)
+//    dans la nouvelle table, pour ne jamais casser un programme déjà en fonctionnement au moment
+//    où promoteurs_neuf est encore vide/incomplète.
+//
+// Un promoteur ni reconnu ni couvert par une référence de programme manuelle signifie plus que
+// "référence à saisir à la main" : voir promoteurNeufExclu ci-dessous, qui exclut ces lots de
+// l'auto-publication entièrement (même logique que promoteurLmnpExclu).
 export async function genererReferenceNeuf(annonce, lot) {
-    const programId = lot?.program?.id;
+    const ville = normaliserVille(annonce.ville);
     const numeroLot = annonce.reference;
-    if (!programId || !numeroLot) return null;
+    if (!ville || !numeroLot) return null;
 
-    const row = await db.prepare(`SELECT reference FROM programmes_reference WHERE program_id = ?`).get(programId);
-    if (!row) return null;
+    const promoteur = await promoteurNeufDepuisLot(lot);
+    if (promoteur) {
+        return await rendreUnique(`${promoteur.initiales}-${ville}-${numeroLot}`, annonce.id);
+    }
 
-    return await rendreUnique(`${row.reference}-${numeroLot}`, annonce.id);
+    const programId = lot?.program?.id;
+    if (programId) {
+        const row = await db.prepare(`SELECT reference FROM programmes_reference WHERE program_id = ?`).get(programId);
+        if (row) return await rendreUnique(`${row.reference}-${numeroLot}`, annonce.id);
+    }
+
+    return null;
+}
+
+// Un lot Neuf (non-LMNP) dont le promoteur n'est ni reconnu dans promoteurs_neuf ni couvert par
+// une référence de programme configurée manuellement doit être exclu de l'auto-publication —
+// demande explicite du client (2026-09-22), même principe que promoteurLmnpExclu pour le LMNP.
+// Jamais appliqué à un lot LMNP (sa propre règle s'applique, indépendante).
+export async function promoteurNeufExclu(lot) {
+    if (estLotLmnp(lot)) return false;
+
+    const programId = lot?.program?.id;
+    if (programId) {
+        const row = await db.prepare(`SELECT 1 FROM programmes_reference WHERE program_id = ?`).get(programId);
+        if (row) return false;
+    }
+
+    return !(await promoteurNeufDepuisLot(lot));
 }
