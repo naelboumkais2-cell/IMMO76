@@ -607,6 +607,35 @@ scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
     }
 });
 
+// TEMPORAIRE — diagnostic en LECTURE SEULE (aucun import, aucune écriture en base) pour tester la
+// génération de référence Neuf sur de vrais lots de promoteurs récemment ajoutés à promoteurs_neuf
+// (2026-09-22). Reproduit localement la logique de genererReferenceNeuf (referenceGenerator.js)
+// sans toucher à la base ni déclencher autoGenererEtPublier. À retirer une fois le diagnostic
+// terminé.
+scraperRouter.get('/diag-reference-neuf/:developerId', exigerConnexion, async (req, res) => {
+    try {
+        const developerId = `/developers/${req.params.developerId}`;
+        const { lots } = await rechercherLotsOtaree({ developer: [developerId] });
+        const promoteur = await db
+            .prepare(`SELECT * FROM promoteurs_neuf WHERE developer_id = ? AND actif = 1`)
+            .get(developerId);
+        const echantillon = lots.slice(0, 2).map((lot) => {
+            const ville = (lot?.program?.address?.city?.name || '').toUpperCase().replace(/\s+/g, '');
+            const numeroLot = lot?.number;
+            const referenceAttendue = promoteur && ville && numeroLot ? `${promoteur.initiales}-${ville}-${numeroLot}` : null;
+            return {
+                developerName: lot?.program?.developer?.name,
+                ville,
+                numeroLot,
+                referenceAttendue,
+            };
+        });
+        res.json({ promoteurReconnu: promoteur ? { nom: promoteur.promoteur_nom, initiales: promoteur.initiales } : null, nbLotsTrouves: lots.length, echantillon });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
