@@ -33,6 +33,7 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
+    enrichirLot,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -47,6 +48,20 @@ scraperRouter.post('/diag-lots-neuf-varies', exigerConnexion, async (req, res) =
         const { lots } = await rechercherLotsOtaree(filters || {});
         const nonLmnp = lots.filter((l) => !(l.lawsKeys || []).some((k) => [2, 21, 30, 32].includes(k)));
         res.json({ nbTotal: lots.length, nbNonLmnp: nonLmnp.length, lots: nonLmnp.slice(0, limite || 300) });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+scraperRouter.post('/diag-lots-neuf-complets-par-id', exigerConnexion, async (req, res) => {
+    try {
+        const { filters, ids } = req.body || {};
+        const idsSet = new Set(ids || []);
+        const { lots } = await rechercherLotsOtaree(filters || {});
+        const cibles = lots.filter((l) => idsSet.has(l.id));
+        const resultats = [];
+        for (const lot of cibles) resultats.push(await enrichirLot(structuredClone(lot)));
+        res.json({ resultats });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
