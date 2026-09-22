@@ -79,9 +79,11 @@ const LAW_OPTIONS = [
     { value: 41, label: 'Bailleur privé - Jeanbrun' },
 ];
 
-// Confirmés par sondage direct (developer id -> nom lu dans program.developer.name des
-// résultats retournés pour chaque id testé individuellement).
-const DEVELOPER_OPTIONS = [
+// Promoteurs LMNP — mapping en dur volontairement conservé (voir promoteurs.js côté serveur, même
+// logique) : reconnus par id, pas par nom, mécanisme distinct des promoteurs Neuf ci-dessous.
+// Confirmés par sondage direct (developer id -> nom lu dans program.developer.name des résultats
+// retournés pour chaque id testé individuellement).
+const DEVELOPER_OPTIONS_LMNP = [
     { value: '/developers/3022d387a2e6', label: 'CELAVi pierre' },
     { value: '/developers/ab3f89e93847', label: 'Pierre & Sens' },
     { value: '/developers/dc7ffc55ea78', label: 'Consultim' },
@@ -90,33 +92,6 @@ const DEVELOPER_OPTIONS = [
     // côté serveur, qui matche sur le nom plutôt que cet id (demande explicite du client) : les
     // deux méthodes coexistent, celle-ci sert uniquement à filtrer la recherche en amont.
     { value: '/developers/bec3d1402a8a', label: 'La Centrale du LMNP' },
-    // 21 promoteurs Neuf demandés par le client (2026-09-22, liste de 22 moins Nexity — testé
-    // manuellement par le client lui-même via promoteurs_neuf/Réglages). Chaque id + orthographe
-    // exacte du nom confirmés sur un vrai lot (recensement réel sur 10 régions, jamais deviné) —
-    // 3 d'entre eux (NACA IMMOBILIER, TERRALIA IMMOBILIER, GreenCity Immobilier) diffèrent
-    // légèrement de la formulation initiale du client, gardée telle qu'observée sur Otaree.
-    { value: '/developers/191db4c01b1d', label: '3J Promotion' },
-    { value: '/developers/5fe3a529510e', label: 'Kaufman & Broad' },
-    { value: '/developers/433fad6666c7', label: 'Cogedim' },
-    { value: '/developers/d7bd72624bea', label: 'Sogeprom' },
-    { value: '/developers/350aebd867cc', label: 'Care Promotion' },
-    { value: '/developers/23ba943a5d7a', label: 'Foncim' },
-    { value: '/developers/f225fc1a6920', label: 'Vinci Immobilier' },
-    { value: '/developers/c70ac826edec', label: 'FEI' },
-    { value: '/developers/605d16f8c813', label: 'Marignan' },
-    { value: '/developers/2743d69606a4', label: 'Sedelka' },
-    { value: '/developers/334e9cb9f370', label: 'Pierre de Seine' },
-    { value: '/developers/234242bfd172', label: 'European Homes' },
-    { value: '/developers/b3df97db434a', label: 'Edouard Denis' },
-    { value: '/developers/e217511a7c5c', label: 'Groupe Eiffage' },
-    { value: '/developers/c81713694ac1', label: 'Sepimo' },
-    { value: '/developers/aee5f07b3675', label: 'Crédit Agricole Immobilier' },
-    { value: '/developers/3a770d18ea37', label: 'NACA IMMOBILIER' },
-    { value: '/developers/f180a6a59f0a', label: 'TERRALIA IMMOBILIER' },
-    { value: '/developers/9ac278d041ae', label: 'GreenCity Immobilier' },
-    { value: '/developers/959223bae241', label: 'NLA Promotion' },
-    { value: '/developers/d61661dc42f6', label: 'iSelection' },
-    { value: '/developers/810bef64a82a', label: 'LogiH' },
 ];
 
 const TAX_AREA_OPTIONS = ['A', 'A BIS', 'B1', 'B2', 'C', 'DOM'].map((v) => ({ value: v, label: v }));
@@ -155,7 +130,7 @@ function labelsPour(options, valeurs) {
 
 // Résumé lisible construit à partir des mêmes filtres affichés dans le formulaire — affiché à la
 // place de l'URL encodée (illisible) pour les recherches sans nom personnalisé.
-function construireResumeFiltres({ villeSelectionnee, minPrice, maxPrice, typologie, nature, statut, loi, promoteur }) {
+function construireResumeFiltres({ villeSelectionnee, minPrice, maxPrice, typologie, nature, statut, loi, promoteur, developerOptions }) {
     const parts = [];
     if (minPrice.trim()) parts.push(`Prix min ${Number(minPrice.trim()).toLocaleString('fr-FR')}€`);
     if (maxPrice.trim()) parts.push(`Prix max ${Number(maxPrice.trim()).toLocaleString('fr-FR')}€`);
@@ -164,7 +139,7 @@ function construireResumeFiltres({ villeSelectionnee, minPrice, maxPrice, typolo
     if (nature.length) parts.push(labelsPour(NATURE_OPTIONS, nature).join('/'));
     if (statut.length) parts.push(labelsPour(STATUS_OPTIONS, statut).join('/'));
     if (loi.length) parts.push(labelsPour(LAW_OPTIONS, loi).join('/'));
-    if (promoteur.length) parts.push(labelsPour(DEVELOPER_OPTIONS, promoteur).join('/'));
+    if (promoteur.length) parts.push(labelsPour(developerOptions, promoteur).join('/'));
     return parts.length ? parts.join(', ') : 'Recherche sans filtre';
 }
 
@@ -203,6 +178,25 @@ export function ScraperControl() {
     const [etage, setEtage] = useState([]);
     const [loi, setLoi] = useState([]);
     const [promoteur, setPromoteur] = useState([]);
+    // Options du filtre "Promoteur" construites depuis promoteurs_neuf (2026-09-23, architecture
+    // à source unique demandée par le client) — plus les 4 promoteurs LMNP en dur (mécanisme
+    // distinct, voir DEVELOPER_OPTIONS_LMNP). Seuls les promoteurs actifs ET dont l'id Otaree a pu
+    // être résolu (developer_id non nul, voir PromoteursNeufConfig.jsx) apparaissent ici — un
+    // promoteur "non résolu" n'a pas d'id à filtrer, il resterait un filtre invalide sur Otaree.
+    const [promoteursNeufOptions, setPromoteursNeufOptions] = useState([]);
+    const developerOptions = [...DEVELOPER_OPTIONS_LMNP, ...promoteursNeufOptions];
+
+    useEffect(() => {
+        api.getPromoteursNeuf()
+            .then((liste) => {
+                setPromoteursNeufOptions(
+                    liste
+                        .filter((p) => p.actif && p.developer_id)
+                        .map((p) => ({ value: p.developer_id, label: p.promoteur_nom }))
+                );
+            })
+            .catch(() => {});
+    }, []);
     const [zoneFiscale, setZoneFiscale] = useState([]);
     const [dependances, setDependances] = useState([]);
     const [rentabiliteMin, setRentabiliteMin] = useState('');
@@ -541,7 +535,7 @@ export function ScraperControl() {
         setComptageOtaree(null);
 
         const filters = construireFiltres();
-        const resume = construireResumeFiltres({ villeSelectionnee, minPrice, maxPrice, typologie, nature, statut, loi, promoteur });
+        const resume = construireResumeFiltres({ villeSelectionnee, minPrice, maxPrice, typologie, nature, statut, loi, promoteur, developerOptions });
 
         setRechercheOtareeEnCours(true);
         setAnnulationRechercheDemandee(false);
@@ -996,7 +990,7 @@ export function ScraperControl() {
                             </label>
                             <label className="field">
                                 Promoteur
-                                <Select multiple value={promoteur} onChange={setPromoteur} options={DEVELOPER_OPTIONS} placeholder="Tous" />
+                                <Select multiple value={promoteur} onChange={setPromoteur} options={developerOptions} placeholder="Tous" />
                             </label>
                         </div>
 

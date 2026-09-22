@@ -14,6 +14,14 @@ function formatDate(dateStr) {
 // promoteur (tel qu'affiché par Otaree, program.developer.name) — pas un identifiant technique,
 // contrairement à ProgrammesReferenceConfig (program_id opaque) : l'agence connaît un nom de
 // promoteur, jamais un id Otaree.
+//
+// Depuis le 2026-09-23, cette même liste alimente aussi directement le filtre "Promoteur" du
+// formulaire de recherche (ScraperControl.jsx) — architecture à source unique, plus de duplication.
+// L'id Otaree nécessaire à ce filtre (developer_id) est résolu AUTOMATIQUEMENT côté serveur dès la
+// création (voir routes/portails.js, resoudreDeveloppeurParNom) : rien à saisir ici. Un promoteur
+// dont le nom ne correspond exactement à aucun promoteur connu d'Otaree reste "reconnu" (la
+// référence se génère dès qu'un lot apparaît), mais n'apparaît pas encore dans le filtre de
+// recherche tant qu'aucun id n'est résolu — d'où le statut affiché et le bouton "Réessayer".
 export function PromoteursNeufConfig({ actif }) {
     const [promoteurs, setPromoteurs] = useState(null);
     const [erreur, setErreur] = useState(null);
@@ -22,6 +30,7 @@ export function PromoteursNeufConfig({ actif }) {
     const [creationEnCours, setCreationEnCours] = useState(false);
     const [editionId, setEditionId] = useState(null);
     const [editionValeur, setEditionValeur] = useState('');
+    const [resolutionEnCoursId, setResolutionEnCoursId] = useState(null);
 
     const refresh = useCallback(() => {
         api.getPromoteursNeuf()
@@ -39,14 +48,14 @@ export function PromoteursNeufConfig({ actif }) {
 
     async function onCreer(e) {
         e.preventDefault();
-        if (!promoteurNom.trim() || !initiales.trim()) {
-            setErreur('Nom du promoteur et initiales requis.');
+        if (!promoteurNom.trim()) {
+            setErreur('Nom du promoteur requis (exactement comme affiché par Otaree).');
             return;
         }
         setCreationEnCours(true);
         setErreur(null);
         try {
-            await api.creerPromoteurNeuf(promoteurNom.trim(), initiales.trim());
+            await api.creerPromoteurNeuf(promoteurNom.trim(), initiales.trim() || null);
             setPromoteurNom('');
             setInitiales('');
             refresh();
@@ -59,7 +68,7 @@ export function PromoteursNeufConfig({ actif }) {
 
     function onCommencerEdition(p) {
         setEditionId(p.id);
-        setEditionValeur(p.initiales);
+        setEditionValeur(p.initiales || '');
     }
 
     async function onValiderEdition(p) {
@@ -82,8 +91,20 @@ export function PromoteursNeufConfig({ actif }) {
         }
     }
 
+    async function onReessayerResolution(p) {
+        setResolutionEnCoursId(p.id);
+        try {
+            await api.reessayerResolutionPromoteurNeuf(p.id);
+            refresh();
+        } catch (e) {
+            setErreur(e.message);
+        } finally {
+            setResolutionEnCoursId(null);
+        }
+    }
+
     async function onSupprimer(p) {
-        if (!window.confirm(`Supprimer "${p.promoteur_nom}" des promoteurs reconnus ? Ses futurs lots seront exclus de l'auto-publication (sauf référence de programme déjà configurée).`)) return;
+        if (!window.confirm(`Supprimer "${p.promoteur_nom}" des promoteurs reconnus ? Ses futurs lots seront exclus de l'auto-publication (sauf référence de programme déjà configurée), et il disparaîtra du filtre de recherche.`)) return;
         try {
             await api.supprimerPromoteurNeuf(p.id);
             refresh();
@@ -97,10 +118,10 @@ export function PromoteursNeufConfig({ actif }) {
             <p className="panel-section-title">Promoteurs Neuf reconnus</p>
             <p className="hint">
                 Seuls les promoteurs listés ici permettent la diffusion automatique d'un lot Neuf (référence
-                générée "Initiales-VILLE-n°lot") — un promoteur absent de cette liste (ou désactivé) exclut
-                ses lots de l'auto-publication, sauf si son programme a déjà une référence configurée
-                ci-dessous. Ajoute un promoteur ici dès qu'un nouveau partenariat démarre, sans attendre
-                un développement.
+                générée "Initiales-VILLE-n°lot" une fois les initiales renseignées) — cette même liste
+                alimente aussi directement le filtre "Promoteur" du formulaire de recherche, dès qu'un id
+                Otaree a pu être résolu automatiquement. Ajoute un promoteur ici dès qu'un nouveau
+                partenariat démarre, sans attendre un développement.
             </p>
 
             <div className="table-wrap" style={{ marginTop: 12 }}>
@@ -109,6 +130,7 @@ export function PromoteursNeufConfig({ actif }) {
                         <tr>
                             <th>Promoteur</th>
                             <th>Initiales</th>
+                            <th>Filtre de recherche</th>
                             <th>Actif</th>
                             <th>Mise à jour</th>
                             <th></th>
@@ -127,8 +149,27 @@ export function PromoteursNeufConfig({ actif }) {
                                             onKeyDown={(e) => e.key === 'Enter' && onValiderEdition(p)}
                                             style={{ width: 100 }}
                                         />
-                                    ) : (
+                                    ) : p.initiales ? (
                                         <strong>{p.initiales}</strong>
+                                    ) : (
+                                        <span className="hint">en attente</span>
+                                    )}
+                                </td>
+                                <td>
+                                    {p.developer_id ? (
+                                        <span className="cell-muted" title={p.developer_id}>✓ actif dans le filtre</span>
+                                    ) : (
+                                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <span className="text-error" title="Aucun promoteur Otaree ne correspond exactement à ce nom">non résolu</span>
+                                            <button
+                                                type="button"
+                                                className="btn btn-ghost"
+                                                onClick={() => onReessayerResolution(p)}
+                                                disabled={resolutionEnCoursId === p.id}
+                                            >
+                                                {resolutionEnCoursId === p.id ? 'Recherche…' : 'Réessayer'}
+                                            </button>
+                                        </span>
                                     )}
                                 </td>
                                 <td>
@@ -154,7 +195,7 @@ export function PromoteursNeufConfig({ actif }) {
                         ))}
                         {promoteurs && promoteurs.length === 0 && (
                             <tr className="empty-row">
-                                <td colSpan={5}>Aucun promoteur reconnu pour l'instant — tous les lots Neuf sont exclus de l'auto-publication tant que cette liste est vide (sauf programmes déjà référencés).</td>
+                                <td colSpan={6}>Aucun promoteur reconnu pour l'instant.</td>
                             </tr>
                         )}
                     </tbody>
@@ -167,7 +208,7 @@ export function PromoteursNeufConfig({ actif }) {
                     <input value={promoteurNom} onChange={(e) => setPromoteurNom(e.target.value)} placeholder="ex: Vinci Immobilier" />
                 </label>
                 <label className="field" style={{ width: 120 }}>
-                    <span className="field-label">Initiales</span>
+                    <span className="field-label">Initiales (optionnel)</span>
                     <input value={initiales} onChange={(e) => setInitiales(e.target.value)} placeholder="ex: VI" />
                 </label>
                 <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-end' }} disabled={creationEnCours}>

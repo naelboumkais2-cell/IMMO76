@@ -251,32 +251,31 @@ export async function compterLotsOtaree(filters) {
     return { count: data.countProperties ?? 0, approximatif: false };
 }
 
-// TEMPORAIRE — teste plusieurs endpoints candidats pour une recherche de promoteur par nom
-// (équivalent developers de locations.json), pour vérifier si un tel mécanisme existe avant de
-// concevoir l'architecture "filtre construit depuis promoteurs_neuf". À retirer une fois vérifié.
-export async function diagRechercherDeveloppeurs(q) {
+// Résout l'id Otaree d'un promoteur à partir de son nom exact — découvert le 2026-09-23 par test
+// direct (`developers.json?name=<nom>`), même famille que locations.json (autocomplétion ville)
+// mais sans avoir eu besoin d'un mécanisme d'autocomplétion dédié : une recherche par `name`
+// suffit et renvoie une correspondance nette. Comportement vérifié empiriquement : insensible à
+// la casse, tolère un préfixe partiel (ex. "Créd" retrouve "Crédit Agricole Immobilier"), mais
+// échoue sur un espace en tête/fin non retiré — d'où le .trim() ici. On ne retient que la entrée
+// dont le nom correspond EXACTEMENT (au trim/casse près) au nom demandé, jamais la meilleure
+// correspondance approximative : un match partiel ambigu doit rester non résolu plutôt que de
+// deviner le mauvais promoteur.
+//
+// Utilisé pour peupler promoteurs_neuf.developer_id automatiquement à la création d'un promoteur
+// (voir routes/portails.js) — l'agence saisit un nom, jamais un id technique Otaree.
+export async function resoudreDeveloppeurParNom(nom) {
+    const nomPropre = (nom || '').trim();
+    if (!nomPropre) return null;
     const { jwt, credentials } = await obtenirJwtFrais();
     const headers = buildHeaders(credentials.device, credentials.instanceId, jwt, 'application/json');
-    const candidats = [
-        `${API_BASE}/developers.json?name=${encodeURIComponent(q)}`,
-        `${API_BASE}/developers.json?name=${encodeURIComponent(q.toLowerCase())}`,
-        `${API_BASE}/developers.json?name=${encodeURIComponent(q.toUpperCase())}`,
-        `${API_BASE}/developers.json?name=${encodeURIComponent(q.slice(0, 4))}`,
-        `${API_BASE}/developers.json?name=${encodeURIComponent(' ' + q + ' ')}`,
-    ];
-    const resultats = [];
-    for (const url of candidats) {
-        try {
-            const res = await fetch(url, { method: 'GET', headers });
-            const texte = await res.text();
-            let corps;
-            try { corps = JSON.parse(texte); } catch { corps = texte.slice(0, 300); }
-            resultats.push({ url, status: res.status, corps });
-        } catch (e) {
-            resultats.push({ url, erreur: e.message });
-        }
-    }
-    return resultats;
+    const res = await fetch(`${API_BASE}/developers.json?name=${encodeURIComponent(nomPropre)}`, { method: 'GET', headers });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const trouve = (Array.isArray(data) ? data : []).find(
+        (d) => (d.name || '').trim().toLowerCase() === nomPropre.toLowerCase()
+    );
+    if (!trouve) return null;
+    return { id: trouve.developer || `/developers/${trouve.id}`, nom: trouve.name };
 }
 
 // Autocomplétion de ville (locations.json) — même mécanisme d'auth. `code` est directement

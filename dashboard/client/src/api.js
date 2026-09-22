@@ -79,6 +79,7 @@ export const api = {
         request('/portails/promoteurs-neuf', { method: 'POST', body: JSON.stringify({ promoteur_nom, initiales }) }),
     modifierPromoteurNeuf: (id, patch) =>
         request(`/portails/promoteurs-neuf/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    reessayerResolutionPromoteurNeuf: (id) => request(`/portails/promoteurs-neuf/${id}/resoudre`, { method: 'POST' }),
     supprimerPromoteurNeuf: (id) => request(`/portails/promoteurs-neuf/${id}`, { method: 'DELETE' }),
 
     // Annonces / supervision — q optionnel : recherche par id/titre/ville, sans se limiter

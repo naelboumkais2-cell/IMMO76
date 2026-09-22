@@ -252,10 +252,25 @@ export async function initDb() {
   -- l'agence connaît et reconnaît un nom de promoteur, jamais un id technique : c'est précisément
   -- ce qui rend cette table saisissable sans notre aide. La colonne actif permet de désactiver un promoteur
   -- (ex. partenariat suspendu) sans perdre ses initiales déjà saisies.
+  --
+  -- initiales NULLABLE depuis le 2026-09-23 : un promoteur peut être ajouté (et donc apparaître
+  -- dans le filtre de recherche) avant que ses initiales définitives soient connues côté agence —
+  -- genererReferenceNeuf ne génère simplement pas de référence tant qu'elles manquent, sans bloquer
+  -- la reconnaissance du promoteur pour autant.
+  --
+  -- developer_id : id Otaree du promoteur (ex. "/developers/xxx"), résolu AUTOMATIQUEMENT depuis
+  -- promoteur_nom au moment de la création (voir resoudreDeveloppeurParNom, otareeSearchClient.js
+  -- — endpoint developers.json?name=, découvert le 2026-09-23) — l'agence ne saisit jamais cet id
+  -- elle-même. Sert à construire dynamiquement le filtre "Promoteur" du formulaire de recherche
+  -- (ScraperControl.jsx) : reste NULL si aucun promoteur Otaree ne correspond exactement au nom
+  -- saisi (faute de frappe, ou promoteur réellement absent des données Otaree pour l'instant) — le
+  -- promoteur reste alors reconnu pour la génération de référence dès qu'un lot apparaîtra, mais
+  -- n'apparaît pas encore dans le filtre de recherche (rien à filtrer sans id réel).
   CREATE TABLE IF NOT EXISTS promoteurs_neuf (
     id SERIAL PRIMARY KEY,
     promoteur_nom TEXT NOT NULL UNIQUE,
-    initiales TEXT NOT NULL,
+    initiales TEXT,
+    developer_id TEXT,
     actif INTEGER NOT NULL DEFAULT 1,
     cree_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     maj_le TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -361,4 +376,12 @@ export async function initDb() {
   if (!colonnesUtilisateurs.includes('role')) {
     await db.exec(`ALTER TABLE utilisateurs ADD COLUMN role TEXT NOT NULL DEFAULT 'employe' CHECK (role IN ('admin', 'employe'))`);
   }
+
+  // Migration : promoteurs_neuf.developer_id (id Otaree résolu automatiquement, voir CREATE TABLE
+  // ci-dessus) + initiales rendue nullable (table déjà créée avec NOT NULL avant le 2026-09-23).
+  const colonnesPromoteursNeuf = (await db.prepare(`SELECT column_name FROM information_schema.columns WHERE table_name = 'promoteurs_neuf'`).all()).map((c) => c.column_name);
+  if (!colonnesPromoteursNeuf.includes('developer_id')) {
+    await db.exec(`ALTER TABLE promoteurs_neuf ADD COLUMN developer_id TEXT`);
+  }
+  await db.exec(`ALTER TABLE promoteurs_neuf ALTER COLUMN initiales DROP NOT NULL`);
 }

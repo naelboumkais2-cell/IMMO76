@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { exigerConnexion } from '../middleware/auth.js';
 import { getEtatsEspaces } from '../integrations/tokenState.js';
+import { resoudreDeveloppeurParNom } from '../integrations/otareeSearchClient.js';
 
 export const portailsRouter = Router();
 
@@ -178,21 +179,43 @@ portailsRouter.get('/promoteurs-neuf', exigerConnexion, async (req, res) => {
     }
 });
 
+// initiales optionnelles depuis le 2026-09-23 : un promoteur peut être ajouté (et apparaître dans
+// le filtre de recherche) avant que ses initiales définitives soient connues — voir db.js.
+// developer_id résolu automatiquement depuis promoteur_nom (resoudreDeveloppeurParNom) : l'agence
+// ne saisit jamais d'id Otaree elle-même. Reste NULL si aucune correspondance exacte trouvée
+// (faute de frappe, ou promoteur pas encore présent dans les données Otaree) — jamais bloquant,
+// juste absent du filtre de recherche tant que non résolu (voir POST .../resoudre pour réessayer).
 portailsRouter.post('/promoteurs-neuf', exigerConnexion, async (req, res) => {
     try {
         const { promoteur_nom, initiales } = req.body || {};
-        if (!promoteur_nom?.trim() || !initiales?.trim()) {
-            return res.status(400).json({ erreur: 'promoteur_nom et initiales requis' });
+        if (!promoteur_nom?.trim()) {
+            return res.status(400).json({ erreur: 'promoteur_nom requis' });
         }
+        const resolu = await resoudreDeveloppeurParNom(promoteur_nom);
         const info = await db
             .prepare(
-                `INSERT INTO promoteurs_neuf (promoteur_nom, initiales)
-                 VALUES (?, ?)
-                 ON CONFLICT (promoteur_nom) DO UPDATE SET initiales = EXCLUDED.initiales, actif = 1, maj_le = CURRENT_TIMESTAMP
+                `INSERT INTO promoteurs_neuf (promoteur_nom, initiales, developer_id)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT (promoteur_nom) DO UPDATE SET initiales = EXCLUDED.initiales, developer_id = EXCLUDED.developer_id, actif = 1, maj_le = CURRENT_TIMESTAMP
                  RETURNING id`
             )
-            .run(promoteur_nom.trim(), initiales.trim());
+            .run(promoteur_nom.trim(), initiales?.trim() || null, resolu?.id || null);
         res.status(201).json(await db.prepare(`SELECT * FROM promoteurs_neuf WHERE id = ?`).get(info.lastInsertRowid));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+// Réessaie la résolution de l'id Otaree pour un promoteur déjà créé (voir POST ci-dessus) — utile
+// si aucune correspondance n'avait été trouvée à la création (le promoteur peut être apparu dans
+// les données Otaree depuis, ou la première tentative a pu échouer pour une raison transitoire).
+portailsRouter.post('/promoteurs-neuf/:id/resoudre', exigerConnexion, async (req, res) => {
+    try {
+        const row = await db.prepare(`SELECT * FROM promoteurs_neuf WHERE id = ?`).get(req.params.id);
+        if (!row) return res.status(404).json({ erreur: 'Promoteur introuvable' });
+        const resolu = await resoudreDeveloppeurParNom(row.promoteur_nom);
+        await db.prepare(`UPDATE promoteurs_neuf SET developer_id = ?, maj_le = CURRENT_TIMESTAMP WHERE id = ?`).run(resolu?.id || null, row.id);
+        res.json(await db.prepare(`SELECT * FROM promoteurs_neuf WHERE id = ?`).get(row.id));
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
