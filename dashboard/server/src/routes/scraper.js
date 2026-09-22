@@ -617,7 +617,7 @@ scraperRouter.get('/diag-dispositif/:annonceId', exigerConnexion, async (req, re
         const annonce = await db.prepare(`SELECT id, type_bien, raw_data, reference_generee FROM annonces WHERE id = ?`).get(req.params.annonceId);
         if (!annonce) return res.status(404).json({ erreur: 'annonce introuvable' });
         const raw = typeof annonce.raw_data === 'string' ? JSON.parse(annonce.raw_data) : annonce.raw_data;
-        const portails = await db.prepare(`SELECT portail_id, portail_nom, statut FROM annonce_portails ap JOIN portails p ON p.id = ap.portail_id WHERE ap.annonce_id = ?`).all(req.params.annonceId);
+        const portails = await db.prepare(`SELECT portail_id, p.nom AS portail_nom, statut FROM annonce_portails ap JOIN portails p ON p.id = ap.portail_id WHERE ap.annonce_id = ?`).all(req.params.annonceId);
         res.json({
             type_bien: annonce.type_bien,
             reference_generee: annonce.reference_generee,
