@@ -802,18 +802,21 @@ Une caractéristique de ce type peut être utilisée uniquement si elle est expl
 BIEN et si elle apporte une information concrète. Ne déduis jamais une qualité du simple fait que le
 logement est récent.
 
-7. TITRE DE L'ANNONCE
-Génère un titre court, attractif, concret et factuel. Il doit mettre en avant une ou deux caractéristiques
-réellement différenciantes.
+7. TITRE DE L'ANNONCE (règles précises du client, 2026-09-22)
+Structure : Typologie + surface + atout principal + éventuellement exposition ou stationnement.
 
-Hiérarchie recommandée : extérieur remarquable ; emplacement/proximité ; vue/exposition/étage ;
-surface ou agencement ; stationnement ; prestation spécifique.
+Exemples de style à respecter (n'invente jamais ces valeurs, ce sont des exemples de FORME
+uniquement) : « Grand T4 duplex 88 m² – rooftop + parking », « T3 64 m² – balcon 12 m² + parking ».
 
-Le mot « récent » peut apparaître s'il améliore la compréhension, mais ne doit pas remplacer un
-argument plus fort.
-
-Évite les superlatifs non justifiés, les majuscules inutiles, les slogans, « opportunité à saisir », toute
-mention de « neuf » et le nom d'un promoteur ou fournisseur sauf instruction explicite.
+Règles strictes :
+- Titre court et lisible — jamais une phrase complète, jamais de remplissage.
+- Surface toujours arrondie à l'entier le plus proche (ex: 43,89 m² → 44 m²).
+- 1 à 2 atouts maximum mis en avant — jamais une liste exhaustive des caractéristiques du bien.
+- N'utilise JAMAIS le mot « neuf » ni aucune formulation équivalente (voir règle 4).
+- Ne mentionne JAMAIS le nom de la résidence ni celui du promoteur.
+- N'utilise JAMAIS de superlatif, notamment : « superbe », « magnifique », « coup de cœur », « rare », « exceptionnel » — reste factuel et concret, même pour un bien qui a un vrai atout.
+- Exposition : ne la mentionne QUE si elle est Sud, Ouest, ou Sud-Ouest. Si l'exposition connue est Nord, Est, Nord-Est, Nord-Ouest, ou toute autre orientation hors de cette liste, omets-la entièrement du titre — ne la remplace jamais par une formulation vague ("bien exposé", "lumineux") pour la sous-entendre.
+- Stationnement : mentionne-le seulement s'il est réellement documenté pour ce lot (jamais supposé).
 
 8. LONGUEUR ET STYLE
 Longueur cible : environ 1 000 à 1 800 caractères espaces compris lorsque les données disponibles le
@@ -913,7 +916,7 @@ Avant de répondre, vérifier silencieusement :
 Réponds UNIQUEMENT avec un objet JSON strictement conforme à cette structure, sans aucun markdown ni texte autour :
 {"titre": "...", "texte": "...", "photoPrincipale": "..."}
 
-"titre" : titre court, accrocheur et factuel — idéalement 55 à 60 caractères maximum.
+"titre" : voir section 7 ci-dessus pour la structure et les règles précises — court (souvent 30-45 caractères sur les exemples de référence du client), jamais une contrainte de longueur fixe à respecter au détriment de la structure demandée.
 "texte" : description complète prête à être publiée, paragraphes courts de 2 à 3 phrases maximum. Intertitres possibles : LES CARACTÉRISTIQUES CLÉS ; LE LOGEMENT ; L'ENVIRONNEMENT — en MAJUSCULES sur leur propre ligne. Une donnée par ligne dans les caractéristiques clés. Ligne vide entre les blocs. Terminer par un appel à l'action court invitant à demander le dossier ou à échanger avec un conseiller.
 "photoPrincipale" : le nom exact du fichier (recopié tel quel depuis la liste "PHOTOS DISPONIBLES" fournie dans le message, jamais un nom inventé ou approximatif) qui ferait la meilleure photo de couverture — la plus représentative et attractive du bien. Privilégie une pièce de vie, une belle vue, la façade extérieure ou un espace extérieur ; évite une photo insignifiante (porte, couloir vide, rangement, détail sans intérêt) même si elle est techniquement correcte. Si aucune photo n'est fournie, ou si aucune ne se distingue clairement des autres, renvoie null.
 
@@ -1211,7 +1214,7 @@ function alternativesPourCorrection(hits, lot) {
     }
     if (hits.some((h) => h.includes('superlatif détecté dans le titre'))) {
         lignes.push(
-            '- Retire tout superlatif du titre ("magnifique", "superbe", "exceptionnel"...) — le titre reste factuel et concret, sans adjectif emphatique, même si un superlatif est utilisé dans le texte.'
+            '- Retire tout superlatif du titre ("magnifique", "superbe", "exceptionnel", "rare", "coup de cœur"...) — le titre reste factuel et concret, sans adjectif emphatique, même si un superlatif est utilisé dans le texte.'
         );
     }
     if (hits.some((h) => h.includes('donnée manquante explicitée'))) {
@@ -1455,6 +1458,22 @@ function compterSuperlatifs(texte) {
     return (texte.match(SUPERLATIFS_RE) || []).length;
 }
 
+// Titre Neuf (2026-09-22, règles précises du client) : liste EXACTE des superlatifs interdits
+// dans le titre — plus large que SUPERLATIFS_RE ci-dessus (qui régit la tolérance "1 max dans le
+// texte", un sujet différent) : "coup de cœur" et "rare" n'ont pas leur place dans SUPERLATIFS_RE
+// (légitimes dans le corps du texte selon le contexte), mais sont explicitement bannis du titre
+// par cette nouvelle règle. Jamais appliqué au texte, seulement au titre.
+// Jamais le flag "g" ici : .test() sur un regex global garde son lastIndex entre deux appels,
+// ce qui alternerait faussement vrai/faux sur des titres successifs partageant ce même objet
+// regex (piège JS classique — sans rapport avec SUPERLATIFS_RE ci-dessus, qui utilise .match()
+// et a donc besoin de "g").
+const SUPERLATIFS_TITRE_RE = /\b(magnifiques?|exceptionnels?|superbes?|rares?)\b|coup de c[oœ]+ur/i;
+
+function contientSuperlatifTitre(titre) {
+    if (!titre) return false;
+    return SUPERLATIFS_TITRE_RE.test(titre);
+}
+
 const ADDENDUM_NEUF_GARDE_FOUS = `
 
 === GARDE-FOUS SUPPLÉMENTAIRES (spécifiques à ce pipeline) ===
@@ -1517,7 +1536,7 @@ async function callOpenAINeuf(textContext, lotImageData, lot) {
         if (nbSuperlatifsTexte > 1) {
             hits = [...hits, `plus d'un superlatif dans le texte (${nbSuperlatifsTexte} détectés, maximum 1 autorisé)`];
         }
-        if (compterSuperlatifs(resultat.titre) > 0) {
+        if (contientSuperlatifTitre(resultat.titre)) {
             hits = [...hits, 'superlatif détecté dans le titre (interdit, le titre reste factuel)'];
         }
         if (hits.length === 0) break;
