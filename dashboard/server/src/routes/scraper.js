@@ -607,32 +607,6 @@ scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
     }
 });
 
-// TEMPORAIRE — diagnostic pour vérifier si un lot Neuf réel (portail confirmé "La Centrale du
-// Neuf") a un dispositif fiscal réel LMNP mal routé (signalement utilisateur, lot 73863). Lit
-// raw_data.lawsKeys tel que stocké en base à l'import, pas une valeur recalculée à chaud — sert à
-// voir si le dispositif détectable au moment de l'import correspondait déjà à la réalité. À
-// retirer une fois le diagnostic terminé.
-scraperRouter.get('/diag-dispositif/:annonceId', exigerConnexion, async (req, res) => {
-    try {
-        const annonce = await db.prepare(`SELECT id, type_bien, raw_data, reference_generee FROM annonces WHERE id = ?`).get(req.params.annonceId);
-        if (!annonce) return res.status(404).json({ erreur: 'annonce introuvable' });
-        const raw = typeof annonce.raw_data === 'string' ? JSON.parse(annonce.raw_data) : annonce.raw_data;
-        const portails = await db.prepare(`SELECT portail_id, p.nom AS portail_nom, statut FROM annonce_portails ap JOIN portails p ON p.id = ap.portail_id WHERE ap.annonce_id = ?`).all(req.params.annonceId);
-        res.json({
-            type_bien: annonce.type_bien,
-            reference_generee: annonce.reference_generee,
-            law: raw?.law,
-            lawsKeys: raw?.lawsKeys,
-            laws: raw?.laws,
-            programLawsKeys: raw?.program?.lawsKeys,
-            programLaws: raw?.program?.laws,
-            portails,
-        });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
