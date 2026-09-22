@@ -39,35 +39,6 @@ import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
 
 export const scraperRouter = Router();
 
-// TEMPORAIRE — recense les promoteurs distincts (nom + id Otaree) rencontrés sur de vrais lots
-// dans une ou plusieurs régions, pour vérifier l'orthographe exacte de 21 promoteurs Neuf avant de
-// les ajouter au filtre de recherche. À retirer une fois la vérification terminée.
-scraperRouter.post('/diag-recense-promoteurs', exigerConnexion, async (req, res) => {
-    try {
-        const { regionNoms, filtresBase } = req.body || {};
-        const regions = REGIONS_FRANCE.filter((r) => (regionNoms || []).includes(r.nom));
-        const developpeurs = new Map();
-        let nbLotsTotal = 0;
-        for (const region of regions) {
-            await rechercherZoneAvecRepli(region.nom, region.departements, filtresBase || {}, async (lots) => {
-                nbLotsTotal += lots.length;
-                for (const l of lots) {
-                    const dev = l.program?.developer;
-                    if (!dev?.name) continue;
-                    const cle = dev['@id'] || dev.name;
-                    if (!developpeurs.has(cle)) {
-                        developpeurs.set(cle, { id: dev['@id'] || null, nom: dev.name, count: 0 });
-                    }
-                    developpeurs.get(cle).count++;
-                }
-            });
-        }
-        res.json({ nbLotsTotal, developpeurs: [...developpeurs.values()].sort((a, b) => b.count - a.count) });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/recherches', exigerConnexion, async (req, res) => {
     try {
         const recherches = await db
