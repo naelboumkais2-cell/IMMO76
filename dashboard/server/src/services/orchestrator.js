@@ -598,14 +598,14 @@ export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null)
     // À rediscuter avec le client avant de réactiver (ex. exclusion visible/décochée par défaut
     // plutôt qu'invisible).
     //
-    // Neuf : exclusion automatique DÉSACTIVÉE TEMPORAIREMENT (2026-09-22, décision client) — même
-    // risque identifié avant activation cette fois : la table promoteurs_neuf est encore vide (les
-    // 22 promoteurs pas encore saisis), donc tout lot Neuf sans référence de programme déjà
-    // configurée tomberait en exclusion silencieuse, exactement l'incident du 18/09 sur le LMNP.
-    // Le log de visibilité est conservé (utile pour identifier ces lots après coup, et pour vérifier
-    // que la table se peuple correctement une fois les promoteurs ajoutés) mais ne retire plus rien
-    // des candidats. Le client réactivera lui-même une fois les 22 promoteurs saisis dans Réglages.
-    const candidats = candidatsBruts;
+    // Neuf : exclusion automatique RÉACTIVÉE (2026-09-22) — les 22 promoteurs Neuf reconnus (21 +
+    // Nexity, ajouté manuellement) sont désormais tous saisis avec leurs initiales dans Réglages
+    // (promoteurs_neuf) ; le risque qui avait motivé la désactivation temporaire (table vide, tout
+    // lot Neuf aurait été exclu à tort — même incident que le LMNP du 18/09) n'existe plus.
+    // promoteurNeufExclu() renvoie toujours false pour un lot LMNP (voir referenceGenerator.js),
+    // donc ceci n'affecte jamais le chemin LMNP, qui reste désactivé indépendamment (voir
+    // ci-dessus, "à rediscuter avec le client").
+    const candidats = [];
     for (const c of candidatsBruts) {
         if (promoteurLmnpExclu(c.lotBrut)) {
             await log('auto_publish', {
@@ -618,9 +618,11 @@ export async function autoGenererEtPublier(annoncesTraitees, rechercheId = null)
             await log('auto_publish', {
                 annonceId: c.annonce.id,
                 succes: true,
-                message: `Promoteur Neuf non reconnu (${c.lotBrut?.program?.developer?.name || 'nom inconnu'}) — ni dans la table des promoteurs reconnus, ni couvert par une référence de programme déjà configurée. Référence à saisir manuellement (exclusion automatique désactivée temporairement, table promoteurs_neuf pas encore peuplée).`,
+                message: `Promoteur Neuf non reconnu (${c.lotBrut?.program?.developer?.name || 'nom inconnu'}) — ni dans la table des promoteurs reconnus, ni couvert par une référence de programme déjà configurée. Lot exclu de l'auto-publication (jamais proposé sur l'écran de confirmation) — reste importé, traitable manuellement depuis Supervision.`,
             });
+            continue;
         }
+        candidats.push(c);
     }
 
     // Plafond de dépense (voir services/depenseMonitor.js) : vérifié ici aussi, avant même un
