@@ -615,7 +615,15 @@ scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
 scraperRouter.get('/diag-reference-neuf/:developerId', exigerConnexion, async (req, res) => {
     try {
         const developerId = `/developers/${req.params.developerId}`;
-        const { lots } = await rechercherLotsOtaree({ developer: [developerId] });
+        // Arrêt anticipé dès 2 lots trouvés — un scan national sans filtre de ville sur un
+        // promoteur volumineux (ex. Vinci Immobilier) dépasse sinon le temps de réponse HTTP avant
+        // la fin de la pagination complète (voir MAX_PAGES, otareeSearchClient.js).
+        let lots = [];
+        await rechercherLotsOtaree(
+            { developer: [developerId] },
+            (lotsSoFar) => { lots = lotsSoFar; },
+            () => lots.length >= 2
+        );
         const promoteur = await db
             .prepare(`SELECT * FROM promoteurs_neuf WHERE developer_id = ? AND actif = 1`)
             .get(developerId);
