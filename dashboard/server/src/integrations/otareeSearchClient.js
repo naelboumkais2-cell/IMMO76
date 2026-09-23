@@ -29,13 +29,31 @@ function buildHeaders(device, instanceId, jwt, accept = 'application/ld+json') {
     return headers;
 }
 
-async function refreshJwt(credentials) {
+// `dejaRetenteAvecTokenFrais` (interne, jamais passé par l'appelant) : évite une boucle infinie
+// si le token relu depuis la base est, lui aussi, rejeté.
+async function refreshJwt(credentials, dejaRetenteAvecTokenFrais = false) {
     const res = await fetch(`${API_BASE}/security/refresh-token`, {
         method: 'POST',
         headers: buildHeaders(credentials.device, credentials.instanceId, null),
         body: JSON.stringify({ device: credentials.device, refresh_token: credentials.refreshToken }),
     });
     if (!res.ok) {
+        // Incident réel (2026-09-23) : le refresh_token qu'on tient en mémoire peut avoir été
+        // rotaté "dans le dos" par un autre écrivain (l'extension Chrome capture indépendamment
+        // à chaque navigation sur Otaree, et écrase la même ligne unique en base — voir
+        // sauvegarderRefreshToken, DELETE+INSERT sans coordination). Avant d'abandonner tout un
+        // run de plusieurs centaines de lots pour cette seule raison, on relit la base une fois :
+        // si quelqu'un d'autre a déjà posé un token plus récent que celui qu'on vient d'essayer,
+        // on retente avec celui-là plutôt que de considérer la session comme morte.
+        if (!dejaRetenteAvecTokenFrais) {
+            const credentialsFrais = await getOtareeCredentials();
+            if (credentialsFrais?.refreshToken && credentialsFrais.refreshToken !== credentials.refreshToken) {
+                credentials.refreshToken = credentialsFrais.refreshToken;
+                credentials.device = credentialsFrais.device || credentials.device;
+                credentials.instanceId = credentialsFrais.instanceId || credentials.instanceId;
+                return refreshJwt(credentials, true);
+            }
+        }
         const body = await res.json().catch(() => ({}));
         throw new Error(`refresh_token rejeté par Otaree (HTTP ${res.status}) : ${body.message || 'raison inconnue'}`);
     }

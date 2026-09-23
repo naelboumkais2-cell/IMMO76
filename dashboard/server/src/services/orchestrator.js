@@ -450,7 +450,26 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
 
             // Un seul jeton Otaree pour tout le groupe (voir enrichirLot/obtenirJwtFrais) —
             // évite une rafale de rafraîchissements simultanés si chaque lot en demandait un.
-            const jetonPartage = await obtenirJwtFrais();
+            //
+            // Incident réel (2026-09-23) : cet appel était hors de tout try/catch — un seul échec
+            // (session Otaree expirée, ex. un token rotaté ailleurs entre-temps par l'extension
+            // Chrome) faisait planter TOUT le run d'un coup, même si des centaines de lots
+            // restaient à traiter. refreshJwt sait maintenant relire la base une fois avant
+            // d'abandonner (voir otareeSearchClient.js), mais on garde ce filet ici en plus : si
+            // ça échoue malgré tout, on saute ce seul groupe plutôt que d'interrompre le run
+            // entier — le groupe suivant retente son propre obtenirJwtFrais() avec une nouvelle
+            // chance de succès.
+            let jetonPartage;
+            try {
+                jetonPartage = await obtenirJwtFrais();
+            } catch (e) {
+                await log('auto_publish', {
+                    succes: false,
+                    message: `Jeton Otaree indisponible pour ce groupe (${groupe.length} lot(s)) — groupe sauté, run poursuivi : ${e.message}`,
+                });
+                for (let i = 0; i < groupe.length; i++) incrementerTraites();
+                continue;
+            }
 
             // Portails déjà résolus à l'import (annonce_portails, voir resolvePortailsPourAnnonce)
             // — lus ici, avant la génération, pour que Ubiflow-Auto-API choisisse le prompt selon

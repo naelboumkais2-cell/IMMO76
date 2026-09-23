@@ -607,45 +607,6 @@ scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
     }
 });
 
-// TEMPORAIRE — diagnostic en LECTURE SEULE : pourquoi ~200/400 lots d'un run récent (recherche
-// 279, Sedelka/Sepimo/Terralia) n'ont pas été publiés malgré le correctif du proxy de richesse.
-// Compte les statuts annonce_portails pour cette recherche + échantillonne quelques lots
-// non-publiés pour voir leur texte généré. À retirer une fois le diagnostic terminé.
-scraperRouter.get('/diag-run/:rechercheId', exigerConnexion, async (req, res) => {
-    try {
-        const stats = await db.prepare(
-            `SELECT ap.statut, COUNT(*)::int AS n
-             FROM annonces a JOIN annonce_portails ap ON ap.annonce_id = a.id
-             WHERE a.recherche_id = ?
-             GROUP BY ap.statut`
-        ).all(req.params.rechercheId);
-        const nonPublies = await db.prepare(
-            `SELECT a.id, a.donnees_ia, a.raw_data
-             FROM annonces a JOIN annonce_portails ap ON ap.annonce_id = a.id
-             WHERE a.recherche_id = ? AND ap.statut != 'publiee' AND a.donnees_ia IS NOT NULL
-             LIMIT 5`
-        ).all(req.params.rechercheId);
-        const echantillon = nonPublies.map((a) => {
-            const donneesIa = JSON.parse(a.donnees_ia || '{}');
-            const raw = JSON.parse(a.raw_data || '{}');
-            const progDesc = raw?.program?.description || '';
-            const nbMots = donneesIa.texte ? donneesIa.texte.trim().split(/\s+/).filter(Boolean).length : null;
-            return {
-                id: a.id,
-                developer: raw?.program?.developer?.name,
-                lawsKeys: raw?.lawsKeys,
-                programDescriptionLength: progDesc.length,
-                nbMotsTexte: nbMots,
-                titre: donneesIa.titre,
-                texteApercu: (donneesIa.texte || '').slice(0, 400),
-            };
-        });
-        res.json({ statsPortails: stats, echantillonNonPublies: echantillon });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
