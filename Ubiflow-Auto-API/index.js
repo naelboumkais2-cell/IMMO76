@@ -658,7 +658,7 @@ IDENTITÉ DE L'EXPLOITANT — VIGILANCE PARTICULIÈRE : le champ "developer" des
 
 DONNÉES FINANCIÈRES FIABLES : quand elles te sont fournies explicitement dans un bloc "DONNÉES CONNUES AVEC CERTITUDE" du message utilisateur, utilise EXCLUSIVEMENT ces valeurs pour prix/loyer/rentabilité — ne recalcule jamais une rentabilité toi-même, et si aucune rentabilité fiable n'est fournie dans ce bloc, omets simplement la ligne correspondante dans les chiffres clés (ne jamais écrire "non communiquée").
 
-DPE ET GES — INTERDICTION STRICTE DE CHIFFRE INVENTÉ : si une étiquette DPE (une seule lettre A à G) t'est fournie dans le bloc "DONNÉES CONNUES AVEC CERTITUDE", tu peux mentionner cette lettre telle quelle. Si une lettre GES (émissions de gaz à effet de serre) t'est également fournie dans ce même bloc, tu peux aussi la mentionner telle quelle, distinctement du DPE (ex: "DPE classe C, GES classe B") — ne confonds jamais les deux lettres entre elles, chacune reste attachée à son propre libellé. Tu ne dois JAMAIS, dans aucun cas, inventer ou estimer une valeur chiffrée de consommation énergétique (ex: "137 kWh/m²/an") — cette donnée n'est jamais fournie dans ce pipeline, quelle que soit sa plausibilité. Si aucune lettre DPE n'est fournie, n'aborde pas le sujet de la performance énergétique. Si aucune lettre GES n'est fournie alors qu'une lettre DPE l'est, mentionne uniquement le DPE, n'invente jamais une lettre GES pour compléter.
+DPE ET GES — NE JAMAIS LES MENTIONNER DANS LE TEXTE (règle client, 2026-09-23) : le DPE et le GES ne doivent JAMAIS apparaître dans l'annonce, ni dans les chiffres clés ni ailleurs dans le texte — ces informations restent exclusivement dans les champs structurés réglementaires de l'annonce, gérés séparément de ce texte commercial. N'aborde jamais le sujet de la performance énergétique, même si une lettre DPE ou GES apparaît dans les données brutes fournies.
 
 === PRINCIPE FONDAMENTAL : ANALYSER AVANT DE RÉDIGER ===
 
@@ -698,7 +698,7 @@ Minimum 500 caractères. Cible : environ 1500 à 2200 caractères espaces compri
 
 === STRUCTURE OBLIGATOIRE (5 BLOCS) ===
 
-BLOC 1 — COMPRENDRE IMMÉDIATEMENT LE LMNP GÉRÉ : introduction courte expliquant qu'il s'agit d'un investissement locatif en LMNP géré sous bail commercial — exploitation confiée à un gestionnaire professionnel (l'exploitant, locataire du bien), pas de gestion locative quotidienne ni de travaux courants pour le propriétaire, loyer versé selon les conditions du bail que le bien soit libre ou occupé, intérêt fiscal potentiel du statut LMNP et de l'amortissement (selon situation de l'investisseur et réglementation applicable). Explique tôt la contrainte principale : le propriétaire ne peut pas habiter librement le logement ni y loger un proche pendant l'exécution du bail commercial — formule cela de façon pédagogique, jamais agressive (jamais "INUTILE DE NOUS CONTACTER POUR Y HABITER"). Comme aucune donnée de bail n'est disponible dans ce dossier, n'affirme jamais qu'une occupation personnelle est prévue — reste sur la règle générale.
+BLOC 1 — INTRODUCTION DIRECTE (règle client, 2026-09-23) : PAS d'intertitre en majuscules pour ce premier bloc — commence directement par la phrase "Offre dédiée à l'investissement locatif en LMNP sous bail commercial.", suivie d'une courte explication du fonctionnement dans cet esprit : "Investir en LMNP géré, c'est opter pour un placement locatif où la gestion est confiée à un exploitant professionnel. Vous percevez un loyer selon les conditions du bail commercial, que le bien soit occupé ou non. Ce statut offre également des avantages fiscaux selon votre situation." Adapte légèrement la formulation d'une annonce à l'autre pour éviter une répétition mot pour mot systématique, sans changer le sens ni la structure de ces deux phrases. N'utilise JAMAIS "loyers garantis" ni "nets d'impôts" ou toute formulation équivalente — voir les interdictions strictes ci-dessous, qui s'appliquent aussi à cette introduction. Explique tôt la contrainte principale : le propriétaire ne peut pas habiter librement le logement ni y loger un proche pendant l'exécution du bail commercial — formule cela de façon pédagogique, jamais agressive (jamais "INUTILE DE NOUS CONTACTER POUR Y HABITER"). Comme aucune donnée de bail n'est disponible dans ce dossier, n'affirme jamais qu'une occupation personnelle est prévue — reste sur la règle générale.
 
 BLOC 2 — LES CHIFFRES CLÉS : intertitre "LES CHIFFRES CLÉS" en majuscules sur sa propre ligne, puis une donnée par ligne au format "Libellé : valeur", en n'utilisant QUE les données fournies dans le bloc "DONNÉES CONNUES AVEC CERTITUDE" du message utilisateur (prix, loyer annuel = loyer mensuel x12, rentabilité si fournie). N'affiche jamais une ligne "charges de copropriété", "taxe foncière", "gestion locative", "travaux courants" ou toute autre donnée non explicitement fournie — omets la ligne plutôt que d'écrire "non communiqué(e)". Ne jamais indiquer durée restante du bail, date de renouvellement, fonds travaux, ou effort d'épargne mensuel.
 
@@ -711,7 +711,17 @@ BLOC 3 — POURQUOI CETTE CATÉGORIE ? : intertitre "POURQUOI INVESTIR DANS [TYP
 
 BLOC 4 — LE BIEN ET LA RÉSIDENCE : intertitre "LE BIEN ET LA RÉSIDENCE" en majuscules. Réécris dans un langage naturel (ne recopie jamais mécaniquement un descriptif partenaire). Sélectionne 3 à 6 caractéristiques réellement différenciantes parmi celles confirmées par les données (emplacement, transports, commerces, piscine/spa/sauna, qualité du bâtiment, exploitant si documenté...). Ne transforme pas en inventaire.
 
-BLOC 5 — APPEL À L'ACTION : court, en 2 lignes distinctes séparées (RDV conseiller / comparer les biens LMNP avec le chat 7j/7 de La Centrale du LMNP).
+BLOC 5 — APPEL À L'ACTION (règle client, 2026-09-23) : commence par UNE des phrases suivantes (à varier d'une annonce à l'autre, jamais toujours la même) :
+"Contactez-nous pour en savoir plus sur cette opportunité d'investissement."
+"Contactez La Centrale du LMNP pour en savoir plus."
+"Obtenez plus d'informations sur cet investissement LMNP en nous contactant."
+
+Fais immédiatement suivre cette phrase des coordonnées exactes, reproduites telles quelles, jamais modifiées :
+La Centrale du LMNP
+02 79 02 11 11
+https://www.lacentraledulmnp.fr/
+
+Termine par cette phrase, toujours identique : "Comparez les biens LMNP avec le chat 7j/7 de La Centrale du LMNP."
 
 === FISCALITÉ ET SÉCURITÉ — INTERDICTIONS STRICTES ===
 
@@ -725,7 +735,7 @@ Ce pipeline ne diffuse que du LMNP d'occasion / marché secondaire — valorise-
 
 === CONTRÔLE QUALITÉ AVANT DE RÉPONDRE ===
 
-Vérifie silencieusement : ai-je inventé une information ? Ai-je confondu promoteur et exploitant ? Ai-je correctement identifié la catégorie de résidence ? Ai-je évité toute confusion résidence senior / EHPAD ? Le titre respecte-t-il EXACTEMENT la structure "{Type de bien/résidence} – {formule investissement}" (une des deux formules obligatoires, éventuellement suivie de "– idéal investisseur"), sans ville, sans nom de résidence/promoteur, sans aucun équipement ou caractéristique du logement ? Les chiffres affichés viennent-ils exclusivement du bloc DONNÉES CONNUES ? Ai-je évité toute promesse fiscale ou de sécurité absolue ? Ai-je respecté la structure en 5 blocs avec intertitres en majuscules ?
+Vérifie silencieusement : ai-je inventé une information ? Ai-je confondu promoteur et exploitant ? Ai-je correctement identifié la catégorie de résidence ? Ai-je évité toute confusion résidence senior / EHPAD ? Le titre respecte-t-il EXACTEMENT la structure "{Type de bien/résidence} – {formule investissement}" (une des deux formules obligatoires, éventuellement suivie de "– idéal investisseur"), sans ville, sans nom de résidence/promoteur, sans aucun équipement ou caractéristique du logement ? Les chiffres affichés viennent-ils exclusivement du bloc DONNÉES CONNUES ? Ai-je bien omis toute mention du DPE/GES, y compris dans les chiffres clés ? Ai-je évité toute promesse fiscale ou de sécurité absolue, y compris dans l'introduction ("loyers garantis", "nets d'impôts") ? Le bloc 1 commence-t-il directement par la phrase d'introduction, sans intertitre ? Le bloc 5 contient-il bien l'une des 3 phrases d'appel à l'action, suivie des coordonnées exactes de La Centrale du LMNP puis de la phrase sur le chat 7j/7 ? Ai-je respecté la structure en 5 blocs avec intertitres en majuscules (sauf le bloc 1, sans intertitre) ?
 
 === FORMAT DE SORTIE ===
 
@@ -1335,6 +1345,16 @@ function alternativesPourCorrection(hits, lot) {
             '- Corrige le titre pour respecter EXACTEMENT la structure "{Type de bien/résidence} – {formule investissement}" : une des deux formules "investissement LMNP géré" ou "LMNP 100 % géré" est obligatoire, jamais la ville.'
         );
     }
+    if (hits.some((h) => h.startsWith('DPE/GES mentionné'))) {
+        lignes.push(
+            '- Supprime toute mention du DPE ou du GES dans le texte (lettre, "classe énergétique", "classe climat"...) — ces données ne doivent plus jamais apparaître dans l\'annonce, elles restent uniquement dans les champs structurés réglementaires. Supprime la ligne ou la mention entièrement, ne la remplace par rien.'
+        );
+    }
+    if (hits.some((h) => h.startsWith('CTA LMNP'))) {
+        lignes.push(
+            `- Corrige le bloc final pour respecter EXACTEMENT cette structure en 3 parties : (1) une de ces phrases, choisis celle qui s'enchaîne le mieux :\n${LMNP_CTA_PHRASES_AUTORISEES.map((p) => `  « ${p} »`).join('\n')}\n  (2) immédiatement suivie des coordonnées exactes, reproduites telles quelles :\n  La Centrale du LMNP\n  ${LMNP_TELEPHONE}\n  https://www.lacentraledulmnp.fr/\n  (3) puis, en toute dernière position, exactement : « ${LMNP_PHRASE_FINALE} » — rien après.`
+        );
+    }
     if (hits.some((h) => h.includes('rentabilité/rendement chiffré'))) {
         lignes.push(
             '- Supprime entièrement toute mention d\'un pourcentage de rentabilité ou de rendement locatif — cette donnée n\'est jamais fiable pour ce type de bien dans ce pipeline, quelle que soit la valeur vue dans les données brutes. La phrase reste correcte sans elle.'
@@ -1504,6 +1524,42 @@ function detecterProblemeTitreLmnp(titre, lot) {
     return problemes.length > 0 ? problemes.join(' ; ') : null;
 }
 
+// DPE/GES retirés du texte LMNP (règle client, 2026-09-23) : ces données restent uniquement dans
+// les champs structurés réglementaires, plus jamais dans le corps de l'annonce. Le textContext
+// (dump JSON complet du lot) contient toujours "DPE"/"GES" en texte libre dans la description
+// brute — l'instruction seule ne suffit pas forcément à empêcher le modèle de la reprendre, d'où
+// ce filet de sécurité, même principe que les autres garde-fous de ce pipeline.
+const DPE_GES_MENTION_RE = /\bDPE\b|\bGES\b|classe\s+[ée]nerg[ée]tique|classe\s+climat/i;
+
+// CTA final LMNP (règle client, 2026-09-23) : une des 3 phrases d'accroche obligatoires, suivie
+// des coordonnées exactes, puis la phrase finale fixe sur le chat 7j/7 — même approche que le CTA
+// Neuf (voir detecterProblemeCta), adaptée à une structure en 3 parties plutôt qu'une phrase unique.
+const LMNP_CTA_PHRASES_AUTORISEES = [
+    "Contactez-nous pour en savoir plus sur cette opportunité d'investissement.",
+    'Contactez La Centrale du LMNP pour en savoir plus.',
+    'Obtenez plus d\'informations sur cet investissement LMNP en nous contactant.',
+];
+const LMNP_PHRASE_FINALE = 'Comparez les biens LMNP avec le chat 7j/7 de La Centrale du LMNP.';
+const LMNP_TELEPHONE = '02 79 02 11 11';
+const LMNP_URL_RE = /lacentraledulmnp\.fr/i;
+
+function detecterProblemeCtaLmnp(texte) {
+    if (!texte) return 'CTA LMNP manquant (aucun texte)';
+    if (!LMNP_CTA_PHRASES_AUTORISEES.some((p) => texte.includes(p))) {
+        return 'CTA LMNP : aucune des 3 phrases d\'accroche obligatoires détectée';
+    }
+    if (!texte.includes(LMNP_TELEPHONE)) {
+        return `CTA LMNP incomplet : numéro de téléphone "${LMNP_TELEPHONE}" absent`;
+    }
+    if (!LMNP_URL_RE.test(texte)) {
+        return 'CTA LMNP incomplet : URL "lacentraledulmnp.fr" absente';
+    }
+    if (!texte.trim().endsWith(LMNP_PHRASE_FINALE)) {
+        return 'CTA LMNP : phrase finale "Comparez les biens LMNP avec le chat 7j/7..." absente ou pas en toute dernière position';
+    }
+    return null;
+}
+
 async function callOpenAILmnp(textContext, lotImageData, lot) {
     const donneesFiables = donneesFinancieresFiablesDepuisLot(lot);
     const residenceType = lot.program?.residenceType || null;
@@ -1524,14 +1580,6 @@ async function callOpenAILmnp(textContext, lotImageData, lot) {
     } else {
         blocDonneesConnues += `- Rentabilité : non disponible avec certitude — omets la ligne "Rentabilité" dans les chiffres clés.\n`;
     }
-
-    // Curatées explicitement ici plutôt que laissées à trouver dans le JSON brut du contexte
-    // (texte libre, deux formulations différentes selon le gestionnaire — voir
-    // extraireGesDepuisDescription) : plus fiable qu'espérer que le modèle les repère seul.
-    const dpeConnu = (typeof lot.energyClass === 'string' && lot.energyClass) || extraireDpeDepuisDescription(lot.description);
-    const gesConnu = extraireGesDepuisDescription(lot.description);
-    if (dpeConnu) blocDonneesConnues += `- DPE (classe énergétique) : ${dpeConnu}\n`;
-    if (gesConnu) blocDonneesConnues += `- GES (émissions de gaz à effet de serre) : ${gesConnu}\n`;
 
     const { texte: blocPhotos, blocsImage } = construireBlocPhotos(lotImageData);
     const messageContent = [
@@ -1594,6 +1642,13 @@ async function callOpenAILmnp(textContext, lotImageData, lot) {
         const problemeTitre = detecterProblemeTitreLmnp(resultat.titre, lot);
         if (problemeTitre) {
             hits = [...hits, `titre non conforme : ${problemeTitre}`];
+        }
+        if (DPE_GES_MENTION_RE.test(resultat.texte || '')) {
+            hits = [...hits, 'DPE/GES mentionné dans le texte (interdit, uniquement dans les champs structurés désormais)'];
+        }
+        const problemeCta = detecterProblemeCtaLmnp(resultat.texte);
+        if (problemeCta) {
+            hits = [...hits, problemeCta];
         }
         if (hits.length === 0) break;
 
@@ -1819,18 +1874,26 @@ async function callOpenAINeuf(textContext, lotImageData, lot) {
         // ailleurs dans ce pipeline pour d'autres règles (superlatifs, etc.), "l'instruction seule
         // échoue parfois". Ici, le modèle produit un texte nettement sous la cible (350-550 mots)
         // même quand le descriptif du programme fourni est réellement riche (repéré : deux lots
-        // testés avec un textContext > 8000 caractères ne produisaient que ~185-215 mots). Le seuil
-        // de richesse (longueur du textContext, pas du texte final) sert de proxy simple pour
-        // distinguer "peu de données disponibles" (cas légitime pour un texte court, section 19) de
-        // "données disponibles mais sous-exploitées" (le seul cas visé par ce garde-fou).
+        // testés avec un descriptif riche ne produisaient que ~185-215 mots). Le seuil de richesse
+        // sert de proxy pour distinguer "peu de données disponibles" (cas légitime pour un texte
+        // court, section 19) de "données disponibles mais sous-exploitées" (le seul cas visé par
+        // ce garde-fou).
         // Seuil calibré empiriquement (2026-09-23) : 280 mots exigeait parfois un 4e essai que le
         // budget de retry actuel (MAX_TENTATIVES_CONFORMITE = 3, partagé avec tous les autres
         // garde-fous) ne permet pas d'atteindre de façon fiable — constaté sur plusieurs lots
         // réels, le texte plafonne souvent entre 230 et 260 mots au 3e essai. 230 reste un gain net
         // par rapport à la référence sans ce garde-fou (~185 mots), sans provoquer de retry inutile
         // au-delà du budget existant.
+        // CORRECTIF (2026-09-23, incident réel Sedelka/Rouen — 10/11 lots bloqués) : le proxy de
+        // richesse mesurait initialement `textContext.length` (le dump JSON complet du lot), pas
+        // la vraie prose disponible — un lot SANS AUCUNE description (0 caractère de descriptif
+        // programme) dépassait quand même 8000 caractères à cause du bruit structurel (URLs
+        // d'images, structure de prix, adresse imbriquée...), déclenchant à tort une exigence de
+        // longueur sur des lots réellement pauvres en contenu. Remplacé par la longueur réelle du
+        // descriptif (lot + programme), le seul texte que le modèle peut effectivement exploiter.
         const nbMotsTexte = (resultat.texte || '').trim().split(/\s+/).filter(Boolean).length;
-        if (nbMotsTexte < 230 && (textContext || '').length > 8000) {
+        const longueurDescriptifReel = ((lot?.description || '') + (lot?.program?.description || '')).length;
+        if (nbMotsTexte < 230 && longueurDescriptifReel > 800) {
             hits = [...hits, `texte trop court (${nbMotsTexte} mots) alors que des données riches sont disponibles`];
         }
         if (hits.length === 0) break;

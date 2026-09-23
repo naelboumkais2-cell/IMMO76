@@ -607,31 +607,6 @@ scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
     }
 });
 
-// TEMPORAIRE — diagnostic en LECTURE SEULE sur des données déjà en base (donnees_ia/raw_data
-// déjà générées par le run réel de l'utilisateur, aucun appel Otaree/OpenAI ici) : sert à vérifier
-// si les lots Sedelka/Rouen bloqués sur "texte trop court" ont vraiment des données pauvres, ou si
-// le seuil de richesse (230 mots / 8000 caractères) est mal calibré. À retirer une fois le
-// diagnostic terminé.
-scraperRouter.get('/diag-richesse/:annonceId', exigerConnexion, async (req, res) => {
-    try {
-        const annonce = await db.prepare(`SELECT raw_data, donnees_ia FROM annonces WHERE id = ?`).get(req.params.annonceId);
-        if (!annonce) return res.status(404).json({ erreur: 'annonce introuvable' });
-        const raw = typeof annonce.raw_data === 'string' ? JSON.parse(annonce.raw_data) : annonce.raw_data;
-        const donneesIa = annonce.donnees_ia ? JSON.parse(annonce.donnees_ia) : null;
-        const progDesc = raw?.program?.description || '';
-        const nbMots = donneesIa?.texte ? donneesIa.texte.trim().split(/\s+/).filter(Boolean).length : null;
-        res.json({
-            programDescriptionLength: progDesc.length,
-            programDescriptionApercu: progDesc.slice(0, 500),
-            nbMotsTexteGenere: nbMots,
-            texteGenere: donneesIa?.texte || null,
-            titreGenere: donneesIa?.titre || null,
-        });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
