@@ -1156,7 +1156,10 @@ const FORMULATIONS_INTERDITES = [
     // son exposition Sud-Ouest...") : même défaut de fond que les formulations ci-dessus — le
     // texte souligne une absence au lieu de l'omettre, et vend le bien en creux. Variante non
     // couverte jusqu'ici car elle n'emploie aucun des qualificatifs listés au-dessus.
-    ['absence soulignée au lieu d\'être omise', /\bne (dispose|disposent|comprend|comprennent|possède|possèdent) pas\b|\bd[ée]pourvus?\b|\bsans espace ext[ée]rieur\b/i],
+    // Formes participiales incluses ("bien que ne DISPOSANT pas de parking") : repérées au test
+    // de non-régression du 2026-09-24, elles échappaient à la première version de ce motif qui ne
+    // couvrait que les formes conjuguées.
+    ['absence soulignée au lieu d\'être omise', /\bne (dispose|disposent|disposant|comprend|comprennent|comprenant|possède|possèdent|possédant) pas\b|\bd[ée]pourvus?\b|\bsans espace ext[ée]rieur\b/i],
     // Fuite de ton "notice interne" (documents/sources du pipeline) plutôt que texte commercial
     // destiné au lecteur — repéré sur plusieurs lots réels, formulations variées. Liste à enrichir
     // au fil des cas repérés, comme la liste des mots interdits l'a déjà été deux fois cette session.
