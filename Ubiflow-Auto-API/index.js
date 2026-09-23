@@ -1418,6 +1418,15 @@ function alternativesPourCorrection(hits, lot) {
                 : '- Le prix n\'apparaît nulle part dans le texte alors que c\'est l\'information la plus importante d\'une annonce. Ajoute le prix exact fourni dans les données du lot, sans jamais l\'arrondir ni l\'estimer.'
         );
     }
+    const rueHit = hits.find((h) => h.startsWith('rue absente'));
+    if (rueHit) {
+        const adr = rueHit.match(/adresse réelle : "(.*)"/);
+        lignes.push(
+            adr
+                ? `- La voie n'apparaît pas dans le texte, ou son type a été modifié. Mentionne-la en reprenant EXACTEMENT l'adresse fournie : "${adr[1]}". Ne remplace jamais "Quai", "Cours", "Avenue", "Chemin"... par "rue" — le type de voie fait partie de l'information. Citer seulement le quartier ou la ZAC ne suffit pas : c'est bien le nom de la voie qui est attendu. N'invente jamais de numéro si l'adresse n'en comporte pas.`
+                : '- La voie n\'apparaît pas dans le texte. Mentionne-la en reprenant exactement l\'adresse fournie dans les données, sans modifier le type de voie et sans inventer de numéro.'
+        );
+    }
     if (hits.some((h) => h.startsWith('vocabulaire résidentiel'))) {
         lignes.push(
             '- Ce bien est un local professionnel (bureau, local commercial), pas un logement : supprime tout vocabulaire résidentiel ("résidence", "ensemble résidentiel", "adresse résidentielle", "cadre de vie", "logement", "pièce de vie", "chambre", "habiter") et remplace-le par un vocabulaire professionnel exact ("immeuble", "immeuble de bureaux", "ensemble immobilier", "local", "plateau", "espace de travail", "cadre de travail"). Ne décris jamais une distribution de pièces de logement.'
@@ -1595,6 +1604,44 @@ function validerPhotoPrincipale(nomPropose, lotImageData) {
 //
 // Source unique : lot.prices[0].price, la même valeur que celle affichée à l'écran de
 // confirmation et transmise à Hubiflow — jamais une valeur recalculée ici.
+// RUE — mention obligatoire depuis le 2026-09-24, mais c'était jusqu'ici la seule des règles
+// vérifiées à ne vivre QUE dans le prompt, sans contrôle code. Résultat mesuré sur 30 annonces
+// réellement publiées : 23/30 seulement, alors que les cinq règles dotées d'un garde-fou + retry
+// étaient toutes à 30/30. Deux défauts observés, que ce contrôle attrape l'un comme l'autre :
+//   - omission pure (adresse disponible, jamais citée) ;
+//   - ALTÉRATION du type de voie — "48 Quai de Boisguilbert" rendu "rue de Boisguilbert",
+//     "6 et 22 cours Camille Claudel" rendu "rue Camille Claudel". Plus gênant qu'une omission :
+//     l'information devient fausse.
+function normaliserPourComparaison(s) {
+    return (s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// Cœur de l'adresse : le type de voie + son nom, sans les numéros de tête. Gère les formes
+// réelles rencontrées : "48 Quai...", "16-24 rue...", "6 et 22 cours...". Pour une adresse qui
+// accole la voie et la zone ("Rue Marie Curie-ZAC Aubette Martainville"), seule la voie est
+// exigée : citer la ZAC seule ne suffit pas, mais on n'impose pas de recopier la zone.
+function noyauVoie(lot) {
+    const brut = normaliserPourComparaison(lot?.program?.address?.name);
+    if (!brut) return null;
+    const sansNumero = brut.replace(
+        /^\d+(\s*[-–]\s*\d+)?(\s*(bis|ter|quater))?(\s+et\s+\d+(\s*(bis|ter|quater))?)*\s*,?\s*/,
+        ''
+    );
+    const noyau = sansNumero.split(/\s*[-–]\s*/)[0].trim();
+    return noyau || null;
+}
+
+function rueAbsenteDuTexte(texte, lot) {
+    const noyau = noyauVoie(lot);
+    if (!noyau) return false; // aucune adresse connue : rien à exiger (omission silencieuse)
+    return !normaliserPourComparaison(texte).includes(noyau);
+}
+
 function prixReelDuLot(lot) {
     const p = lot?.prices?.[0]?.price;
     return typeof p === 'number' && p > 0 ? p : null;
@@ -1823,6 +1870,9 @@ async function callOpenAILmnp(textContext, lotImageData, lot) {
         }
         if (prixAbsentDuTexte(resultat.texte, lot)) {
             hits = [...hits, `prix absent du bloc "LES CHIFFRES CLÉS" (prix réel du lot : ${prixReelDuLot(lot)} €)`];
+        }
+        if (rueAbsenteDuTexte(resultat.texte, lot)) {
+            hits = [...hits, `rue absente ou altérée dans le texte (adresse réelle : "${lot?.program?.address?.name}")`];
         }
         // Pas de contrôle de vocabulaire résidentiel ici, contrairement au chemin Neuf : le LMNP
         // géré porte par nature sur des résidences de services, le mot y est donc légitime — seule
@@ -2080,6 +2130,9 @@ async function callOpenAINeuf(textContext, lotImageData, lot) {
         }
         if (prixAbsentDuTexte(resultat.texte, lot)) {
             hits = [...hits, `prix absent du texte (prix réel du lot : ${prixReelDuLot(lot)} €)`];
+        }
+        if (rueAbsenteDuTexte(resultat.texte, lot)) {
+            hits = [...hits, `rue absente ou altérée dans le texte (adresse réelle : "${lot?.program?.address?.name}")`];
         }
         if (lotProfessionnel && VOCABULAIRE_RESIDENTIEL_RE.test(resultat.texte || '')) {
             hits = [...hits, 'vocabulaire résidentiel employé pour un bien professionnel (bureau/local commercial)'];
