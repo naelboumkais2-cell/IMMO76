@@ -34,6 +34,8 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
+    enrichirLot,
+    obtenirJwtFrais,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -616,6 +618,65 @@ scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
     try {
         const result = await db.prepare(`DELETE FROM annonces WHERE donnees_ia IS NULL`).run();
         res.json({ supprimees: result.changes });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+// TEMPORAIRE — diagnostic plans/adresse (2026-09-24) : images réellement disponibles après
+// enrichissement (lot.images est vide dans raw_data, enrichirLot les ajoute au moment de la
+// génération) + champs d'adresse bruts vs générés. Lecture seule. À retirer après correction.
+scraperRouter.get('/diag-lot', exigerConnexion, async (req, res) => {
+    try {
+        const { reference, id } = req.query;
+        let annonce = null;
+        if (id) {
+            annonce = await db.prepare(`SELECT * FROM annonces WHERE id = ?`).get(id);
+        } else if (reference) {
+            // Recherche large : la référence fournie peut être notre reference_generee, la
+            // référence brute du lot, ou l'identifiant côté Hubiflow (ad_id_externe).
+            annonce =
+                (await db.prepare(`SELECT * FROM annonces WHERE reference_generee = ?`).get(reference)) ||
+                (await db.prepare(`SELECT * FROM annonces WHERE reference = ?`).get(reference)) ||
+                (await db.prepare(
+                    `SELECT a.* FROM annonces a JOIN annonce_portails ap ON ap.annonce_id = a.id
+                     WHERE ap.ad_id_externe = ? LIMIT 1`
+                ).get(reference)) ||
+                (await db.prepare(`SELECT * FROM annonces WHERE reference_generee LIKE ? LIMIT 1`).get(`%${reference}%`));
+        }
+        if (!annonce) {
+            const echantillon = await db.prepare(
+                `SELECT reference_generee FROM annonces WHERE reference_generee IS NOT NULL ORDER BY id DESC LIMIT 10`
+            ).all();
+            return res.status(404).json({ erreur: 'annonce introuvable', referencesRecentes: echantillon.map((e) => e.reference_generee) });
+        }
+        const raw = JSON.parse(annonce.raw_data || '{}');
+        const ia = JSON.parse(annonce.donnees_ia || '{}');
+
+        let imagesEnrichies = null;
+        if (req.query.enrichir === '1') {
+            const lot = { ...raw };
+            await enrichirLot(lot, await obtenirJwtFrais());
+            imagesEnrichies = (lot.images || []).map((i) => ({ name: i.name, mimeType: i.mimeType }));
+        }
+
+        res.json({
+            id: annonce.id,
+            reference: annonce.reference_generee,
+            ville: annonce.ville,
+            // Chantier 3 — adresse : source brute Otaree vs champs structurés générés vs texte
+            adresseBrute: raw?.program?.address?.name ?? null,
+            adresseBruteZip: raw?.program?.address?.zipCode ?? null,
+            adresseBruteVille: raw?.program?.address?.city?.name ?? null,
+            adresseGeneree: ia.adresse ?? null,
+            numeroVoieGenere: ia.numero_voie ?? null,
+            texteContientAdresse: null,
+            texte: ia.texte,
+            // Chantier 2 — plans
+            planDuLot: raw?.plan ? { name: raw.plan.name, mimeType: raw.plan.mimeType } : null,
+            imagesBrutes: (raw.images || []).map((i) => ({ name: i.name, mimeType: i.mimeType })),
+            imagesEnrichies,
+        });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
