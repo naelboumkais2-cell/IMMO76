@@ -621,45 +621,6 @@ scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
     }
 });
 
-// TEMPORAIRE — audit qualité des textes réellement publiés (demande du 2026-09-24) : les textes
-// générés ne sont exposés nulle part dans l'API existante (voir routes/annonces.js, qui exclut
-// volontairement donnees_ia des colonnes renvoyées à Supervision). Lecture seule, aucun effet de
-// bord. À retirer une fois l'audit terminé.
-scraperRouter.get('/diag-audit-textes', exigerConnexion, async (req, res) => {
-    try {
-        const limite = Math.min(parseInt(req.query.limite, 10) || 30, 60);
-        const rows = await db.prepare(
-            `SELECT a.id, a.titre AS titre_lot, a.ville, a.type_bien, a.prix, a.surface,
-                    a.donnees_ia, a.raw_data, p.nom AS portail, ap.statut, ap.maj_le
-             FROM annonces a
-             JOIN annonce_portails ap ON ap.annonce_id = a.id
-             JOIN portails p ON p.id = ap.portail_id
-             WHERE ap.statut = 'publiee' AND a.donnees_ia IS NOT NULL
-             ORDER BY ap.maj_le DESC
-             LIMIT ?`
-        ).all(limite);
-        res.json(rows.map((r) => {
-            const ia = JSON.parse(r.donnees_ia || '{}');
-            const raw = JSON.parse(r.raw_data || '{}');
-            return {
-                id: r.id,
-                portail: r.portail,
-                publieLe: r.maj_le,
-                ville: r.ville,
-                typeBien: r.type_bien,
-                natureLabel: raw?.natureLabel,
-                surface: r.surface,
-                prixBase: r.prix,
-                titreGenere: ia.titre,
-                texte: ia.texte,
-                ...(req.query.brut === '1' ? { rawData: raw } : {}),
-            };
-        }));
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
