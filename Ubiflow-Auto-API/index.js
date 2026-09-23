@@ -1497,6 +1497,34 @@ function validerPhotoPrincipale(nomPropose, lotImageData) {
     return trouve ? trouve.name : null;
 }
 
+// OpenAI renvoie 429 pour DEUX situations très différentes, que le code traitait jusqu'ici de la
+// même façon (3 tentatives avec backoff) :
+//   - un vrai rate-limit passager (trop de requêtes/tokens par minute) → retenter a du sens ;
+//   - un compte SANS CRÉDIT (type "insufficient_quota", code "credit_balance_exhausted") →
+//     retenter n'a aucun sens, ça échouera identiquement dans 1s, 2s ou dans une heure.
+//
+// Incident réel (2026-09-23) : le compte OpenAI s'est vidé en cours de journée. Chaque lot a donc
+// consommé ses 3 tentatives avant d'échouer, un run de 117 lots s'est "terminé" en 2 minutes avec
+// 117 échecs, et NULLE PART l'utilisateur ne voyait la vraie cause — le message d'OpenAI ("You
+// have no credits remaining") restait enfoui dans les logs serveur, noyé sous d'autres entrées.
+// Résultat : plusieurs heures de diagnostic sur la mauvaise piste (jeton Otaree).
+function estQuotaOpenAIEpuise(e) {
+    const donnees = e?.response?.data?.error;
+    if (!donnees) return false;
+    return donnees.type === 'insufficient_quota' || donnees.code === 'credit_balance_exhausted';
+}
+
+// Message volontairement explicite et actionnable : c'est lui qui remonte jusqu'à l'écran de
+// supervision via alerteConformite/logs_api, là où l'ancien "Request failed with status code 429"
+// n'apprenait rien à personne.
+function erreurQuotaOpenAI(e) {
+    const message = e?.response?.data?.error?.message || 'aucun détail fourni par OpenAI';
+    return new Error(
+        `CRÉDITS OPENAI ÉPUISÉS — génération impossible tant que le compte n'est pas rechargé ` +
+        `(https://platform.openai.com/settings/organization/billing). Détail OpenAI : ${message}`
+    );
+}
+
 // Titre LMNP (règles précises du client, 2026-09-23) : structure obligatoire "{Type de bien/
 // résidence} – {formule investissement}", une des deux formules ("investissement LMNP géré" /
 // "LMNP 100 % géré") obligatoire, ville jamais mentionnée. Constaté en test réel (5 lots, 4
@@ -1622,6 +1650,10 @@ async function callOpenAILmnp(textContext, lotImageData, lot) {
                 });
                 break;
             } catch (e) {
+                // Quota épuisé : inutile de retenter (voir estQuotaOpenAIEpuise) — on
+                // échoue tout de suite avec un message explicite plutôt que de brûler
+                // 3 tentatives par lot sur une cause qui ne se résoudra pas seule.
+                if (estQuotaOpenAIEpuise(e)) throw erreurQuotaOpenAI(e);
                 if (e.response?.status !== 429 || tentative === 3) throw e;
                 const delaiMs = 1000 * 2 ** (tentative - 1);
                 console.log(`[callOpenAILmnp] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
@@ -1823,6 +1855,10 @@ async function callOpenAINeuf(textContext, lotImageData, lot) {
                 });
                 break;
             } catch (e) {
+                // Quota épuisé : inutile de retenter (voir estQuotaOpenAIEpuise) — on
+                // échoue tout de suite avec un message explicite plutôt que de brûler
+                // 3 tentatives par lot sur une cause qui ne se résoudra pas seule.
+                if (estQuotaOpenAIEpuise(e)) throw erreurQuotaOpenAI(e);
                 if (e.response?.status !== 429 || tentative === 3) throw e;
                 const delaiMs = 1000 * 2 ** (tentative - 1);
                 console.log(`[callOpenAINeuf] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
@@ -2191,6 +2227,10 @@ Renvoie UNIQUEMENT un objet JSON strictement conforme à la structure suivante, 
                 });
                 break;
             } catch (e) {
+                // Quota épuisé : inutile de retenter (voir estQuotaOpenAIEpuise) — on
+                // échoue tout de suite avec un message explicite plutôt que de brûler
+                // 3 tentatives par lot sur une cause qui ne se résoudra pas seule.
+                if (estQuotaOpenAIEpuise(e)) throw erreurQuotaOpenAI(e);
                 if (e.response?.status !== 429 || tentative === 3) throw e;
                 const delaiMs = 1000 * 2 ** (tentative - 1);
                 console.log(`[callOpenAI] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);

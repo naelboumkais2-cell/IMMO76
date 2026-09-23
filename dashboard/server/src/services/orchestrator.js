@@ -18,6 +18,7 @@ import { utilisateurActuelId } from './requestContext.js';
 import { estEnPause, obtenirEtatPause } from './depenseMonitor.js';
 import { genererReferenceLmnp, genererReferenceNeuf, promoteurLmnpExclu, promoteurNeufExclu, forcerNouveauSuffixeReference } from './referenceGenerator.js';
 import { estLotLmnp } from './dispositifFiscal.js';
+import { signalerEchecSessionOtaree } from './otareeKeepalive.js';
 
 // utilisateur_id vient du contexte de requête (voir requestContext.js/index.js), jamais passé
 // explicitement ici — évite d'ajouter un paramètre utilisateurId à chaque fonction de ce
@@ -412,9 +413,13 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
     let nbTraites = 0;
     demarrerRun(aTraiter.length, rechercheId, mode);
     let annule = false;
+    // Arrêt immédiat du run entier dès qu'un lot révèle des crédits OpenAI épuisés (voir plus bas)
+    // — sert à sortir aussi de la boucle de GROUPES, pas seulement de celle des lots.
+    let quotaOpenAIEpuise = false;
     try {
         const groupes = decouperEnGroupes(aTraiter, CONCURRENCE_ENRICHISSEMENT_IA);
         for (const groupe of groupes) {
+            if (quotaOpenAIEpuise) break;
             // Vérifiée entre chaque GROUPE, pas entre chaque lot : granularité assumée (voir
             // audit pipeline) — jusqu'à (CONCURRENCE_ENRICHISSEMENT_IA - 1) lots de plus que la
             // demande d'annulation peuvent terminer leur enrichissement/génération avant l'arrêt
@@ -463,6 +468,11 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
             try {
                 jetonPartage = await obtenirJwtFrais();
             } catch (e) {
+                // Remonté aussi dans l'état de session (voir otareeKeepalive.js) pour que
+                // l'interface affiche un bandeau explicite : sans ça, l'échec ne vivait que dans
+                // les logs serveur et l'utilisateur voyait juste des lots qui "ne se traitent
+                // pas", sans cause visible (incident réel du 2026-09-23).
+                signalerEchecSessionOtaree(e.message);
                 await log('auto_publish', {
                     succes: false,
                     message: `Jeton Otaree indisponible pour ce groupe (${groupe.length} lot(s)) — groupe sauté, run poursuivi : ${e.message}`,
@@ -533,8 +543,24 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
 
                 if (resultat.status === 'rejected') {
                     const raison = resultat.reason;
-                    await log('auto_publish', { annonceId: annonce.id, succes: false, message: raison?.message || String(raison) });
+                    const message = raison?.message || String(raison);
+                    await log('auto_publish', { annonceId: annonce.id, succes: false, message });
                     incrementerTraites();
+
+                    // Crédits OpenAI épuisés (voir estQuotaOpenAIEpuise, Ubiflow-Auto-API) : aucune
+                    // raison de continuer, TOUS les lots suivants échoueront identiquement. Avant
+                    // ce garde-fou, un run de 117 lots "se terminait" en 2 minutes avec 117 échecs
+                    // successifs et aucune cause lisible côté interface (incident 2026-09-23).
+                    // On arrête net, avec un message qui dit quoi faire.
+                    if (message.includes('CRÉDITS OPENAI ÉPUISÉS')) {
+                        quotaOpenAIEpuise = true;
+                        annule = true;
+                        await log('auto_publish', {
+                            succes: false,
+                            message: `Run interrompu : crédits OpenAI épuisés — ${nbTraites} lot(s) traité(s) avant l'arrêt, le reste n'a pas été tenté. Recharge le compte OpenAI puis relance via "Traiter les lots en attente".`,
+                        });
+                        break;
+                    }
                     continue;
                 }
 

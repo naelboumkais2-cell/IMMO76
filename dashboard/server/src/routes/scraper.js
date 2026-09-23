@@ -26,6 +26,7 @@ import {
 } from '../services/rechercheStatus.js';
 import { executerAvecUtilisateur, utilisateurActuelId } from '../services/requestContext.js';
 import { sauvegarderRefreshToken, getOtareeTokenState } from '../integrations/otareeTokenStore.js';
+import { getEtatSessionOtaree } from '../services/otareeKeepalive.js';
 import {
     rechercherLotsOtaree,
     rechercherLocationsOtaree,
@@ -207,8 +208,21 @@ scraperRouter.post('/otaree-token', exigerCleMachine, async (req, res) => {
     res.json({ success: true });
 });
 
+// Enrichi avec l'état du keepalive (2026-09-24) : `present` seul ne dit que "un token existe en
+// base", jamais s'il est encore accepté par Otaree — un token mort reste `present: true`. C'est
+// précisément ce qui rendait une session expirée invisible jusqu'au lancement d'un run.
+// `sessionOk` tranche : false dès qu'un rafraîchissement (keepalive ou run réel) a échoué.
 scraperRouter.get('/otaree-token', exigerConnexion, async (req, res) => {
-    res.json(await getOtareeTokenState());
+    const etatToken = await getOtareeTokenState();
+    const session = getEtatSessionOtaree();
+    res.json({
+        ...etatToken,
+        sessionOk: etatToken.present && !session.derniereErreur,
+        derniereErreur: session.derniereErreur,
+        derniereReussiteLe: session.derniereReussiteLe,
+        derniereTentativeLe: session.derniereTentativeLe,
+        nbEchecsConsecutifs: session.nbEchecsConsecutifs,
+    });
 });
 
 scraperRouter.post('/otaree-count', exigerConnexion, async (req, res) => {

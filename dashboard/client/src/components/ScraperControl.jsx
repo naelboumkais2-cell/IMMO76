@@ -224,6 +224,7 @@ export function ScraperControl() {
     const [erreurOtaree, setErreurOtaree] = useState(null);
     const [confirmationEnAttente, setConfirmationEnAttente] = useState(null);
     const [lotsEnAttenteCount, setLotsEnAttenteCount] = useState(0);
+    const [sessionOtaree, setSessionOtaree] = useState(null);
     const [traitementEnAttenteEnCours, setTraitementEnAttenteEnCours] = useState(false);
     const [suppressionLotsEnAttenteEnCours, setSuppressionLotsEnAttenteEnCours] = useState(false);
     const [confirmationEnCours, setConfirmationEnCours] = useState(false);
@@ -356,6 +357,18 @@ export function ScraperControl() {
         const poll = () => api.getLotsEnAttenteCount().then(({ count }) => setLotsEnAttenteCount(count)).catch(() => {});
         poll();
         const id = setInterval(poll, 15000);
+        return () => clearInterval(id);
+    }, []);
+
+    // État de la session Otaree — jusqu'ici totalement invisible côté interface : une session
+    // expirée ne se découvrait qu'au lancement d'un run (qui échouait alors sans cause lisible,
+    // incident réel du 2026-09-23, ~4h de diagnostic). Un keepalive serveur la maintient
+    // désormais vivante (otareeKeepalive.js) ; ce bandeau est le filet de sécurité qui rend
+    // l'échec visible immédiatement s'il survient malgré tout.
+    useEffect(() => {
+        const poll = () => api.getSessionOtaree().then(setSessionOtaree).catch(() => {});
+        poll();
+        const id = setInterval(poll, 30000);
         return () => clearInterval(id);
     }, []);
 
@@ -784,6 +797,34 @@ export function ScraperControl() {
 
     return (
         <section className="panel">
+            {/* Session Otaree KO — bandeau volontairement placé tout en haut, avant le formulaire :
+                sans accès Otaree valide, aucune recherche ni aucun traitement ne peut aboutir, et
+                l'échec était jusqu'ici invisible (uniquement dans les logs serveur). Le keepalive
+                serveur (otareeKeepalive.js) doit normalement empêcher ce cas ; ce bandeau est le
+                filet de sécurité s'il échoue quand même. */}
+            {sessionOtaree && (!sessionOtaree.present || sessionOtaree.sessionOk === false) && (
+                <div
+                    className="progress-banner"
+                    style={{
+                        margin: 'var(--space-6)',
+                        borderLeft: '4px solid var(--color-danger, #c0392b)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 'var(--space-2)',
+                    }}
+                >
+                    <strong className="text-error">
+                        {sessionOtaree.present
+                            ? 'Session Otaree expirée — recherches et traitements impossibles'
+                            : 'Aucun accès Otaree enregistré — recherches et traitements impossibles'}
+                    </strong>
+                    <span className="hint">
+                        Ouvre Otaree dans ton navigateur avec l'extension active pour recapturer un accès.
+                        {sessionOtaree.derniereErreur ? ` Détail : ${sessionOtaree.derniereErreur}` : ''}
+                    </span>
+                </div>
+            )}
+
             {/* Recherche + import Otaree en cours (phase asynchrone, voir rechercheStatus.js) —
                 affiché dès le clic sur "Rechercher" (rechercheOtareeEnCours passe à true de façon
                 synchrone, avant même la réponse du serveur), pas seulement une fois la progression

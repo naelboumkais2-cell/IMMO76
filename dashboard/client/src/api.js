@@ -46,6 +46,9 @@ export const api = {
         request('/scraper/auto-publish-confirm', { method: 'POST', body: JSON.stringify({ idsSelectionnes, portailsChoisis, referencesEditees, imagesEditees }) }),
     annulerAutoPublishEnAttente: () => request('/scraper/auto-publish-discard-pending', { method: 'POST' }),
     getLotsEnAttenteCount: () => request('/scraper/lots-en-attente-count'),
+    // État réel de la session Otaree (pas seulement "un token existe en base") — voir
+    // otareeKeepalive.js côté serveur : sessionOk passe à false dès qu'un rafraîchissement échoue.
+    getSessionOtaree: () => request('/scraper/otaree-token'),
     traiterLotsEnAttente: () => request('/scraper/traiter-lots-en-attente', { method: 'POST' }),
     supprimerLotsEnAttente: () => request('/scraper/lots-en-attente', { method: 'DELETE' }),
     getLotDetail: (annonceId) => request('/scraper/lot-detail', { method: 'POST', body: JSON.stringify({ annonceId }) }),

@@ -13,6 +13,7 @@ import { mode as hubiflowMode } from './integrations/hubiflowRouter.js';
 import { verifierEtMettreAJourDepenses } from './services/depenseMonitor.js';
 import { depensesRouter } from './routes/depenses.js';
 import { verifierDisparitionsHubiflow } from './services/syncDisparitions.js';
+import { maintenirSessionOtaree, INTERVALLE_KEEPALIVE_MS } from './services/otareeKeepalive.js';
 
 // Filet de sécurité pour le diagnostic en hébergement distant : sans ça, un rejet de promesse
 // non intercepté peut faire quitter le process sans qu'aucun message n'apparaisse dans les logs
@@ -133,6 +134,18 @@ if (!process.env.VERCEL) {
         verifierEtLancerSyncDisparitions().catch((e) => console.error('[sync-disparitions] échec du run:', e.message));
     lancerSyncDisparitions();
     setInterval(lancerSyncDisparitions, 30 * 60 * 1000);
+}
+
+// Keepalive de la session Otaree (voir services/otareeKeepalive.js) — le refresh_token capturé
+// par l'extension meurt au bout d'environ une heure s'il n'est jamais rafraîchi, ce qui faisait
+// échouer tout run lancé après une période d'inactivité (incident réel du 2026-09-23). Même
+// principe que les intervalles ci-dessus : process persistant uniquement, jamais sur Vercel.
+// maintenirSessionOtaree() ne throw jamais, le .catch() n'est qu'une ceinture supplémentaire.
+if (!process.env.VERCEL) {
+    const keepaliveOtaree = () =>
+        maintenirSessionOtaree().catch((e) => console.error('[otaree-keepalive] erreur inattendue:', e.message));
+    keepaliveOtaree();
+    setInterval(keepaliveOtaree, INTERVALLE_KEEPALIVE_MS);
 }
 
 // Sur Vercel, `VERCEL` est toujours défini (peu importe NODE_ENV) — écouter un port n'a aucun
