@@ -380,9 +380,37 @@ async function downloadOtareeImages(lot, imagesSelection) {
     // Inconditionnel, même si sélectionné manuellement comme "premiere" par erreur sur l'écran de
     // confirmation (qui affiche encore ces images sans les identifier comme plans) : jamais publier
     // un plan comme photo de couverture, même sur mauvaise manipulation humaine.
+    //
+    // TROU CORRIGÉ le 2026-09-24 (audit des annonces publiées) : le filtre par nom ne peut PAS
+    // attraper la convention de nommage la plus répandue chez Otaree. Le plan d'un lot y est
+    // nommé d'après la référence du logement — "B303.jpg", "B21.jpg", "A01.jpg", "D131.jpg" —
+    // sans jamais contenir le mot "plan". Vérifié visuellement : B303.jpg est bien un plan coté
+    // avec tableau de surfaces. Ces images passaient donc tous les filtres, étaient proposées à
+    // l'IA comme photo de couverture possible, et se retrouvaient en première position (soit
+    // choisies comme photoPrincipale, soit premières par ordre alphabétique — "b303" précède
+    // "open-air-1").
+    //
+    // Critère fiable, basé sur la donnée réelle plutôt que sur une convention devinée : Otaree
+    // expose le plan du lot dans `lot.plan` (un PDF), et publie ses pages converties en JPEG dans
+    // `images` sous le MÊME radical, éventuellement suffixé du numéro de page. Constaté :
+    // plan "B303.pdf" -> image "B303.jpg" ; plan "Restaurant_5.pdf" -> "Restaurant_5-1.jpg" et
+    // "Restaurant_5-2.jpg". On exclut donc toute image dont le radical correspond à celui du plan.
+    // Comparaison directe plutôt qu'une RegExp construite dynamiquement : le radical vient d'un
+    // nom de fichier arbitraire, qui peut contenir des métacaractères (parenthèses, points,
+    // crochets...) — l'échapper correctement serait une source d'erreur inutile ici.
+    const radicalPlan = ((lot.plan?.name || '').toLowerCase().replace(/\.[a-z0-9]+$/, '')) || null;
+    const estPageDuPlan = (nom) => {
+        if (!radicalPlan) return false;
+        const radical = (nom || '').toLowerCase().replace(/\.[a-z0-9]+$/, '');
+        if (radical === radicalPlan) return true;
+        const suffixe = radical.startsWith(`${radicalPlan}-`) ? radical.slice(radicalPlan.length + 1) : null;
+        return suffixe !== null && /^\d+$/.test(suffixe);
+    };
+
     const sorted = [...images]
         .filter((img) => !exclues.has((img.name || '').toLowerCase()))
         .filter((img) => !/plan/i.test(img.name || ''))
+        .filter((img) => !estPageDuPlan(img.name))
         .sort((a, b) => {
             const an = (a.name || '').toLowerCase();
             const bn = (b.name || '').toLowerCase();
