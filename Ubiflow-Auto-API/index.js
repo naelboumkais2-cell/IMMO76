@@ -407,11 +407,8 @@ async function downloadOtareeImages(lot, imagesSelection) {
         return suffixe !== null && /^\d+$/.test(suffixe);
     };
 
-    const sorted = [...images]
-        .filter((img) => !exclues.has((img.name || '').toLowerCase()))
-        .filter((img) => !/plan/i.test(img.name || ''))
-        .filter((img) => !estPageDuPlan(img.name))
-        .sort((a, b) => {
+    const trier = (liste) =>
+        [...liste].sort((a, b) => {
             const an = (a.name || '').toLowerCase();
             const bn = (b.name || '').toLowerCase();
             if (premiere) {
@@ -425,32 +422,52 @@ async function downloadOtareeImages(lot, imagesSelection) {
             return an.localeCompare(bn);
         });
 
-    const result = [];
-    const seenHashes = new Set();
-    for (const img of sorted) {
-        if (result.length >= 20) break;
-        // Otaree mélange parfois des documents (plans PDF...) dans le même tableau que les photos ;
-        // mimeType est fiable pour les exclure (contrairement au content-type CloudFront de l'URL, lui erroné).
-        if (img.mimeType && !img.mimeType.startsWith('image/')) continue;
-        const url = img.urls && (img.urls.large || img.urls.medium || img.urls.medium_fit || img.urls.small);
-        if (!url) continue;
-        let buf = null;
-        for (let attempt = 1; attempt <= 3 && !buf; attempt++) {
-            try {
-                const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 20000 });
-                buf = Buffer.from(resp.data);
-            } catch (e) {
-                if (attempt !== 3) await new Promise(r => setTimeout(r, 1000 * attempt));
-            }
-        }
-        if (!buf) continue;
+    const estPlan = (img) => /plan/i.test(img.name || '') || estPageDuPlan(img.name);
+    const retenues = [...images].filter((img) => !exclues.has((img.name || '').toLowerCase()));
+    const vraiesPhotos = retenues.filter((img) => !estPlan(img));
+    const plans = retenues.filter(estPlan);
 
-        const hash = crypto.createHash('sha256').update(buf).digest('hex');
-        if (seenHashes.has(hash)) continue;
-        seenHashes.add(hash);
-        const b64 = buf.toString('base64');
-        const mime = (img.mimeType && img.mimeType.startsWith('image/')) ? img.mimeType : 'image/jpeg';
-        result.push({ name: (img.name || 'image').toLowerCase(), data: `data:${mime};base64,${b64}` });
+    const telecharger = async (liste) => {
+        const result = [];
+        const seenHashes = new Set();
+        for (const img of liste) {
+            if (result.length >= 20) break;
+            // Otaree mélange parfois des documents (plans PDF...) dans le même tableau que les photos ;
+            // mimeType est fiable pour les exclure (contrairement au content-type CloudFront de l'URL, lui erroné).
+            if (img.mimeType && !img.mimeType.startsWith('image/')) continue;
+            const url = img.urls && (img.urls.large || img.urls.medium || img.urls.medium_fit || img.urls.small);
+            if (!url) continue;
+            let buf = null;
+            for (let attempt = 1; attempt <= 3 && !buf; attempt++) {
+                try {
+                    const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 20000 });
+                    buf = Buffer.from(resp.data);
+                } catch (e) {
+                    if (attempt !== 3) await new Promise(r => setTimeout(r, 1000 * attempt));
+                }
+            }
+            if (!buf) continue;
+
+            const hash = crypto.createHash('sha256').update(buf).digest('hex');
+            if (seenHashes.has(hash)) continue;
+            seenHashes.add(hash);
+            const b64 = buf.toString('base64');
+            const mime = (img.mimeType && img.mimeType.startsWith('image/')) ? img.mimeType : 'image/jpeg';
+            result.push({ name: (img.name || 'image').toLowerCase(), data: `data:${mime};base64,${b64}` });
+        }
+        return result;
+    };
+
+    const result = await telecharger(trier(vraiesPhotos));
+    // Repli (demande client, 2026-09-24) : si AUCUNE vraie photo n'est exploitable — soit le lot
+    // n'en a pas du tout, soit les seules disponibles ont échoué au téléchargement — on réintègre
+    // le plan plutôt que de publier une annonce sans la moindre image. Une annonce illustrée par
+    // un plan reste préférable à une annonce vide. Décision prise APRÈS téléchargement et pas sur
+    // la seule liste de noms : une image peut être écartée plus bas (mimeType non-image, URL
+    // absente, téléchargement en échec), auquel cas le repli doit quand même s'appliquer.
+    if (result.length === 0 && plans.length > 0) {
+        console.log(`[downloadOtareeImages] aucune vraie photo exploitable — repli sur le plan (${plans.length} image(s))`);
+        return await telecharger(trier(plans));
     }
     return result;
 }
@@ -739,6 +756,8 @@ BLOC 3 — POURQUOI CETTE CATÉGORIE ? : intertitre "POURQUOI INVESTIR DANS [TYP
 
 BLOC 4 — LE BIEN ET LA RÉSIDENCE : intertitre "LE BIEN ET LA RÉSIDENCE" en majuscules. Réécris dans un langage naturel (ne recopie jamais mécaniquement un descriptif partenaire). Sélectionne 3 à 6 caractéristiques réellement différenciantes parmi celles confirmées par les données (emplacement, transports, commerces, piscine/spa/sauna, qualité du bâtiment, exploitant si documenté...). Ne transforme pas en inventaire.
 
+RUE — MENTION OBLIGATOIRE (règle client, 2026-09-24) : lorsque l'adresse (nom de voie, avec son numéro s'il est fourni) figure dans les données du lot, tu DOIS la mentionner dans ce bloc. Reprends-la exactement telle qu'elle apparaît, sans la compléter ni l'inventer : si aucun numéro n'est fourni, n'en invente jamais un, indique simplement la voie. Si aucune adresse n'est disponible, n'en parle pas — la règle d'omission silencieuse s'applique comme partout ailleurs. Rappel : le nom de la RÉSIDENCE et celui de l'EXPLOITANT restent soumis à leurs propres règles, cette obligation ne concerne que la voie.
+
 BLOC 5 — APPEL À L'ACTION (règle client, 2026-09-23) : commence par UNE des phrases suivantes (à varier d'une annonce à l'autre, jamais toujours la même) :
 "Contactez-nous pour en savoir plus sur cette opportunité d'investissement."
 "Contactez La Centrale du LMNP pour en savoir plus."
@@ -941,7 +960,16 @@ concrètes du logement.
 
 PARAGRAPHE 1 — LOCALISATION + PRÉSENTATION DU BIEN
 Commencer directement par la ville ou le secteur. Mentionner si disponibles : la ville ; le quartier ;
-éventuellement la rue ; la typologie ; la surface arrondie ; l'étage ; un premier élément différenciant.
+la typologie ; la surface arrondie ; l'étage ; un premier élément différenciant.
+
+RUE — MENTION OBLIGATOIRE (règle client, 2026-09-24) : lorsque l'adresse (nom de voie, avec son
+numéro s'il est fourni) figure dans les données du lot, tu DOIS la mentionner dans l'annonce, soit
+dans ce premier paragraphe, soit dans le paragraphe consacré à l'environnement. Ce n'est plus
+facultatif. Reprends-la exactement telle qu'elle apparaît dans les données, sans la compléter ni
+l'inventer : si aucun numéro n'est fourni, n'en invente jamais un, indique simplement la voie.
+Si aucune adresse n'est disponible, n'en parle pas — la règle d'omission silencieuse s'applique
+comme partout ailleurs.
+
 Exemple : « À Touques, à proximité de Deauville et Trouville-sur-Mer, découvrez cet appartement T4
 d'environ 82 m² situé au 2e étage d'une résidence de standing. »
 
