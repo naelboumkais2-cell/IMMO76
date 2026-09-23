@@ -652,6 +652,7 @@ scraperRouter.get('/diag-audit-textes', exigerConnexion, async (req, res) => {
                 prixBase: r.prix,
                 titreGenere: ia.titre,
                 texte: ia.texte,
+                ...(req.query.brut === '1' ? { rawData: raw } : {}),
             };
         }));
     } catch (e) {

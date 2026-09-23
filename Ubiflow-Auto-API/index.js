@@ -1152,6 +1152,11 @@ const FORMULATIONS_INTERDITES = [
     // "parking non attribué" repéré sur un lot réel (recherche Bordeaux) — même famille que les
     // variantes ci-dessus, qualificatif différent ("attribué" plutôt que "communiqué/fourni/...").
     ['donnée manquante explicitée ("non attribué")', /\bnon attribu[ée]e?s?(?![a-zà-ÿ])/i],
+    // Repéré à l'audit du 2026-09-24 ("Bien que l'appartement ne dispose pas d'espace extérieur,
+    // son exposition Sud-Ouest...") : même défaut de fond que les formulations ci-dessus — le
+    // texte souligne une absence au lieu de l'omettre, et vend le bien en creux. Variante non
+    // couverte jusqu'ici car elle n'emploie aucun des qualificatifs listés au-dessus.
+    ['absence soulignée au lieu d\'être omise', /\bne (dispose|disposent|comprend|comprennent|possède|possèdent) pas\b|\bd[ée]pourvus?\b|\bsans espace ext[ée]rieur\b/i],
     // Fuite de ton "notice interne" (documents/sources du pipeline) plutôt que texte commercial
     // destiné au lecteur — repéré sur plusieurs lots réels, formulations variées. Liste à enrichir
     // au fil des cas repérés, comme la liste des mots interdits l'a déjà été deux fois cette session.
@@ -1345,6 +1350,30 @@ function alternativesPourCorrection(hits, lot) {
             '- Corrige le titre pour respecter EXACTEMENT la structure "{Type de bien/résidence} – {formule investissement}" : une des deux formules "investissement LMNP géré" ou "LMNP 100 % géré" est obligatoire, jamais la ville.'
         );
     }
+    const prixHit = hits.find((h) => h.startsWith('prix absent'));
+    if (prixHit) {
+        const prixReel = prixHit.match(/([\d.]+) €/);
+        lignes.push(
+            prixReel
+                ? `- Le prix n'apparaît nulle part dans le texte alors que c'est l'information la plus importante d'une annonce. Ajoute-le, exactement tel quel, sans l'arrondir ni l'estimer : ${Math.trunc(Number(prixReel[1]))} €. Formule-le simplement, par exemple "Prix : ${Math.trunc(Number(prixReel[1])).toLocaleString('fr-FR')} €".`
+                : '- Le prix n\'apparaît nulle part dans le texte alors que c\'est l\'information la plus importante d\'une annonce. Ajoute le prix exact fourni dans les données du lot, sans jamais l\'arrondir ni l\'estimer.'
+        );
+    }
+    if (hits.some((h) => h.startsWith('vocabulaire résidentiel'))) {
+        lignes.push(
+            '- Ce bien est un local professionnel (bureau, local commercial), pas un logement : supprime tout vocabulaire résidentiel ("résidence", "ensemble résidentiel", "adresse résidentielle", "cadre de vie", "logement", "pièce de vie", "chambre", "habiter") et remplace-le par un vocabulaire professionnel exact ("immeuble", "immeuble de bureaux", "ensemble immobilier", "local", "plateau", "espace de travail", "cadre de travail"). Ne décris jamais une distribution de pièces de logement.'
+        );
+    }
+    if (hits.some((h) => h.startsWith('répétition : "résidence"'))) {
+        lignes.push(
+            '- Le mot "résidence" (ou "ensemble résidentiel") revient trop souvent dans le texte. Garde-le là où il est réellement utile et remplace les autres occurrences par une reprise naturelle ("elle", "l\'adresse", "les parties communes", "sur place") ou supprime la répétition — sans jamais retirer une information factuelle au passage.'
+        );
+    }
+    if (hits.some((h) => h.includes("absence soulignée"))) {
+        lignes.push(
+            '- Le texte souligne l\'ABSENCE d\'un équipement ("ne dispose pas de...", "dépourvu de...", "sans espace extérieur"). Supprime entièrement cette mention : une information absente s\'omet silencieusement, elle ne se commente jamais. Garde la partie positive de la phrase si elle en contient une.'
+        );
+    }
     if (hits.some((h) => h.startsWith('DPE/GES mentionné'))) {
         lignes.push(
             '- Supprime toute mention du DPE ou du GES dans le texte (lettre, "classe énergétique", "classe climat"...) — ces données ne doivent plus jamais apparaître dans l\'annonce, elles restent uniquement dans les champs structurés réglementaires. Supprime la ligne ou la mention entièrement, ne la remplace par rien.'
@@ -1495,6 +1524,57 @@ function validerPhotoPrincipale(nomPropose, lotImageData) {
     if (!nomPropose || typeof nomPropose !== 'string') return null;
     const trouve = (lotImageData || []).find((img) => (img.name || '').toLowerCase() === nomPropose.toLowerCase());
     return trouve ? trouve.name : null;
+}
+
+// ─── Garde-fous issus de l'audit des 30 annonces réellement publiées (2026-09-24) ───────────
+//
+// PRIX — la donnée la plus critique d'une annonce. Constaté sur cet audit : 5 annonces sur 30
+// (17%) ne comportaient AUCUN prix, dont un local commercial à 1 010 520 € et deux plateaux de
+// bureaux à plus d'un million d'euros. Les deux prompts l'exigent pourtant explicitement
+// (« Toujours reprendre le prix exact », « LES CHIFFRES CLÉS ») — l'instruction seule ne suffit
+// donc pas, exactement comme pour « Frais de notaire réduits » ou le CTA.
+//
+// Source unique : lot.prices[0].price, la même valeur que celle affichée à l'écran de
+// confirmation et transmise à Hubiflow — jamais une valeur recalculée ici.
+function prixReelDuLot(lot) {
+    const p = lot?.prices?.[0]?.price;
+    return typeof p === 'number' && p > 0 ? p : null;
+}
+
+// Comparaison sur les chiffres seuls : le texte écrit « 1 010 520 € » avec des espaces fines ou
+// insécables variables selon la génération, impossible à comparer littéralement. Les deux
+// arrondis sont acceptés (274 166,67 € peut légitimement s'écrire 274 166 ou 274 167).
+function prixAbsentDuTexte(texte, lot) {
+    const prix = prixReelDuLot(lot);
+    if (prix === null) return false; // prix inconnu côté données : rien à exiger du texte
+    const chiffres = (texte || '').replace(/[^0-9]/g, '');
+    return !chiffres.includes(String(Math.trunc(prix))) && !chiffres.includes(String(Math.round(prix)));
+}
+
+// NATURE NON RÉSIDENTIELLE — 6 annonces sur 30 (20%) portaient sur des bureaux ou un local
+// commercial, systématiquement décrits avec le vocabulaire résidentiel du prompt : un plateau de
+// bureaux de 341 m² intitulé « T5 341 m² – adresse résidentielle », un autre « assurant un cadre
+// de vie confortable ». Ce n'est pas seulement inadapté, c'est faux vis-à-vis de l'acheteur.
+const NATURES_NON_RESIDENTIELLES = ['bureau', 'local commercial', 'commerce', 'entrepôt', 'activité'];
+
+function estLotNonResidentiel(lot) {
+    const nature = (lot?.natureLabel || '').toLowerCase();
+    return NATURES_NON_RESIDENTIELLES.some((n) => nature.includes(n));
+}
+
+// Vocabulaire strictement résidentiel, interdit sur un bien professionnel. « résidence » y figure
+// volontairement : le prompt demande lui-même d'employer « résidence de standing » pour désigner
+// l'ensemble immobilier — formulation correcte pour un logement, trompeuse pour un bureau.
+const VOCABULAIRE_RESIDENTIEL_RE = /cadre de vie|adresse résidentielle|ensemble résidentiel|\brésidences?\b|\blogements?\b|habiter|pièce de vie|\bchambres?\b/i;
+
+// RÉPÉTITION INTERNE — 13 annonces sur 30 (43%) répétaient « résidence »/« ensemble résidentiel »
+// 3 à 6 fois dans un même texte, alors que les deux prompts demandent de ne pas répéter la même
+// information. Seuil à 5 (et non 3) volontairement conservateur : sur un texte LMNP centré sur la
+// résidence gérée, 3 ou 4 occurrences restent défendables, 5+ relève clairement du remplissage.
+const SEUIL_REPETITION_RESIDENCE = 5;
+
+function compterOccurrencesResidence(texte) {
+    return ((texte || '').match(/\brésidences?\b|ensemble résidentiel/gi) || []).length;
 }
 
 // OpenAI renvoie 429 pour DEUX situations très différentes, que le code traitait jusqu'ici de la
@@ -1682,6 +1762,16 @@ async function callOpenAILmnp(textContext, lotImageData, lot) {
         if (problemeCta) {
             hits = [...hits, problemeCta];
         }
+        if (prixAbsentDuTexte(resultat.texte, lot)) {
+            hits = [...hits, `prix absent du bloc "LES CHIFFRES CLÉS" (prix réel du lot : ${prixReelDuLot(lot)} €)`];
+        }
+        // Pas de contrôle de vocabulaire résidentiel ici, contrairement au chemin Neuf : le LMNP
+        // géré porte par nature sur des résidences de services, le mot y est donc légitime — seule
+        // sa répétition excessive est un défaut.
+        const nbResidence = compterOccurrencesResidence(resultat.texte);
+        if (nbResidence >= SEUIL_REPETITION_RESIDENCE) {
+            hits = [...hits, `répétition : "résidence" employé ${nbResidence} fois dans le même texte`];
+        }
         if (hits.length === 0) break;
 
         if (essai < MAX_TENTATIVES_CONFORMITE) {
@@ -1820,6 +1910,25 @@ function detecterProblemeCta(texte) {
     return 'CTA final non conforme (doit être exactement une des 7 phrases autorisées, en toute dernière position, rien après)';
 }
 
+// Injecté UNIQUEMENT pour un lot non résidentiel (voir estLotNonResidentiel) — le prompt client
+// décrit exclusivement du logement, et l'appliquer tel quel à un bureau produisait des annonces
+// fausses (audit du 2026-09-24 : « adresse résidentielle » et « cadre de vie » pour des plateaux
+// de bureaux). Ce bloc ne remplace pas le prompt, il neutralise ses formulations résidentielles
+// pour ce cas précis et recadre le lecteur visé (un professionnel, pas un habitant).
+const ADDENDUM_NEUF_BIEN_PROFESSIONNEL = `
+
+=== NATURE DU BIEN : LOCAL PROFESSIONNEL (PRIORITAIRE SUR TOUTE FORMULATION RÉSIDENTIELLE) ===
+
+Ce bien n'est PAS un logement : c'est un local professionnel (bureau, local commercial, local d'activité). L'acheteur visé est un professionnel ou un investisseur, jamais un habitant.
+
+N'utilise JAMAIS le vocabulaire résidentiel, même si le reste de ces consignes l'emploie : « résidence », « ensemble résidentiel », « résidence de standing », « adresse résidentielle », « cadre de vie », « logement », « pièce de vie », « chambre », « habiter ». Ces mots sont faux ici et trompent l'acheteur.
+
+Emploie à la place un vocabulaire professionnel exact : « immeuble », « immeuble de bureaux », « ensemble immobilier », « local », « plateau », « surface », « espace de travail », « cadre de travail », « adresse professionnelle ».
+
+Adapte la structure : décris la surface utile, la modularité/divisibilité des espaces, l'accessibilité (accès, stationnement, transports), la visibilité ou le passage pour un commerce, et le type d'activité auquel le bien se prête — jamais une distribution de pièces de logement (séjour, chambres, salle de bains), qui n'a aucun sens ici.
+
+Le prix, les frais de notaire réduits et l'absence de travaux restent mentionnés selon les mêmes règles que pour un logement.`;
+
 const ADDENDUM_NEUF_GARDE_FOUS = `
 
 === GARDE-FOUS SUPPLÉMENTAIRES (spécifiques à ce pipeline) ===
@@ -1835,7 +1944,12 @@ async function callOpenAINeuf(textContext, lotImageData, lot) {
         ...blocsImage,
     ];
 
-    const messages = [{ role: 'system', content: PROMPT_SYSTEME_NEUF_V1 + ADDENDUM_NEUF_GARDE_FOUS }, { role: 'user', content: messageContent }];
+    const lotProfessionnel = estLotNonResidentiel(lot);
+    const promptSysteme =
+        PROMPT_SYSTEME_NEUF_V1 +
+        ADDENDUM_NEUF_GARDE_FOUS +
+        (lotProfessionnel ? ADDENDUM_NEUF_BIEN_PROFESSIONNEL : '');
+    const messages = [{ role: 'system', content: promptSysteme }, { role: 'user', content: messageContent }];
 
     let resultat, hits = [];
     const MAX_TENTATIVES_CONFORMITE = 3;
@@ -1904,6 +2018,16 @@ async function callOpenAINeuf(textContext, lotImageData, lot) {
         const problemeCta = detecterProblemeCta(resultat.texte);
         if (problemeCta) {
             hits = [...hits, problemeCta];
+        }
+        if (prixAbsentDuTexte(resultat.texte, lot)) {
+            hits = [...hits, `prix absent du texte (prix réel du lot : ${prixReelDuLot(lot)} €)`];
+        }
+        if (lotProfessionnel && VOCABULAIRE_RESIDENTIEL_RE.test(resultat.texte || '')) {
+            hits = [...hits, 'vocabulaire résidentiel employé pour un bien professionnel (bureau/local commercial)'];
+        }
+        const nbResidence = compterOccurrencesResidence(resultat.texte);
+        if (nbResidence >= SEUIL_REPETITION_RESIDENCE) {
+            hits = [...hits, `répétition : "résidence" employé ${nbResidence} fois dans le même texte`];
         }
         // Constaté en tests réels (2026-09-23, plusieurs lots Neuf variés) : la seule instruction de
         // longueur du prompt (section 19) ne suffit pas à elle seule — même limite déjà documentée
