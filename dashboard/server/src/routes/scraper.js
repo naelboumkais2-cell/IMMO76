@@ -621,6 +621,25 @@ scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
     }
 });
 
+// TEMPORAIRE — validation du garde-fou "rue" (2026-09-24) : renvoie le lot brut de quelques
+// annonces précises pour les régénérer via le moteur IA. Lecture seule. À retirer après le test.
+scraperRouter.get('/diag-raw/:ids', exigerConnexion, async (req, res) => {
+    try {
+        const ids = String(req.params.ids).split(',').map((n) => parseInt(n, 10)).filter(Boolean).slice(0, 10);
+        if (!ids.length) return res.status(400).json({ erreur: 'ids requis' });
+        const rows = await db.prepare(
+            `SELECT a.id, a.raw_data, a.prix, p.login AS portail_login
+             FROM annonces a
+             JOIN annonce_portails ap ON ap.annonce_id = a.id
+             JOIN portails p ON p.id = ap.portail_id
+             WHERE a.id IN (${ids.map(() => '?').join(',')})`
+        ).all(...ids);
+        res.json(rows.map((r) => ({ id: r.id, prix: r.prix, portailLogin: r.portail_login, lot: JSON.parse(r.raw_data || '{}') })));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
