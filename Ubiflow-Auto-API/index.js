@@ -475,6 +475,20 @@ async function downloadOtareeImages(lot, imagesSelection) {
 const TEXT_CONTEXT_MAX_CHARS = 60000;
 function buildTextContext(lot) {
     const allege = { ...lot };
+
+    // Adresse assainie AVANT sérialisation (nom de programme retiré, casse normalisée — voir
+    // nomAdresseSansProgramme). Sans ça, le nettoyage ne portait que sur le bloc "DONNÉES CONNUES"
+    // construit à côté, tandis que ce dump JSON exposait toujours la valeur brute : le modèle
+    // pouvait donc la recopier telle quelle. Constaté sur le lot 76101, dont l'annonce citait
+    // "RUE DE PARIS" en capitales alors que la valeur nettoyée valait "rue de Paris" — et le même
+    // trou laissait passer le nom de programme ("PATIO VILLIERS") par ce chemin.
+    if (allege.program?.address) {
+        allege.program = {
+            ...allege.program,
+            address: { ...allege.program.address, name: nomAdresseSansProgramme(lot) },
+        };
+    }
+
     if (Array.isArray(allege.images)) {
         allege.images = allege.images.map(img => ({ name: img.name, mimeType: img.mimeType }));
     }
@@ -810,7 +824,7 @@ Minimum 500 caractères. Cible : environ 1500 à 2200 caractères espaces compri
 
 === STRUCTURE OBLIGATOIRE (5 BLOCS) ===
 
-BLOC 1 — INTRODUCTION DIRECTE (règle client, 2026-09-23) : PAS d'intertitre en majuscules pour ce premier bloc — commence directement par la phrase "Offre dédiée à l'investissement locatif en LMNP sous bail commercial.", suivie d'une courte explication du fonctionnement dans cet esprit : "Investir en LMNP géré, c'est opter pour un placement locatif où la gestion est confiée à un exploitant professionnel. Vous percevez un loyer selon les conditions du bail commercial, que le bien soit occupé ou non. Ce statut offre également des avantages fiscaux selon votre situation." Adapte légèrement la formulation d'une annonce à l'autre pour éviter une répétition mot pour mot systématique, sans changer le sens ni la structure de ces deux phrases. N'utilise JAMAIS "loyers garantis" ni "nets d'impôts" ou toute formulation équivalente — voir les interdictions strictes ci-dessous, qui s'appliquent aussi à cette introduction. Explique tôt la contrainte principale : le propriétaire ne peut pas habiter librement le logement ni y loger un proche pendant l'exécution du bail commercial — formule cela de façon pédagogique, jamais agressive (jamais "INUTILE DE NOUS CONTACTER POUR Y HABITER"). Comme aucune donnée de bail n'est disponible dans ce dossier, n'affirme jamais qu'une occupation personnelle est prévue — reste sur la règle générale. Ce premier paragraphe doit porter DEUX idées (règle client, 2026-09-25) : que le versement des loyers est encadré par le bail commercial, et que la fiscalité sur ces loyers est optimisée grâce à l'amortissement. Ne les ajoute SURTOUT PAS en fin de paragraphe sous forme de phrases supplémentaires : elles recouvrent des phrases déjà présentes ci-dessus, et les juxtaposer produirait une redite immédiate. Fusionne-les avec l'existant — l'encadrement par le bail enrichit la phrase qui explique déjà que le loyer est perçu selon les conditions du bail commercial, et l'amortissement précise celle qui évoque déjà les avantages fiscaux. Le paragraphe final doit donc compter le MÊME nombre de phrases qu'avant, chacune simplement plus complète, et l'idée du bail commercial ne doit jamais apparaître deux fois. Varie réellement ces formulations d'une annonce à l'autre : deux annonces différentes ne doivent pas porter la même phrase.
+BLOC 1 — INTRODUCTION DIRECTE (règle client, 2026-09-23) : PAS d'intertitre en majuscules pour ce premier bloc — commence directement par la phrase "Offre dédiée à l'investissement locatif en LMNP sous bail commercial.", suivie d'une courte explication du fonctionnement dans cet esprit : "Investir en LMNP géré, c'est opter pour un placement locatif où la gestion est confiée à un exploitant professionnel. Vous percevez un loyer selon les conditions du bail commercial, que le bien soit occupé ou non. Ce statut offre également des avantages fiscaux selon votre situation." Adapte légèrement la formulation d'une annonce à l'autre pour éviter une répétition mot pour mot systématique, sans changer le sens ni la structure de ces deux phrases. N'utilise JAMAIS "loyers garantis" ni "nets d'impôts" ou toute formulation équivalente — voir les interdictions strictes ci-dessous, qui s'appliquent aussi à cette introduction. Explique tôt la contrainte principale : le propriétaire ne peut pas habiter librement le logement ni y loger un proche pendant l'exécution du bail commercial — formule cela de façon pédagogique, jamais agressive (jamais "INUTILE DE NOUS CONTACTER POUR Y HABITER"). Comme aucune donnée de bail n'est disponible dans ce dossier, n'affirme jamais qu'une occupation personnelle est prévue — reste sur la règle générale. Ce premier paragraphe doit porter DEUX idées (règle client, 2026-09-25) : que le versement des loyers est encadré par le bail commercial, et que la fiscalité sur ces loyers est optimisée grâce à l'amortissement. Ne les ajoute SURTOUT PAS en fin de paragraphe sous forme de phrases supplémentaires : elles recouvrent des phrases déjà présentes ci-dessus, et les juxtaposer produirait une redite immédiate. Fusionne-les avec l'existant — l'encadrement par le bail enrichit la phrase qui explique déjà que le loyer est perçu selon les conditions du bail commercial, et l'amortissement précise celle qui évoque déjà les avantages fiscaux. Le paragraphe final doit donc compter le MÊME nombre de phrases qu'avant, chacune simplement plus complète, et l'idée du bail commercial ne doit jamais apparaître deux fois. Varie réellement ces formulations d'une annonce à l'autre : deux annonces différentes ne doivent pas porter la même phrase. Le mot "amortissement" doit IMPÉRATIVEMENT figurer dans ce paragraphe : écrire seulement "avantages fiscaux optimisés" ne suffit pas, c'est le mécanisme qui doit être nommé — une vérification automatique rejette le texte s'il en est absent.
 
 Ces deux idées doivent rester dans le registre mesuré imposé plus bas, ce qui exclut certaines tournures : pour le bail, écris que les loyers sont "encadrés par un bail commercial" ou "versés dans le cadre d'un bail commercial" — n'écris JAMAIS qu'ils sont "sécurisés" ni "garantis", ces deux mots étant formellement interdits (voir les interdictions strictes plus bas) parce qu'ils promettent une certitude absolue que ce cadre réglementé ne permet pas d'affirmer. Pour la fiscalité, l'amortissement réduit la base imposable des loyers, ce qui se décrit comme une fiscalité "optimisée" ou "allégée", jamais comme une absence d'imposition — n'écris donc à cette occasion ni "zéro impôt", ni "défiscalisé", ni "nets d'impôts".
 
@@ -1566,6 +1580,11 @@ function alternativesPourCorrection(hits, lot) {
             '- Pour "sécurisé"/"sécurisée"/"sécurité" → supprime le mot, ou remplace par "adapté", "de qualité" ou "confortable" selon le contexte — jamais par un synonyme de certitude.'
         );
     }
+    if (hits.some((h) => h.includes("amortissement absente"))) {
+        lignes.push(
+            '- Le premier paragraphe doit dire que la fiscalité sur les loyers est optimisée grâce à l\'amortissement, et le mot "amortissement" doit y figurer explicitement. Ne l\'ajoute PAS en phrase supplémentaire à la fin : complète la phrase qui évoque déjà les avantages fiscaux (ex: "Ce statut offre également des avantages fiscaux selon votre situation." devient "Ce statut permet aussi d\'alléger la fiscalité sur les loyers grâce à l\'amortissement, selon votre situation."). Ne promets jamais une absence d\'imposition.'
+        );
+    }
     if (hits.some((h) => h.includes("plus d'un superlatif dans le texte"))) {
         lignes.push(
             '- Le texte contient plus d\'un superlatif ("magnifique", "exceptionnel", "superbe"...). Garde au maximum UN SEUL superlatif dans tout le texte — celui qui est le plus objectivement justifié par une donnée réelle du dossier — et remplace chaque autre occurrence par une formulation neutre qui décrit simplement la caractéristique, sans adjectif emphatique.'
@@ -1986,6 +2005,14 @@ async function callOpenAILmnp(textContext, lotImageData, lot) {
         }
         if (rueAbsenteDuTexte(resultat.texte, lot)) {
             hits = [...hits, `rue absente ou altérée dans le texte (adresse réelle : "${nomAdresseSansProgramme(lot)}")`];
+        }
+        // L'optimisation fiscale par l'amortissement est une mention exigée par le client
+        // (2026-09-25) dans le premier paragraphe. La consigne seule ne suffit pas : sur les deux
+        // premiers lots testés, l'un ne gardait que l'idée ("avantages fiscaux optimisés") en
+        // perdant le mécanisme qui la justifie. Même constat que pour la longueur ou les
+        // superlatifs — une exigence de contenu ponctuelle se perd dans un prompt déjà long.
+        if (!/amortissement/i.test(resultat.texte || '')) {
+            hits = [...hits, "mention de l'amortissement absente du premier paragraphe (exigée par le client)"];
         }
         // Pas de contrôle de vocabulaire résidentiel ici, contrairement au chemin Neuf : le LMNP
         // géré porte par nature sur des résidences de services, le mot y est donc légitime — seule
