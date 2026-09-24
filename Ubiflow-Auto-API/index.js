@@ -1703,6 +1703,31 @@ function estQuotaOpenAIEpuise(e) {
 // Message volontairement explicite et actionnable : c'est lui qui remonte jusqu'à l'écran de
 // supervision via alerteConformite/logs_api, là où l'ancien "Request failed with status code 429"
 // n'apprenait rien à personne.
+// Attente avant nouvelle tentative sur un 429 de type RATE LIMIT (débit), à ne pas confondre avec
+// le 429 "crédits épuisés" traité juste au-dessus, qui lui n'est jamais retenté.
+//
+// Incident réel (2026-09-24, test LMNP) : 30 lots lancés d'un bloc ont tous échoué en 429. Chaque
+// génération envoie le JSON complet du lot (~15-20k tokens) PLUS jusqu'à 20 photos, très coûteuses
+// en tokens de vision — la rafale dépassait le plafond du compte (mesuré : 800 000 tokens/minute).
+// L'ancien backoff (1s puis 2s) ne laissait aucune chance à la fenêtre de se rouvrir : une limite
+// par minute ne se libère pas en deux secondes. Les mêmes lots relancés plus étalés passaient sans
+// une seule erreur — le contenu n'était pas en cause, uniquement le rythme.
+//
+// OpenAI indique lui-même le délai à respecter dans ses en-têtes : on l'utilise quand il est
+// présent plutôt que de le deviner, avec un plafond de sécurité pour ne pas bloquer un run entier
+// sur une valeur aberrante.
+const PALIERS_ATTENTE_429_MS = [5000, 20000, 60000];
+const ATTENTE_429_MAX_MS = 90000;
+
+function delaiAvantNouvelleTentative429(e, tentative) {
+    const entetes = e?.response?.headers || {};
+    const ms = parseFloat(entetes['retry-after-ms']);
+    if (Number.isFinite(ms) && ms > 0) return Math.min(ms, ATTENTE_429_MAX_MS);
+    const secondes = parseFloat(entetes['retry-after']);
+    if (Number.isFinite(secondes) && secondes > 0) return Math.min(secondes * 1000, ATTENTE_429_MAX_MS);
+    return PALIERS_ATTENTE_429_MS[Math.min(tentative - 1, PALIERS_ATTENTE_429_MS.length - 1)];
+}
+
 function erreurQuotaOpenAI(e) {
     const message = e?.response?.data?.error?.message || 'aucun détail fourni par OpenAI';
     return new Error(
@@ -1841,8 +1866,8 @@ async function callOpenAILmnp(textContext, lotImageData, lot) {
                 // 3 tentatives par lot sur une cause qui ne se résoudra pas seule.
                 if (estQuotaOpenAIEpuise(e)) throw erreurQuotaOpenAI(e);
                 if (e.response?.status !== 429 || tentative === 3) throw e;
-                const delaiMs = 1000 * 2 ** (tentative - 1);
-                console.log(`[callOpenAILmnp] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
+                const delaiMs = delaiAvantNouvelleTentative429(e, tentative);
+                console.log(`[callOpenAILmnp] 429 (limite de débit) — nouvelle tentative dans ${Math.round(delaiMs / 1000)}s (${tentative}/3)`);
                 await new Promise((r) => setTimeout(r, delaiMs));
             }
         }
@@ -2083,8 +2108,8 @@ async function callOpenAINeuf(textContext, lotImageData, lot) {
                 // 3 tentatives par lot sur une cause qui ne se résoudra pas seule.
                 if (estQuotaOpenAIEpuise(e)) throw erreurQuotaOpenAI(e);
                 if (e.response?.status !== 429 || tentative === 3) throw e;
-                const delaiMs = 1000 * 2 ** (tentative - 1);
-                console.log(`[callOpenAINeuf] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
+                const delaiMs = delaiAvantNouvelleTentative429(e, tentative);
+                console.log(`[callOpenAINeuf] 429 (limite de débit) — nouvelle tentative dans ${Math.round(delaiMs / 1000)}s (${tentative}/3)`);
                 await new Promise((r) => setTimeout(r, delaiMs));
             }
         }
@@ -2468,8 +2493,8 @@ Renvoie UNIQUEMENT un objet JSON strictement conforme à la structure suivante, 
                 // 3 tentatives par lot sur une cause qui ne se résoudra pas seule.
                 if (estQuotaOpenAIEpuise(e)) throw erreurQuotaOpenAI(e);
                 if (e.response?.status !== 429 || tentative === 3) throw e;
-                const delaiMs = 1000 * 2 ** (tentative - 1);
-                console.log(`[callOpenAI] 429 (limite de débit) — nouvelle tentative dans ${delaiMs}ms (${tentative}/3)`);
+                const delaiMs = delaiAvantNouvelleTentative429(e, tentative);
+                console.log(`[callOpenAI] 429 (limite de débit) — nouvelle tentative dans ${Math.round(delaiMs / 1000)}s (${tentative}/3)`);
                 await new Promise((r) => setTimeout(r, delaiMs));
             }
         }
