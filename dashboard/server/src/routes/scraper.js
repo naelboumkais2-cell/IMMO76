@@ -662,7 +662,18 @@ scraperRouter.get('/diag-tokens', exigerConnexion, async (req, res) => {
              WHERE message LIKE 'Alerte conformité%'
              GROUP BY DATE(cree_le) ORDER BY jour DESC LIMIT 30`
         ).all();
-        res.json({ parJour, parMinute, lotsParJour, alertesParJour });
+        // Détail brut de la minute de pic la plus récente, pour voir EXACTEMENT combien
+        // d'appels (retries compris) se sont chevauchés dans la même fenêtre de 60s.
+        const picDetail = await db.prepare(
+            `SELECT DATE_TRUNC('minute', cree_le) AS minute,
+                    COUNT(*)::int AS nb_appels,
+                    SUM(prompt_tokens + completion_tokens)::bigint AS total_tokens,
+                    MIN(cree_le) AS premier, MAX(cree_le) AS dernier
+             FROM openai_usage_log
+             GROUP BY DATE_TRUNC('minute', cree_le)
+             ORDER BY total_tokens DESC LIMIT 5`
+        ).all();
+        res.json({ parJour, parMinute, lotsParJour, alertesParJour, picDetail });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
