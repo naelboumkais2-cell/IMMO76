@@ -650,6 +650,7 @@ scraperRouter.get('/diag-audit-textes', exigerConnexion, async (req, res) => {
                 planNom: raw?.plan?.name ?? null,
                 imagesBrutes: (raw.images || []).map((i) => i.name),
                 nbImagesPubliees: imgs.length,
+                ...(req.query.avecImage === '1' ? { premiereImage: imgs[0] || null } : {}),
             };
         }));
     } catch (e) {
