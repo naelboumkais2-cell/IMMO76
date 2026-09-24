@@ -1100,7 +1100,11 @@ Ne jamais modifier le numéro de téléphone. Ne pas ajouter un autre CTA après
 18. RÈGLES DE QUALITÉ
 Ne pas répéter trois fois la même information. Varier les formulations d'une annonce à l'autre. Faire
 des paragraphes courts et faciles à lire sur Leboncoin. Ne pas utiliser d'émojis ni de hashtags. Ne pas
-écrire des phrases entières en majuscules (hors intertitres). Ne pas utiliser de jargon de promoteur.
+écrire des phrases entières en majuscules (hors intertitres). Ne pas utiliser de jargon de promoteur :
+si le descriptif source emploie un sigle ou un terme métier que le grand public ne comprend pas
+(« CINASPIC », « VEFA », « ZAC », « coursives », « R+4 »...), ne le reprends jamais tel quel — traduis-le
+en langage courant si tu sais ce qu'il désigne, sinon supprime simplement la mention plutôt que de
+l'écrire sans explication.
 
 REFORMULATION OBLIGATOIRE (règle client, 2026-09-25) : ne jamais recopier une tournure du descriptif
 du programme ou d'un document commercial. Critère vérifiable : jamais plus de CINQ mots consécutifs

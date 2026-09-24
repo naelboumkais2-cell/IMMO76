@@ -574,49 +574,6 @@ scraperRouter.get('/lots-en-attente-count', exigerConnexion, async (req, res) =>
     }
 });
 
-// TEMPORAIRE (2026-09-25) — audit de la fuite "nom de programme dans l'adresse" sur les lots
-// déjà générés. À retirer une fois le constat fait.
-scraperRouter.get('/diag-fuite-nom', exigerConnexion, async (req, res) => {
-    try {
-        const rows = await db.prepare(
-            `SELECT DISTINCT a.id, a.ville, a.raw_data, a.donnees_ia,
-                    (SELECT string_agg(DISTINCT ap2.portail_id::text, ',') FROM annonce_portails ap2 WHERE ap2.annonce_id = a.id) AS portails,
-                    (SELECT string_agg(DISTINCT ap3.statut, ',') FROM annonce_portails ap3 WHERE ap3.annonce_id = a.id) AS statuts,
-                    (SELECT COUNT(*)::int FROM annonce_portails ap4 WHERE ap4.annonce_id = a.id AND ap4.ad_id_externe IS NOT NULL AND ap4.statut != 'depubliee') AS nb_en_ligne
-             FROM annonces a
-             JOIN annonce_portails ap ON ap.annonce_id = a.id
-             WHERE a.donnees_ia IS NOT NULL
-             ORDER BY a.id DESC LIMIT 300`
-        ).all();
-
-        const cle = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const touches = [];
-        for (const r of rows) {
-            const raw = JSON.parse(r.raw_data || '{}');
-            const adresse = raw?.program?.address?.name;
-            const nomProg = raw?.program?.name;
-            if (typeof adresse !== 'string' || typeof nomProg !== 'string' || !adresse || !nomProg) continue;
-            const ma = adresse.trim().split(/\s+/);
-            const mp = nomProg.trim().split(/\s+/);
-            let i = 0;
-            while (i < ma.length && i < mp.length && cle(ma[i]) && cle(ma[i]) === cle(mp[i])) i++;
-            if (i === 0) continue;
-            const prefixe = ma.slice(0, i).join(' ');
-            const texte = (JSON.parse(r.donnees_ia || '{}')?.texte) || '';
-            touches.push({
-                id: r.id, ville: r.ville, portails: r.portails, statuts: r.statuts, nbEnLigne: r.nb_en_ligne,
-                nomProgramme: nomProg, adresseBrute: adresse,
-                adresseNettoyee: ma.slice(i).join(' ') || null,
-                prefixeRetire: prefixe,
-                prefixePresentDansTexte: cle(texte).includes(cle(prefixe)),
-            });
-        }
-        res.json({ nbAnalyses: rows.length, nbAdressesPolluees: touches.length, lots: touches });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 // Reprend le pipeline auto-publish directement depuis la base, sans repasser par Otaree —
 // comble le trou laissé par otaree-search(-national) : leur liste de candidats ne vit qu'en
 // mémoire le temps d'un seul appel HTTP (voir commentaire sur candidatsAccumules plus haut),
