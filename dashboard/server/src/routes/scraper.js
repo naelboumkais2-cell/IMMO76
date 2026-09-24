@@ -34,6 +34,7 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
+    enrichirLot,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -569,6 +570,51 @@ scraperRouter.get('/lots-en-attente-count', exigerConnexion, async (req, res) =>
     try {
         const row = await db.prepare(`SELECT COUNT(*)::int AS n FROM annonces WHERE donnees_ia IS NULL`).get();
         res.json({ count: row.n });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+// TEMPORAIRE (2026-09-25) — comparaison avant/après du correctif descriptif programme.
+scraperRouter.get('/diag-textes', exigerConnexion, async (req, res) => {
+    try {
+        const ids = String(req.query.ids || '').split(',').map(Number).filter(Boolean);
+        if (!ids.length) return res.status(400).json({ erreur: 'ids requis' });
+        const rows = await db.prepare(
+            `SELECT a.id, a.titre, a.ville, a.donnees_ia, a.raw_data,
+                    (SELECT string_agg(ap.portail_id::text, ',') FROM annonce_portails ap WHERE ap.annonce_id = a.id) AS portails
+             FROM annonces a WHERE a.id = ANY(?) ORDER BY a.id`
+        ).all(ids);
+        res.json(rows.map((r) => {
+            const ia = JSON.parse(r.donnees_ia || '{}');
+            const raw = JSON.parse(r.raw_data || '{}');
+            const texte = ia?.texte || '';
+            return {
+                id: r.id, titre: r.titre, portails: r.portails,
+                nbMots: texte.trim().split(/\s+/).filter(Boolean).length,
+                nbCar: texte.length,
+                lgDescProgEnBase: (raw?.program?.description || '').length,
+                titreIA: ia?.titre || null,
+                texte,
+            };
+        }));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
+// TEMPORAIRE (2026-09-25) — descriptif programme réellement vu par le modèle, pour vérifier
+// qu'aucune affirmation du texte généré n'est inventée.
+scraperRouter.get('/diag-source', exigerConnexion, async (req, res) => {
+    try {
+        const row = await db.prepare(`SELECT raw_data FROM annonces WHERE id = ?`).get(Number(req.query.id));
+        if (!row) return res.status(404).json({ erreur: 'lot introuvable' });
+        const lot = await enrichirLot(JSON.parse(row.raw_data || '{}'));
+        res.json({
+            descLot: lot?.description || null,
+            descProgramme: lot?.program?.description || null,
+            lgDescProgramme: (lot?.program?.description || '').length,
+        });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
