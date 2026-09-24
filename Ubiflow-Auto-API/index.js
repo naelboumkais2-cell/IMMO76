@@ -1016,8 +1016,12 @@ chaleur ; prestations de standing ; équipements communs (espace fitness, salle 
 prestation parce qu'elle est fréquente dans ce type de résidence.
 
 Même consigne qu'au paragraphe précédent : le descriptif du programme mentionne souvent plusieurs
-prestations concrètes à la suite (équipements, services, chiffres d'occupation...) — reprends-en
-plusieurs plutôt qu'une seule au hasard, tant qu'elles sont réellement présentes dans les données.
+prestations concrètes à la suite (équipements, services, chiffres d'occupation...) — retiens-en
+plusieurs plutôt qu'une seule au hasard, tant qu'elles sont réellement présentes dans les données,
+et REFORMULE-LES systématiquement dans tes propres mots (même exigence de reformulation qu'au
+paragraphe 5, qui vaut ici aussi). Reprendre l'information est obligatoire ; reprendre la phrase
+qui la porte est interdit, y compris quand le descriptif est déjà bien écrit et que sa tournure
+semble difficile à améliorer.
 
 Exigence minimale, mesurable : si le descriptif du programme liste au moins 3 prestations ou
 équipements distincts réellement confirmés, ce paragraphe doit en citer AU MOINS 3 — ne t'arrête pas
@@ -1053,8 +1057,19 @@ Ne jamais modifier le numéro de téléphone. Ne pas ajouter un autre CTA après
 18. RÈGLES DE QUALITÉ
 Ne pas répéter trois fois la même information. Varier les formulations d'une annonce à l'autre. Faire
 des paragraphes courts et faciles à lire sur Leboncoin. Ne pas utiliser d'émojis ni de hashtags. Ne pas
-écrire des phrases entières en majuscules (hors intertitres). Ne pas utiliser de jargon de promoteur. Ne
-pas recopier mot pour mot les documents commerciaux. Transformer les données techniques en
+écrire des phrases entières en majuscules (hors intertitres). Ne pas utiliser de jargon de promoteur.
+
+REFORMULATION OBLIGATOIRE (règle client, 2026-09-25) : ne jamais recopier une tournure du descriptif
+du programme ou d'un document commercial. Critère vérifiable : jamais plus de CINQ mots consécutifs
+identiques à la source, hors noms propres, chiffres, unités et termes techniques sans synonyme
+(« RE2020 », « frais de notaire réduits », « T3 », « 82 m² »). Changer un mot ou deux dans une phrase
+reprise ne suffit pas : la structure de phrase elle-même doit être la tienne. Cette règle s'applique
+même — et surtout — quand le descriptif source est déjà bien rédigé : un descriptif bien écrit est
+une source d'informations à réutiliser, jamais un texte à réemployer. Exemple de ce qu'il ne faut pas
+faire : la source écrit « le niveau de prestations élevé des parties privatives, l'aspect des matériaux
+et la décoration des parties communes » et l'annonce reprend cette suite telle quelle ; il fallait
+écrire quelque chose comme « les finitions intérieures comme les espaces partagés ont été traités avec
+le même soin ». Transformer les données techniques en
 bénéfices compréhensibles. Ne jamais présenter une caractéristique générale de la résidence comme
 une caractéristique certaine du logement si cela n'est pas confirmé. Ne pas parler des autres lots
 disponibles. Ne jamais citer la source des données ("Otaree" ou toute autre plateforme).
