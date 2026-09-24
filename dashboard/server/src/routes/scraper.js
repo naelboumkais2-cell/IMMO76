@@ -616,6 +616,51 @@ scraperRouter.get('/diag-neuf-env', exigerConnexion, async (req, res) => {
     }
 });
 
+// TEMPORAIRE (2026-09-25) — quelles clés Otaree nous parviennent réellement, Neuf vs LMNP.
+scraperRouter.get('/diag-cles-otaree', exigerConnexion, async (req, res) => {
+    try {
+        const rows = await db.prepare(
+            `SELECT a.id, a.ville, a.raw_data, ap.portail_id
+             FROM annonces a
+             JOIN annonce_portails ap ON ap.annonce_id = a.id
+             WHERE a.raw_data IS NOT NULL
+             ORDER BY a.id DESC LIMIT 400`
+        ).all();
+
+        const parPortail = {};
+        for (const r of rows) {
+            const p = r.portail_id;
+            if (!parPortail[p]) parPortail[p] = { portail: p, nbLots: 0, avecDescLot: 0, avecDescProg: 0, exemple: null, clesLot: new Set(), clesProg: new Set() };
+            const b = parPortail[p];
+            const raw = JSON.parse(r.raw_data || '{}');
+            b.nbLots++;
+            if ((raw?.description || '').length > 0) b.avecDescLot++;
+            if ((raw?.program?.description || '').length > 0) b.avecDescProg++;
+            Object.keys(raw || {}).forEach((k) => b.clesLot.add(k));
+            Object.keys(raw?.program || {}).forEach((k) => b.clesProg.add(k));
+            if (!b.exemple) {
+                b.exemple = {
+                    id: r.id,
+                    ville: r.ville,
+                    adresse: raw?.program?.address || null,
+                    extraitDescLot: (raw?.description || '').slice(0, 400),
+                    extraitDescProg: (raw?.program?.description || '').slice(0, 400),
+                };
+            }
+        }
+
+        res.json(
+            Object.values(parPortail).map((b) => ({
+                ...b,
+                clesLot: [...b.clesLot].sort(),
+                clesProg: [...b.clesProg].sort(),
+            }))
+        );
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // Reprend le pipeline auto-publish directement depuis la base, sans repasser par Otaree —
 // comble le trou laissé par otaree-search(-national) : leur liste de candidats ne vit qu'en
 // mémoire le temps d'un seul appel HTTP (voir commentaire sur candidatsAccumules plus haut),
