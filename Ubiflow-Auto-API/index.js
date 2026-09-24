@@ -513,11 +513,35 @@ function piecesDepuisTypologie(typology) {
 // une voie qui contiendrait par coïncidence un mot du nom du programme ("Rue des Jardins" pour un
 // programme "Le Jardin d'Adélaïde"). Si le nom du programme n'apparaît pas en tête — le cas de
 // loin le plus fréquent — l'adresse est renvoyée strictement inchangée.
+// Otaree renvoie parfois l'adresse intégralement en majuscules ("RUE DE PARIS", constaté
+// 2026-09-25 sur le lot 76115) — reprise telle quelle dans l'annonce, elle viole la règle 18 des
+// deux prompts (jamais de phrase entière en majuscules) et fait négligé sur Leboncoin.
+//
+// N'intervient QUE si la chaîne ne contient aucune minuscule : une adresse déjà correctement
+// casée est renvoyée telle quelle, sans risque de l'abîmer. Types de voie et particules restent
+// en minuscules, conformément à l'usage français ("17 rue Lebouteux", pas "17 Rue Lebouteux").
+const PARTICULES_ADRESSE = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'd', 'l', 'et', 'sur', 'sous', 'en', 'au', 'aux']);
+const TYPES_VOIE = new Set([
+    'rue', 'avenue', 'boulevard', 'place', 'chemin', 'allee', 'allée', 'allees', 'allées', 'impasse',
+    'quai', 'cours', 'route', 'square', 'passage', 'esplanade', 'voie', 'sentier', 'villa', 'promenade', 'parvis',
+]);
+
+function normaliserCasseAdresse(adresse) {
+    if (typeof adresse !== 'string' || !adresse || /[a-zà-öø-ÿ]/.test(adresse)) return adresse;
+    // Traite chaque suite de lettres isolément plutôt que chaque mot séparé par des espaces :
+    // sinon "CHAMPS-ELYSEES" donne "Champs-elysees" et "D'ITALIE" donne "D'italie" — les deux
+    // constatés en test. Ici chaque composant d'un nom composé ou élidé est recasé pour lui-même.
+    return adresse.toLowerCase().replace(/[a-zà-öø-ÿ]+/g, (mot) => {
+        if (PARTICULES_ADRESSE.has(mot) || TYPES_VOIE.has(mot)) return mot;
+        return mot.charAt(0).toUpperCase() + mot.slice(1);
+    });
+}
+
 function nomAdresseSansProgramme(lot) {
     const adresse = lot?.program?.address?.name;
     if (typeof adresse !== 'string' || !adresse.trim()) return null;
     const nomProgramme = lot?.program?.name;
-    if (typeof nomProgramme !== 'string' || !nomProgramme.trim()) return adresse;
+    if (typeof nomProgramme !== 'string' || !nomProgramme.trim()) return normaliserCasseAdresse(adresse);
 
     const cle = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const motsAdresse = adresse.trim().split(/\s+/);
@@ -532,13 +556,13 @@ function nomAdresseSansProgramme(lot) {
     ) {
         i++;
     }
-    if (i === 0) return adresse;
+    if (i === 0) return normaliserCasseAdresse(adresse);
 
     // Adresse entièrement composée du nom du programme : aucune voie réelle connue, on renvoie
     // null plutôt qu'une chaîne vide — les appelants retombent alors sur l'omission silencieuse
     // prévue par les prompts, au lieu d'exiger la présence d'une rue inexistante.
     const reste = motsAdresse.slice(i).join(' ').replace(/^[\s,–-]+/, '').trim();
-    return reste || null;
+    return reste ? normaliserCasseAdresse(reste) : null;
 }
 
 // Sépare "numéro de voie" et "adresse" (nom de voie) depuis le texte libre program.address.name
@@ -790,7 +814,7 @@ BLOC 1 — INTRODUCTION DIRECTE (règle client, 2026-09-23) : PAS d'intertitre e
 
 Ces deux idées doivent rester dans le registre mesuré imposé plus bas, ce qui exclut certaines tournures : pour le bail, écris que les loyers sont "encadrés par un bail commercial" ou "versés dans le cadre d'un bail commercial" — n'écris JAMAIS qu'ils sont "sécurisés" ni "garantis", ces deux mots étant formellement interdits (voir les interdictions strictes plus bas) parce qu'ils promettent une certitude absolue que ce cadre réglementé ne permet pas d'affirmer. Pour la fiscalité, l'amortissement réduit la base imposable des loyers, ce qui se décrit comme une fiscalité "optimisée" ou "allégée", jamais comme une absence d'imposition — n'écris donc à cette occasion ni "zéro impôt", ni "défiscalisé", ni "nets d'impôts".
 
-BLOC 2 — LES CHIFFRES CLÉS : intertitre "LES CHIFFRES CLÉS" en majuscules sur sa propre ligne, puis une donnée par ligne au format "Libellé : valeur", en n'utilisant QUE les données fournies dans le bloc "DONNÉES CONNUES AVEC CERTITUDE" du message utilisateur (prix, surface, loyer annuel = loyer mensuel x12, rentabilité si fournie). La surface figure OBLIGATOIREMENT dans ce bloc (règle client, 2026-09-25) dès qu'elle est connue — elle y était prévue dès l'origine mais en était absente en pratique. Elle doit en plus RESTER mentionnée dans le corps descriptif du bien : c'est un ajout ici, jamais un déplacement. N'affiche jamais une ligne "charges de copropriété", "taxe foncière", "gestion locative", "travaux courants" ou toute autre donnée non explicitement fournie — omets la ligne plutôt que d'écrire "non communiqué(e)". Ne jamais indiquer durée restante du bail, date de renouvellement, fonds travaux, ou effort d'épargne mensuel.
+BLOC 2 — LES CHIFFRES CLÉS : intertitre "LES CHIFFRES CLÉS" en majuscules sur sa propre ligne, puis une donnée par ligne au format "Libellé : valeur", en n'utilisant QUE les données fournies dans le bloc "DONNÉES CONNUES AVEC CERTITUDE" du message utilisateur (prix, surface, loyer annuel = loyer mensuel x12, rentabilité si fournie). La surface figure OBLIGATOIREMENT dans ce bloc (règle client, 2026-09-25) dès qu'elle est connue — elle y était prévue dès l'origine mais en était absente en pratique. Elle doit en plus RESTER mentionnée dans le corps descriptif du bien : c'est un ajout ici, jamais un déplacement. AUCUNE DÉCIMALE dans ce bloc : arrondis la surface au m² entier le plus proche (46,15 m² s'écrit "46 m²", 82,71 m² s'écrit "83 m²") et tous les montants en euros à l'euro entier (176 303,31 € s'écrit "176 303 €", 8 110,44 € s'écrit "8 110 €") — des décimales sur des chiffres mis en avant font négligé. N'arrondis JAMAIS au-delà de l'unité : le prix doit rester le montant réel du lot, jamais une valeur "ronde" du type 176 300 € ou 180 000 €. Seul le pourcentage de rentabilité conserve ses décimales (4,07 %). N'affiche jamais une ligne "charges de copropriété", "taxe foncière", "gestion locative", "travaux courants" ou toute autre donnée non explicitement fournie — omets la ligne plutôt que d'écrire "non communiqué(e)". Ne jamais indiquer durée restante du bail, date de renouvellement, fonds travaux, ou effort d'épargne mensuel.
 
 BLOC 3 — POURQUOI CETTE CATÉGORIE ? : intertitre "POURQUOI INVESTIR DANS [TYPE DE RÉSIDENCE] ?" en majuscules, 2 à 4 lignes contextualisant l'investissement selon la catégorie identifiée (utilise les statistiques de marché ci-dessous UNIQUEMENT si elles sont pertinentes pour la catégorie identifiée, jamais inventées) :
 - Résidence étudiante : plus de 3 millions d'étudiants pour 400 000 places en résidence étudiante, soit une place pour huit étudiants.
