@@ -574,6 +574,34 @@ scraperRouter.get('/lots-en-attente-count', exigerConnexion, async (req, res) =>
     }
 });
 
+// TEMPORAIRE (2026-09-25) — comparaison avant/après du correctif descriptif programme.
+scraperRouter.get('/diag-textes', exigerConnexion, async (req, res) => {
+    try {
+        const ids = String(req.query.ids || '').split(',').map(Number).filter(Boolean);
+        if (!ids.length) return res.status(400).json({ erreur: 'ids requis' });
+        const rows = await db.prepare(
+            `SELECT a.id, a.titre, a.ville, a.donnees_ia, a.raw_data,
+                    (SELECT string_agg(ap.portail_id::text, ',') FROM annonce_portails ap WHERE ap.annonce_id = a.id) AS portails
+             FROM annonces a WHERE a.id = ANY(?) ORDER BY a.id`
+        ).all(ids);
+        res.json(rows.map((r) => {
+            const ia = JSON.parse(r.donnees_ia || '{}');
+            const raw = JSON.parse(r.raw_data || '{}');
+            const texte = ia?.texte || '';
+            return {
+                id: r.id, titre: r.titre, portails: r.portails,
+                nbMots: texte.trim().split(/\s+/).filter(Boolean).length,
+                nbCar: texte.length,
+                lgDescProgEnBase: (raw?.program?.description || '').length,
+                titreIA: ia?.titre || null,
+                texte,
+            };
+        }));
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // Reprend le pipeline auto-publish directement depuis la base, sans repasser par Otaree —
 // comble le trou laissé par otaree-search(-national) : leur liste de candidats ne vit qu'en
 // mémoire le temps d'un seul appel HTTP (voir commentaire sur candidatsAccumules plus haut),
