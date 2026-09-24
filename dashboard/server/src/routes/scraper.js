@@ -621,6 +621,39 @@ scraperRouter.delete('/lots-en-attente', exigerConnexion, async (req, res) => {
     }
 });
 
+// TEMPORAIRE — analyse de consommation de tokens par jour (question client : pourquoi un rate
+// limit à 30 lots aujourd'hui alors que 400 lots passaient il y a quelques semaines ?).
+// Lecture seule sur openai_usage_log. À retirer après analyse.
+scraperRouter.get('/diag-tokens', exigerConnexion, async (req, res) => {
+    try {
+        const parJour = await db.prepare(
+            `SELECT DATE(cree_le) AS jour,
+                    COUNT(*)::int AS appels,
+                    ROUND(AVG(prompt_tokens))::int AS moy_prompt,
+                    ROUND(AVG(completion_tokens))::int AS moy_completion,
+                    MAX(prompt_tokens)::int AS max_prompt,
+                    SUM(prompt_tokens)::bigint AS total_prompt
+             FROM openai_usage_log
+             GROUP BY DATE(cree_le)
+             ORDER BY jour DESC
+             LIMIT 30`
+        ).all();
+        // Débit réel : pic de tokens envoyés sur une minute glissante, par jour
+        const parMinute = await db.prepare(
+            `SELECT jour, MAX(tokens_minute)::bigint AS pic_tokens_par_minute, MAX(appels_minute)::int AS pic_appels_par_minute
+             FROM (
+               SELECT DATE(cree_le) AS jour, DATE_TRUNC('minute', cree_le) AS minute,
+                      SUM(prompt_tokens + completion_tokens) AS tokens_minute,
+                      COUNT(*) AS appels_minute
+               FROM openai_usage_log GROUP BY 1, 2
+             ) t GROUP BY jour ORDER BY jour DESC LIMIT 30`
+        ).all();
+        res.json({ parJour, parMinute });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 scraperRouter.get('/otaree-locations', exigerConnexion, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
