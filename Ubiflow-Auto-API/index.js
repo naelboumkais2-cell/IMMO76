@@ -498,6 +498,49 @@ function piecesDepuisTypologie(typology) {
     return m ? parseInt(m[1], 10) : null;
 }
 
+// Otaree stocke parfois le NOM DU PROGRAMME en tête du champ adresse — constaté en conditions
+// réelles (2026-09-25, lot Nexity 76144) : program.name = "PATIO VILLIERS 1" et
+// program.address.name = "PATIO VILLIERS 17 RUE LEBOUTEUX", alors que la voie réelle est la seule
+// "17 rue Lebouteux". Laissé tel quel, le nom commercial du programme part dans l'annonce publique,
+// ce que la règle 3 des prompts interdit formellement — et le garde-fou "rue absente ou altérée"
+// l'y FORCE même, puisqu'il exige que le texte reprenne l'adresse entière (voir noyauVoie).
+//
+// Comparaison MOT À MOT obligatoire, jamais un remplacement de sous-chaîne : "PATIO VILLIERS 1"
+// est un préfixe littéral de "PATIO VILLIERS 17 RUE LEBOUTEUX", donc un simple replace textuel
+// laisserait "7 RUE LEBOUTEUX" — un faux numéro de voie, plus grave que le problème d'origine.
+//
+// Ne retire qu'un préfixe : c'est la seule forme observée, et se limiter à elle évite d'amputer
+// une voie qui contiendrait par coïncidence un mot du nom du programme ("Rue des Jardins" pour un
+// programme "Le Jardin d'Adélaïde"). Si le nom du programme n'apparaît pas en tête — le cas de
+// loin le plus fréquent — l'adresse est renvoyée strictement inchangée.
+function nomAdresseSansProgramme(lot) {
+    const adresse = lot?.program?.address?.name;
+    if (typeof adresse !== 'string' || !adresse.trim()) return null;
+    const nomProgramme = lot?.program?.name;
+    if (typeof nomProgramme !== 'string' || !nomProgramme.trim()) return adresse;
+
+    const cle = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const motsAdresse = adresse.trim().split(/\s+/);
+    const motsProgramme = nomProgramme.trim().split(/\s+/);
+
+    let i = 0;
+    while (
+        i < motsAdresse.length &&
+        i < motsProgramme.length &&
+        cle(motsAdresse[i]) &&
+        cle(motsAdresse[i]) === cle(motsProgramme[i])
+    ) {
+        i++;
+    }
+    if (i === 0) return adresse;
+
+    // Adresse entièrement composée du nom du programme : aucune voie réelle connue, on renvoie
+    // null plutôt qu'une chaîne vide — les appelants retombent alors sur l'omission silencieuse
+    // prévue par les prompts, au lieu d'exiger la présence d'une rue inexistante.
+    const reste = motsAdresse.slice(i).join(' ').replace(/^[\s,–-]+/, '').trim();
+    return reste || null;
+}
+
 // Sépare "numéro de voie" et "adresse" (nom de voie) depuis le texte libre program.address.name
 // d'Otaree — validé sur 35 adresses réelles (Rouen/Marseille, 2026-09-10). Deux étapes : (1)
 // retire un éventuel suffixe ", <code postal> <ville>" redondant — Otaree duplique parfois le
@@ -650,7 +693,7 @@ function champsConnusDepuisLot(lot) {
     if (adresse?.latitude) champs.latitude = String(adresse.latitude);
     if (adresse?.longitude) champs.longitude = String(adresse.longitude);
 
-    const { numero, voie } = extraireNumeroVoie(adresse?.name, adresse?.zipCode, adresse?.city?.name);
+    const { numero, voie } = extraireNumeroVoie(nomAdresseSansProgramme(lot), adresse?.zipCode, adresse?.city?.name);
     if (numero) champs.numero_voie = numero;
     if (voie) champs.adresse = voie;
 
@@ -1641,7 +1684,7 @@ function normaliserPourComparaison(s) {
 // accole la voie et la zone ("Rue Marie Curie-ZAC Aubette Martainville"), seule la voie est
 // exigée : citer la ZAC seule ne suffit pas, mais on n'impose pas de recopier la zone.
 function noyauVoie(lot) {
-    const brut = normaliserPourComparaison(lot?.program?.address?.name);
+    const brut = normaliserPourComparaison(nomAdresseSansProgramme(lot));
     if (!brut) return null;
     const sansNumero = brut.replace(
         /^\d+(\s*[-–]\s*\d+)?(\s*(bis|ter|quater))?(\s+et\s+\d+(\s*(bis|ter|quater))?)*\s*,?\s*/,
@@ -1912,7 +1955,7 @@ async function callOpenAILmnp(textContext, lotImageData, lot) {
             hits = [...hits, `prix absent du bloc "LES CHIFFRES CLÉS" (prix réel du lot : ${prixReelDuLot(lot)} €)`];
         }
         if (rueAbsenteDuTexte(resultat.texte, lot)) {
-            hits = [...hits, `rue absente ou altérée dans le texte (adresse réelle : "${lot?.program?.address?.name}")`];
+            hits = [...hits, `rue absente ou altérée dans le texte (adresse réelle : "${nomAdresseSansProgramme(lot)}")`];
         }
         // Pas de contrôle de vocabulaire résidentiel ici, contrairement au chemin Neuf : le LMNP
         // géré porte par nature sur des résidences de services, le mot y est donc légitime — seule
@@ -2172,7 +2215,7 @@ async function callOpenAINeuf(textContext, lotImageData, lot) {
             hits = [...hits, `prix absent du texte (prix réel du lot : ${prixReelDuLot(lot)} €)`];
         }
         if (rueAbsenteDuTexte(resultat.texte, lot)) {
-            hits = [...hits, `rue absente ou altérée dans le texte (adresse réelle : "${lot?.program?.address?.name}")`];
+            hits = [...hits, `rue absente ou altérée dans le texte (adresse réelle : "${nomAdresseSansProgramme(lot)}")`];
         }
         if (lotProfessionnel && VOCABULAIRE_RESIDENTIEL_RE.test(resultat.texte || '')) {
             hits = [...hits, 'vocabulaire résidentiel employé pour un bien professionnel (bureau/local commercial)'];
