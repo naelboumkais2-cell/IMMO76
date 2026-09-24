@@ -614,6 +614,8 @@ scraperRouter.get('/diag-source', exigerConnexion, async (req, res) => {
             descLot: lot?.description || null,
             descProgramme: lot?.program?.description || null,
             lgDescProgramme: (lot?.program?.description || '').length,
+            nomProgramme: lot?.program?.name || null,
+            adresseName: lot?.program?.address?.name || null,
         });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
