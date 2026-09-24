@@ -374,6 +374,25 @@ async function fetchAvecRetry(url, headers, contexte) {
     return derniereReponse;
 }
 
+// TEMPORAIRE (2026-09-25) — enrichirLot ne recopie que documents/images/plan des réponses
+// détail : vérifier si ces réponses contiennent une description qu'on jette actuellement.
+export async function diagDetailBrut(atIdLot, atIdProgramme) {
+    const { jwt, credentials } = await obtenirJwtFrais();
+    const headers = buildHeaders(credentials.device, credentials.instanceId, jwt);
+    const lire = async (atId) => {
+        if (!atId) return null;
+        const res = await fetch(`${API_BASE}${atId}`, { headers });
+        if (!res.ok) return { erreurHttp: res.status };
+        const j = await res.json();
+        const champsTexte = {};
+        for (const [k, v] of Object.entries(j)) {
+            if (typeof v === 'string' && v.length > 80) champsTexte[k] = { longueur: v.length, extrait: v.slice(0, 500) };
+        }
+        return { cles: Object.keys(j).sort(), champsTexteLongs: champsTexte, documents: (j.documents || []).map((d) => ({ type: d.type, nom: d.file?.name || d.name || null })) };
+    };
+    return { lot: await lire(atIdLot), programme: await lire(atIdProgramme) };
+}
+
 export async function enrichirLot(lot, jetonPartage = null) {
     const { jwt, credentials } = jetonPartage || (await obtenirJwtFrais());
     const headers = buildHeaders(credentials.device, credentials.instanceId, jwt);

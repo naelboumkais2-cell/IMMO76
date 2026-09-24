@@ -34,6 +34,7 @@ import {
     construireUrlRechercheNationale,
     compterLotsOtaree,
     rechercherZoneAvecRepli,
+    diagDetailBrut,
 } from '../integrations/otareeSearchClient.js';
 import { REGIONS_FRANCE } from '../integrations/zonesFrance.js';
 import { MAX_PAR_RUN } from '../integrations/autoPublishConfig.js';
@@ -571,6 +572,25 @@ scraperRouter.get('/lots-en-attente-count', exigerConnexion, async (req, res) =>
         res.json({ count: row.n });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
+    }
+});
+
+// TEMPORAIRE (2026-09-25) — que renvoient réellement les endpoints détail Otaree pour un lot
+// Neuf ? enrichirLot n'en garde que documents/images/plan. À retirer après diagnostic.
+scraperRouter.get('/diag-detail-otaree', exigerConnexion, async (req, res) => {
+    try {
+        const row = await db.prepare(
+            `SELECT a.id, a.ville, a.raw_data
+             FROM annonces a JOIN annonce_portails ap ON ap.annonce_id = a.id
+             WHERE ap.portail_id = 2 AND a.raw_data IS NOT NULL
+             ORDER BY a.id DESC LIMIT 1`
+        ).get();
+        if (!row) return res.json({ erreur: 'aucun lot Neuf' });
+        const raw = JSON.parse(row.raw_data || '{}');
+        const diag = await diagDetailBrut(raw['@id'], raw?.program?.['@id']);
+        res.json({ lotId: row.id, ville: row.ville, atIdLot: raw['@id'], atIdProg: raw?.program?.['@id'], ...diag });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message, stack: e.stack?.split('\n')[0] });
     }
 });
 
