@@ -648,7 +648,21 @@ scraperRouter.get('/diag-tokens', exigerConnexion, async (req, res) => {
                FROM openai_usage_log GROUP BY 1, 2
              ) t GROUP BY jour ORDER BY jour DESC LIMIT 30`
         ).all();
-        res.json({ parJour, parMinute });
+        // Lots réellement générés par jour (logs_api) -> permet de calculer le nombre d'appels
+        // OpenAI consommés PAR LOT, c'est-à-dire l'effet des tentatives supplémentaires.
+        const lotsParJour = await db.prepare(
+            `SELECT DATE(cree_le) AS jour, COUNT(*)::int AS lots_generes
+             FROM logs_api
+             WHERE message LIKE 'Données IA générées%'
+             GROUP BY DATE(cree_le) ORDER BY jour DESC LIMIT 30`
+        ).all();
+        const alertesParJour = await db.prepare(
+            `SELECT DATE(cree_le) AS jour, COUNT(*)::int AS alertes
+             FROM logs_api
+             WHERE message LIKE 'Alerte conformité%'
+             GROUP BY DATE(cree_le) ORDER BY jour DESC LIMIT 30`
+        ).all();
+        res.json({ parJour, parMinute, lotsParJour, alertesParJour });
     } catch (e) {
         res.status(500).json({ erreur: e.message });
     }
