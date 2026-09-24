@@ -10,7 +10,7 @@ import { IconChevronDown } from './icons.jsx';
 // reste ouvert après un clic (on coche plusieurs choses d'affilée), chaque option affiche une
 // case à cocher, et le bouton résume la sélection ("T2, T3 (2 sélections)") plutôt que d'afficher
 // un seul libellé — même esprit que le "9 sélections" de l'interface Otaree elle-même.
-export function Select({ value, onChange, options, disabled, title, style, multiple = false, placeholder = '—' }) {
+export function Select({ value, onChange, options, disabled, title, style, multiple = false, placeholder = '—', ariaLabel }) {
     const [open, setOpen] = useState(false);
     const [highlight, setHighlight] = useState(-1);
     const rootRef = useRef(null);
@@ -82,6 +82,7 @@ export function Select({ value, onChange, options, disabled, title, style, multi
                     setHighlight(multiple ? 0 : selectedIndex >= 0 ? selectedIndex : 0);
                 }}
                 onKeyDown={onKeyDown}
+                aria-label={ariaLabel}
                 aria-haspopup="listbox"
                 aria-expanded={open}
             >

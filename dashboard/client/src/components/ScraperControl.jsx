@@ -159,7 +159,12 @@ export function ScraperControl() {
     // Overlay.jsx pour l'animation d'entrée/sortie, gérée là-bas). ScraperControl lui-même ne
     // démonte jamais rien : le formulaire garde son state (recherche en cours, filtres en
     // saisie...) que l'Overlay soit ouvert ou fermé, seul l'affichage change.
-    const [vue, setVue] = useState('accueil');
+    // Ouvert sur les filtres dès l'arrivée (demande client, 2026-09-25) : l'écran d'accueil
+    // imposait un clic préalable dans la barre de recherche pour révéler le formulaire. Le
+    // formulaire reste rendu dans l'Overlay plein écran — l'accueil subsiste donc derrière, et
+    // "← Retour" y ramène toujours. Version volontairement minimale : sortir le formulaire de
+    // l'Overlay pour n'avoir qu'un seul écran est un chantier de mise en page, remis à plus tard.
+    const [vue, setVue] = useState('filtres');
 
     const [nomRecherche, setNomRecherche] = useState('');
     const [villeQuery, setVilleQuery] = useState('');
@@ -1013,26 +1018,26 @@ export function ScraperControl() {
                         )}
 
                         <div className="filter-groups-row">
-                            <label className="field">
+                            <div className="field">
                                 Typologie
-                                <Select multiple value={typologie} onChange={setTypologie} options={TYPOLOGY_OPTIONS} placeholder="Toutes" />
-                            </label>
-                            <label className="field">
+                                <Select ariaLabel="Typologie" multiple value={typologie} onChange={setTypologie} options={TYPOLOGY_OPTIONS} placeholder="Toutes" />
+                            </div>
+                            <div className="field">
                                 Nature
-                                <Select multiple value={nature} onChange={setNature} options={NATURE_OPTIONS} placeholder="Toutes" />
-                            </label>
-                            <label className="field">
+                                <Select ariaLabel="Nature" multiple value={nature} onChange={setNature} options={NATURE_OPTIONS} placeholder="Toutes" />
+                            </div>
+                            <div className="field">
                                 Statut
-                                <Select multiple value={statut} onChange={setStatut} options={STATUS_OPTIONS} placeholder="Tous" />
-                            </label>
-                            <label className="field">
+                                <Select ariaLabel="Statut" multiple value={statut} onChange={setStatut} options={STATUS_OPTIONS} placeholder="Tous" />
+                            </div>
+                            <div className="field">
                                 Dispositif / Loi
-                                <Select multiple value={loi} onChange={setLoi} options={LAW_OPTIONS} placeholder="Tous" />
-                            </label>
-                            <label className="field">
+                                <Select ariaLabel="Dispositif / Loi" multiple value={loi} onChange={setLoi} options={LAW_OPTIONS} placeholder="Tous" />
+                            </div>
+                            <div className="field">
                                 Promoteur
-                                <Select multiple value={promoteur} onChange={setPromoteur} options={developerOptions} placeholder="Tous" />
-                            </label>
+                                <Select ariaLabel="Promoteur" multiple value={promoteur} onChange={setPromoteur} options={developerOptions} placeholder="Tous" />
+                            </div>
                         </div>
 
                         <div style={{ marginBottom: '16px' }}>
@@ -1049,22 +1054,22 @@ export function ScraperControl() {
 
                         {filtresAvancesOuverts && (
                             <div className="filter-groups-row" style={{ marginTop: 4 }}>
-                                <label className="field">
+                                <div className="field">
                                     Exposition
-                                    <Select multiple value={exposition} onChange={setExposition} options={EXPOSURE_OPTIONS} placeholder="Toutes" />
-                                </label>
-                                <label className="field">
+                                    <Select ariaLabel="Exposition" multiple value={exposition} onChange={setExposition} options={EXPOSURE_OPTIONS} placeholder="Toutes" />
+                                </div>
+                                <div className="field">
                                     Étage
-                                    <Select multiple value={etage} onChange={setEtage} options={FLOOR_OPTIONS} placeholder="Tous" />
-                                </label>
-                                <label className="field">
+                                    <Select ariaLabel="Étage" multiple value={etage} onChange={setEtage} options={FLOOR_OPTIONS} placeholder="Tous" />
+                                </div>
+                                <div className="field">
                                     Zone fiscale
-                                    <Select multiple value={zoneFiscale} onChange={setZoneFiscale} options={TAX_AREA_OPTIONS} placeholder="Toutes" />
-                                </label>
-                                <label className="field">
+                                    <Select ariaLabel="Zone fiscale" multiple value={zoneFiscale} onChange={setZoneFiscale} options={TAX_AREA_OPTIONS} placeholder="Toutes" />
+                                </div>
+                                <div className="field">
                                     Dépendances
-                                    <Select multiple value={dependances} onChange={setDependances} options={ANNEX_OPTIONS} placeholder="Aucune" />
-                                </label>
+                                    <Select ariaLabel="Dépendances" multiple value={dependances} onChange={setDependances} options={ANNEX_OPTIONS} placeholder="Aucune" />
+                                </div>
 
                                 <label className="field" style={{ width: 160 }}>
                                     Rentabilité min (%)
