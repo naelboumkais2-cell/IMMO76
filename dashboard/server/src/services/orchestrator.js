@@ -13,6 +13,7 @@ import {
     stockerEnAttente,
     recupererEtViderEnAttente,
     getEnAttente,
+    getEtatAutoPublish,
 } from './autoPublishStatus.js';
 import { utilisateurActuelId } from './requestContext.js';
 import { estEnPause, obtenirEtatPause } from './depenseMonitor.js';
@@ -401,7 +402,32 @@ function decouperEnGroupes(liste, taille) {
 }
 
 async function executerTraitement(candidats, mode, rechercheId, portailIds = null) {
+    // Verrou anti-chevauchement (demande client, 2026-09-24) : deux runs qui génèrent en même
+    // temps additionnent leur consommation OpenAI dans la même fenêtre de débit — c'est
+    // exactement ce qui a provoqué la rafale de 429 du test précédent (46 appels/minute cumulés
+    // sur deux runs simultanés, alors qu'un seul run ne peut en produire que 4 à la fois). Cas
+    // réaliste visé : double-clic sur "Rechercher"/"Confirmer", ou une relance parce que
+    // l'utilisateur pense — à tort — qu'un run précédent n'a pas démarré.
+    //
+    // getEtatAutoPublish().enCours ET demarrerRun() ci-dessous sont volontairement sur deux
+    // lignes CONSÉCUTIVES SANS AUCUN `await` entre elles : Node exécute le code synchrone d'un
+    // seul tenant entre deux points de suspension, donc lire puis poser ce drapeau sans jamais
+    // rendre la main entre les deux élimine toute fenêtre de course, même si deux appels à cette
+    // fonction sont déclenchés dans le même tick. Le check est PLACÉ AVANT le log "plafond
+    // atteint" plus bas (qui, lui, fait un `await`) — le mettre après aurait laissé passer un
+    // second run pendant cet await, dans le seul cas où MAX_PAR_RUN est dépassé.
+    if (getEtatAutoPublish().enCours) {
+        const messageRefus =
+            'Un traitement est déjà en cours — cette demande a été ignorée pour éviter un ' +
+            'chevauchement (double-clic, ou relance pendant qu\'un run tourne déjà). Attends la ' +
+            'fin du run en cours (visible dans le bandeau de progression) avant de relancer.';
+        await log('auto_publish', { succes: false, message: messageRefus });
+        return { mode, nbCandidats: candidats.length, nbTraites: 0, refuse: true, erreur: messageRefus };
+    }
+
     const aTraiter = candidats.slice(0, MAX_PAR_RUN);
+    let nbTraites = 0;
+    demarrerRun(aTraiter.length, rechercheId, mode);
 
     if (candidats.length > aTraiter.length) {
         await log('auto_publish', {
@@ -410,8 +436,6 @@ async function executerTraitement(candidats, mode, rechercheId, portailIds = nul
         });
     }
 
-    let nbTraites = 0;
-    demarrerRun(aTraiter.length, rechercheId, mode);
     let annule = false;
     // Arrêt immédiat du run entier dès qu'un lot révèle des crédits OpenAI épuisés (voir plus bas)
     // — sert à sortir aussi de la boucle de GROUPES, pas seulement de celle des lots.
