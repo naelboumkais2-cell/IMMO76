@@ -374,25 +374,6 @@ async function fetchAvecRetry(url, headers, contexte) {
     return derniereReponse;
 }
 
-// TEMPORAIRE (2026-09-25) — enrichirLot ne recopie que documents/images/plan des réponses
-// détail : vérifier si ces réponses contiennent une description qu'on jette actuellement.
-export async function diagDetailBrut(atIdLot, atIdProgramme) {
-    const { jwt, credentials } = await obtenirJwtFrais();
-    const headers = buildHeaders(credentials.device, credentials.instanceId, jwt);
-    const lire = async (atId) => {
-        if (!atId) return null;
-        const res = await fetch(`${API_BASE}${atId}`, { headers });
-        if (!res.ok) return { erreurHttp: res.status };
-        const j = await res.json();
-        const champsTexte = {};
-        for (const [k, v] of Object.entries(j)) {
-            if (typeof v === 'string' && v.length > 80) champsTexte[k] = { longueur: v.length, extrait: v.slice(0, 500) };
-        }
-        return { cles: Object.keys(j).sort(), champsTexteLongs: champsTexte, documents: (j.documents || []).map((d) => ({ type: d.type, nom: d.file?.name || d.name || null })) };
-    };
-    return { lot: await lire(atIdLot), programme: await lire(atIdProgramme) };
-}
-
 export async function enrichirLot(lot, jetonPartage = null) {
     const { jwt, credentials } = jetonPartage || (await obtenirJwtFrais());
     const headers = buildHeaders(credentials.device, credentials.instanceId, jwt);
@@ -408,6 +389,7 @@ export async function enrichirLot(lot, jetonPartage = null) {
         lot.documents = detail.documents || [];
         lot.images = detail.images || [];
         lot.plan = detail.plan || null;
+        if (detail.description) lot.description = detail.description;
     }
 
     if (progRes && progRes.ok) {
@@ -415,6 +397,14 @@ export async function enrichirLot(lot, jetonPartage = null) {
         if (prog.documents?.length) lot.documents = (lot.documents || []).concat(prog.documents);
         if (prog.images?.length) lot.images = (lot.images || []).concat(prog.images);
         if (prog.perspective) lot.images = (lot.images || []).concat([prog.perspective]);
+        // Le descriptif du programme n'existe QUE sur cette réponse détail — le payload de
+        // recherche (celui stocké en base) ne le contient jamais. Il était donc téléchargé puis
+        // jeté ici, alors que les prompts (LMNP comme Neuf) demandent explicitement d'exploiter
+        // "le descriptif du programme" : côté Neuf, les 13 lots mesurés le 2026-09-25 n'avaient
+        // aucune matière environnement et plafonnaient à ~115-140 mots pour une cible de 350-550.
+        // C'est aussi ce descriptif que mesure le garde-fou "texte trop court" (voir
+        // callOpenAINeuf, Ubiflow-Auto-API), jusqu'ici toujours nul donc jamais déclenché.
+        if (prog.description) lot.program = { ...(lot.program || {}), description: prog.description };
     }
 
     return lot;
