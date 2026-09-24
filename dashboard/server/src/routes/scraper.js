@@ -574,6 +574,48 @@ scraperRouter.get('/lots-en-attente-count', exigerConnexion, async (req, res) =>
     }
 });
 
+// TEMPORAIRE (2026-09-25) — diagnostic prompt Neuf : mesure la longueur réelle des textes générés
+// et vérifie si les données sources contiennent vraiment de la matière "environnement" (transports,
+// université, commerces). À retirer dans le commit suivant une fois le diagnostic terminé.
+scraperRouter.get('/diag-neuf-env', exigerConnexion, async (req, res) => {
+    try {
+        const rows = await db.prepare(
+            `SELECT a.id, a.titre, a.ville, a.raw_data, a.donnees_ia
+             FROM annonces a
+             JOIN annonce_portails ap ON ap.annonce_id = a.id
+             WHERE ap.portail_id = 2 AND a.donnees_ia IS NOT NULL
+             ORDER BY a.id DESC LIMIT 25`
+        ).all();
+
+        const MOTS_CLES = /(m[ée]tro|RER|tramway|\btram\b|\bgare\b|\bbus\b|ligne\s*\d+|universit[ée]|campus|[ée]cole|lyc[ée]e|coll[èe]ge|commerces?|centre commercial|\bparc\b|arr[êe]t|[àa]\s*\d+\s*(?:min|minutes)|\d+\s*m\b)/gi;
+
+        const resultat = rows.map((r) => {
+            const raw = JSON.parse(r.raw_data || '{}');
+            const ia = JSON.parse(r.donnees_ia || '{}');
+            const descLot = raw?.description || '';
+            const descProg = raw?.program?.description || '';
+            const corpus = descLot + ' ' + descProg;
+            const mentions = [...new Set((corpus.match(MOTS_CLES) || []).map((m) => m.toLowerCase()))];
+            const texte = ia?.texte || '';
+            return {
+                id: r.id,
+                ville: r.ville,
+                adresse: raw?.program?.address?.name || null,
+                lgDescLot: descLot.length,
+                lgDescProg: descProg.length,
+                lgDescriptifReel: descLot.length + descProg.length,
+                nbMots: texte.trim().split(/\s+/).filter(Boolean).length,
+                mentionsEnv: mentions,
+                nbMentions: mentions.length,
+            };
+        });
+
+        res.json({ nbLots: resultat.length, lots: resultat });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // Reprend le pipeline auto-publish directement depuis la base, sans repasser par Otaree —
 // comble le trou laissé par otaree-search(-national) : leur liste de candidats ne vit qu'en
 // mémoire le temps d'un seul appel HTTP (voir commentaire sur candidatsAccumules plus haut),
