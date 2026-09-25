@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { exigerConnexion } from '../middleware/auth.js';
-import { db } from '../db.js';
 import {
     obtenirEtatDepenses,
     mettreAJourParametres,
@@ -43,21 +42,6 @@ depensesRouter.post('/reprendre', exigerConnexion, async (req, res) => {
 
 // Force un contrôle immédiat plutôt que d'attendre jusqu'à 10 min — utile juste après avoir
 // changé un seuil, pour voir l'effet tout de suite dans Réglages.
-// TEMPORAIRE (2026-09-25) — remise à zéro du suivi OpenAI avant livraison, sur demande explicite
-// du client. Vide openai_usage_log : écraser le seul instantané depense_mensuelle ne suffirait
-// pas, verifierEtMettreAJourDepenses le recalcule depuis cette table à chaque contrôle. Sans
-// effet sur la facturation réelle chez OpenAI. À retirer juste après usage.
-depensesRouter.post('/diag-reset-openai', exigerConnexion, async (req, res) => {
-    try {
-        const avant = await db.prepare(`SELECT COUNT(*)::int AS n, COALESCE(SUM(cout_usd), 0) AS total FROM openai_usage_log`).get();
-        await db.prepare(`DELETE FROM openai_usage_log`).run();
-        await db.prepare(`DELETE FROM depense_mensuelle WHERE service = 'openai'`).run();
-        res.json({ lignesSupprimees: avant.n, coutUsdEfface: Number(avant.total) });
-    } catch (e) {
-        res.status(500).json({ erreur: e.message });
-    }
-});
-
 depensesRouter.post('/verifier-maintenant', exigerConnexion, async (req, res) => {
     try {
         await verifierEtMettreAJourDepenses();
