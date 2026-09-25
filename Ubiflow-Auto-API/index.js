@@ -1786,6 +1786,15 @@ const VOCABULAIRE_RESIDENTIEL_RE = /cadre de vie|adresse résidentielle|ensemble
 // résidence gérée, 3 ou 4 occurrences restent défendables, 5+ relève clairement du remplissage.
 const SEUIL_REPETITION_RESIDENCE = 5;
 
+// Interrupteur du contrôle de longueur des textes Neuf (voir son usage dans callOpenAINeuf).
+// Mis à false le 2026-09-25 sur demande du client, le jour de la livraison : ce contrôle
+// partageait les 3 relances de MAX_TENTATIVES_CONFORMITE avec les contrôles de véracité et leur
+// prenait des tentatives, voire annulait seul la publication d'un lot correct par ailleurs.
+// Repasser à true quand la longueur redeviendra un sujet — de préférence avec un budget de
+// relances distinct de celui des contrôles de véracité, pour que les deux ne se concurrencent
+// plus. Aucun autre endroit à modifier : la mesure reste calculée, elle n'alimente plus `hits`.
+const CONTROLE_LONGUEUR_NEUF_ACTIF = false;
+
 function compterOccurrencesResidence(texte) {
     return ((texte || '').match(/\brésidences?\b|ensemble résidentiel/gi) || []).length;
 }
@@ -2303,9 +2312,17 @@ async function callOpenAINeuf(textContext, lotImageData, lot) {
         // d'images, structure de prix, adresse imbriquée...), déclenchant à tort une exigence de
         // longueur sur des lots réellement pauvres en contenu. Remplacé par la longueur réelle du
         // descriptif (lot + programme), le seul texte que le modèle peut effectivement exploiter.
+        // DÉSACTIVÉ TEMPORAIREMENT (2026-09-25, demande client avant livraison) — voir
+        // CONTROLE_LONGUEUR_NEUF_ACTIF plus haut. Les 3 relances de MAX_TENTATIVES_CONFORMITE sont
+        // un budget PARTAGÉ entre tous les garde-fous : ce contrôle de longueur en consommait une
+        // au détriment des contrôles de véracité (annexe extérieure inventée), et pouvait à lui
+        // seul annuler la publication d'un lot par ailleurs correct. Constaté sur le lot 76204 :
+        // "terrasse (réel : balcon), loggia (réel : balcon), texte trop court (229 mots)" — bloqué
+        // pour un mot sous le seuil, alors que l'erreur à corriger était l'annexe inventée.
+        // La longueur est un défaut de confort, l'annexe inventée une information fausse publiée.
         const nbMotsTexte = (resultat.texte || '').trim().split(/\s+/).filter(Boolean).length;
         const longueurDescriptifReel = ((lot?.description || '') + (lot?.program?.description || '')).length;
-        if (nbMotsTexte < 230 && longueurDescriptifReel > 800) {
+        if (CONTROLE_LONGUEUR_NEUF_ACTIF && nbMotsTexte < 230 && longueurDescriptifReel > 800) {
             hits = [...hits, `texte trop court (${nbMotsTexte} mots) alors que des données riches sont disponibles`];
         }
         if (hits.length === 0) break;
