@@ -338,7 +338,7 @@ app.get('/api/rechercher-doublons-hubiflow', async (req, res) => {
 });
 
 app.post('/api/publish-payload', async (req, res) => {
-    const { aiData, base64Images, villeConnue, codePostalConnu, prixConnu, referenceConnue, espaceLoginAttendu, mode } = req.body;
+    const { aiData, base64Images, villeConnue, codePostalConnu, prixConnu, surfaceConnue, referenceConnue, espaceLoginAttendu, mode } = req.body;
 
     if (!espaceLoginAttendu) return res.status(400).json({ success: false, error: 'espaceLoginAttendu requis' });
     if (!aiData) return res.status(400).json({ success: false, error: 'aiData manquant' });
@@ -346,7 +346,7 @@ app.post('/api/publish-payload', async (req, res) => {
     const resolu = await resoudreTokenPourEspace(espaceLoginAttendu);
     if (resolu.erreur) return res.status(401).json({ success: false, error: resolu.erreur });
 
-    const payload = buildUbiflowPayload(aiData, base64Images || [], { ville: villeConnue, codePostal: codePostalConnu, prix: prixConnu, reference: referenceConnue }, espaceLoginAttendu);
+    const payload = buildUbiflowPayload(aiData, base64Images || [], { ville: villeConnue, codePostal: codePostalConnu, prix: prixConnu, surface: surfaceConnue, reference: referenceConnue }, espaceLoginAttendu);
     const { statusCode, body } = await envoyerAUbiflow(payload, resolu.token, espaceLoginAttendu);
 
     if (statusCode === 200 && body.success && mode === 'actif') {
@@ -2700,7 +2700,16 @@ function buildUbiflowPayload(aiData, base64Images = [], donneesConnues = {}, esp
         // sur aiData.prix uniquement si le prix connu est vraiment absent (ne devrait pas
         // arriver en usage normal).
         prix: donneesConnues.prix != null ? Math.round(Number(donneesConnues.prix)) : (parseInt(aiData.prix) || 0),
-        surface_habitable: (parseInt(aiData.surface) || 0).toString(),
+        // Même correctif que pour `prix` juste au-dessus, et pour la même raison : la valeur
+        // venait d'aiData (ce que l'IA a écrit) et passait par parseInt, qui TRONQUE au lieu
+        // d'arrondir — 64,82 m² devenait 64 alors que la description générée dit "environ 65 m²",
+        // les prompts imposant l'arrondi à l'entier le plus proche. Le paramètre affiché et le
+        // texte de l'annonce se contredisaient donc sur la même annonce. Math.round sur la
+        // surface Otaree réelle applique exactement la règle des prompts. Repli sur aiData
+        // seulement si la surface connue est absente, comme pour le prix.
+        surface_habitable: donneesConnues.surface != null
+            ? String(Math.round(Number(donneesConnues.surface)))
+            : (parseInt(aiData.surface) || 0).toString(),
         nb_pieces_logement: parseInt(aiData.pieces) || 1,
         code_postal_reel: donneesConnues.codePostal ? String(donneesConnues.codePostal) : (aiData.code_postal ? String(aiData.code_postal) : "76000"),
         ville_reelle: donneesConnues.ville ? String(donneesConnues.ville) : (aiData.ville ? String(aiData.ville) : "Rouen"),
