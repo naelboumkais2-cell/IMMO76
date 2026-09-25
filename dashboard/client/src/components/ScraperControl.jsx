@@ -153,18 +153,11 @@ const OPTIONS_FREQUENCE = [
 ];
 
 export function ScraperControl() {
-    // 'accueil' : grande barre de recherche façon Google, rien d'autre — toujours affichée en
-    // dessous. 'filtres' pilote l'ouverture de l'Overlay fullscreen (formulaire complet : ville +
-    // tous les filtres + filtres avancés en bas) qui survole l'accueil, fond flouté (voir
-    // Overlay.jsx pour l'animation d'entrée/sortie, gérée là-bas). ScraperControl lui-même ne
-    // démonte jamais rien : le formulaire garde son state (recherche en cours, filtres en
-    // saisie...) que l'Overlay soit ouvert ou fermé, seul l'affichage change.
-    // Ouvert sur les filtres dès l'arrivée (demande client, 2026-09-25) : l'écran d'accueil
-    // imposait un clic préalable dans la barre de recherche pour révéler le formulaire. Le
-    // formulaire reste rendu dans l'Overlay plein écran — l'accueil subsiste donc derrière, et
-    // "← Retour" y ramène toujours. Version volontairement minimale : sortir le formulaire de
-    // l'Overlay pour n'avoir qu'un seul écran est un chantier de mise en page, remis à plus tard.
-    const [vue, setVue] = useState('filtres');
+    // Écran de recherche en un seul flux : le logo et sa grande barre façon Google, puis
+    // directement le formulaire complet (ville + filtres + filtres avancés). Il vivait jusqu'au
+    // 2026-09-25 dans un Overlay plein écran, piloté par un état `vue`, qui ne s'ouvrait qu'au
+    // focus de la barre d'accueil — un clic et une popup de trop pour l'utilisateur, supprimés
+    // sur demande du client. Il ne reste donc plus d'état d'affichage à piloter ici.
 
     const [nomRecherche, setNomRecherche] = useState('');
     const [villeQuery, setVilleQuery] = useState('');
@@ -877,28 +870,26 @@ export function ScraperControl() {
                     <input
                         value={villeQuery}
                         onChange={(e) => onVilleInputChange(e.target.value)}
-                        onFocus={() => setVue('filtres')}
                         placeholder="Où cherchez-vous ?"
                         autoComplete="off"
                     />
                 </label>
             </div>
 
-            {/* Le formulaire complet survole l'accueil en plein écran, fond flouté (voir
-                Overlay.jsx) — fermer (croix, Échap, clic hors panneau, ou "Retour") ne fait que
-                masquer l'affichage, jamais annuler une recherche en cours. */}
-            <Overlay open={vue === 'filtres'} dismissible onDismiss={() => setVue('accueil')} size="fullscreen">
+            {/* Formulaire rendu directement dans le flux de la page (demande client,
+                2026-09-25) : il vivait auparavant dans un Overlay plein écran ouvert au focus de
+                la barre d'accueil, ce qui imposait un clic puis une popup. Plus d'overlay, donc
+                plus de "Retour" ni d'animation d'ouverture — tout est visible à l'arrivée.
+                Version minimale assumée : la barre d'accueil ci-dessus et le champ Ville de ce
+                formulaire font désormais doublon. Les fusionner (une seule barre, portant
+                l'autocomplétion) est le vrai chantier de mise en page, volontairement reporté. */}
             <div className="panel-body">
                 <div>
-                    <button type="button" className="btn-retour" onClick={() => setVue('accueil')}>
-                        ← Retour
-                    </button>
                     <form onSubmit={onLancerRechercheOtaree}>
                         <div className="search-bar-container">
                             <label className="field autocomplete-wrap" style={{ flex: 1, minWidth: 200 }}>
                                 <span className="field-label">Ville</span>
                                 <input
-                                    autoFocus
                                     value={villeQuery}
                                     onChange={(e) => onVilleInputChange(e.target.value)}
                                     onFocus={() => setSuggestionsOuvertes(true)}
@@ -1110,7 +1101,6 @@ export function ScraperControl() {
                     {erreurOtaree && <p className="text-error">{erreurOtaree}</p>}
                 </div>
             </div>
-            </Overlay>
 
             {/* dismissible=false : action à conséquence réelle, seul un choix explicite
                 (Confirmer/Annuler) peut fermer ce panneau — comportement inchangé, juste
