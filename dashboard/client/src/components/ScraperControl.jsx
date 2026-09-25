@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
-import { IconRadar, IconRefresh, IconAlert, IconChevronDown, IconSearch } from './icons.jsx';
+import { IconRadar, IconRefresh, IconAlert, IconChevronDown } from './icons.jsx';
 import { Select } from './Select.jsx';
 import { Overlay } from './Overlay.jsx';
 import logoPlusImmo from '../assets/logo-plus-immo.png';
@@ -865,15 +865,6 @@ export function ScraperControl() {
             <div className="recherche-accueil">
                 <img className="recherche-accueil-logo" src={logoPlusImmo} alt="+immo — La Centrale du Neuf" />
                 <p className="recherche-accueil-soustitre">Recherche Otaree en direct</p>
-                <label className="recherche-accueil-barre">
-                    <IconSearch width={20} height={20} />
-                    <input
-                        value={villeQuery}
-                        onChange={(e) => onVilleInputChange(e.target.value)}
-                        placeholder="Où cherchez-vous ?"
-                        autoComplete="off"
-                    />
-                </label>
             </div>
 
             {/* Formulaire rendu directement dans le flux de la page (demande client,
