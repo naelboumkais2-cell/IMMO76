@@ -574,6 +574,26 @@ scraperRouter.get('/lots-en-attente-count', exigerConnexion, async (req, res) =>
     }
 });
 
+// TEMPORAIRE (2026-09-25) — remet en file d'attente des lots générés mais non publiés (bloqués
+// par le garde-fou conformité) pour les régénérer. Refuse tout lot déjà publié.
+scraperRouter.post('/diag-reset-generation', exigerConnexion, async (req, res) => {
+    try {
+        const ids = (req.body?.ids || []).map(Number).filter(Boolean);
+        if (!ids.length) return res.status(400).json({ erreur: 'ids requis' });
+        const publies = await db.prepare(
+            `SELECT DISTINCT annonce_id FROM annonce_portails
+             WHERE annonce_id = ANY(?) AND ad_id_externe IS NOT NULL AND statut != 'depubliee'`
+        ).all(ids);
+        if (publies.length) {
+            return res.status(409).json({ erreur: 'lot(s) déjà publié(s), reset refusé', publies: publies.map((p) => p.annonce_id) });
+        }
+        const r = await db.prepare(`UPDATE annonces SET donnees_ia = NULL WHERE id = ANY(?)`).run(ids);
+        res.json({ reinitialises: r.changes, ids });
+    } catch (e) {
+        res.status(500).json({ erreur: e.message });
+    }
+});
+
 // Reprend le pipeline auto-publish directement depuis la base, sans repasser par Otaree —
 // comble le trou laissé par otaree-search(-national) : leur liste de candidats ne vit qu'en
 // mémoire le temps d'un seul appel HTTP (voir commentaire sur candidatsAccumules plus haut),
